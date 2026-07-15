@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-ProjectStatus = Literal["draft", "queued", "uploading", "transcribing", "scripting", "planning", "ready", "failed"]
+ProjectStatus = Literal["draft", "queued", "uploading", "transcribing", "scripting", "planning", "rendering", "ready", "failed"]
 JobStatus = Literal["pending", "processing", "completed", "failed"]
 
 
@@ -48,6 +48,27 @@ class LaunchScriptRecord(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class FocusBox(BaseModel):
+    x: float = Field(ge=0.0, le=1.0)
+    y: float = Field(ge=0.0, le=1.0)
+    width: float = Field(gt=0.0, le=1.0)
+    height: float = Field(gt=0.0, le=1.0)
+
+
+class VisualSceneAnalysisRecord(BaseModel):
+    scene_number: int
+    start: float
+    end: float
+    summary: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    motion_score: float = Field(ge=0.0, le=1.0)
+    click_detected: bool = False
+    visible_labels: list[str] = Field(default_factory=list)
+    primary_focus_box: FocusBox | None = None
+    cursor_box: FocusBox | None = None
+    click_target_box: FocusBox | None = None
+
+
 class EditPlanCaption(BaseModel):
     start: float
     end: float
@@ -60,6 +81,8 @@ class EditPlanZoom(BaseModel):
     scale: float
     focus_region: str
     reason: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    focus_box: FocusBox | None = None
 
 
 class EditPlanHighlight(BaseModel):
@@ -67,6 +90,9 @@ class EditPlanHighlight(BaseModel):
     end: float
     label: str
     style: str
+    anchor_region: str
+    confidence: float = Field(ge=0.0, le=1.0)
+    focus_box: FocusBox | None = None
 
 
 class EditPlanScene(BaseModel):
@@ -75,6 +101,10 @@ class EditPlanScene(BaseModel):
     purpose: str
     start: float
     end: float
+    confidence: float = Field(ge=0.0, le=1.0)
+    camera_mode: Literal["static", "focus"]
+    decision_summary: str
+    visual_summary: str
     spoken_line: str
     on_screen_text: str
     source_excerpt: str
@@ -97,6 +127,15 @@ class EditPlanRecord(BaseModel):
     render_spec: RenderSpecRecord
 
 
+class RenderedVideoRecord(BaseModel):
+    filename: str
+    content_type: str
+    size_bytes: int
+    storage_path: str
+    duration_seconds: float
+    variant: Literal["preview", "final"]
+
+
 class ProjectRecord(BaseModel):
     id: str
     project_name: str
@@ -111,6 +150,8 @@ class ProjectRecord(BaseModel):
     transcript: list[TranscriptSegment] = Field(default_factory=list)
     launch_script: LaunchScriptRecord | None = None
     edit_plan: EditPlanRecord | None = None
+    preview_video: RenderedVideoRecord | None = None
+    final_video: RenderedVideoRecord | None = None
     error_message: str = ""
 
 
@@ -125,6 +166,8 @@ class ProjectSummary(BaseModel):
     has_transcript: bool
     has_launch_script: bool
     has_edit_plan: bool
+    has_preview_video: bool
+    has_final_video: bool
 
 
 class ProjectDetail(ProjectSummary):
@@ -133,6 +176,8 @@ class ProjectDetail(ProjectSummary):
     asset: AssetRecord | None = None
     launch_script: LaunchScriptRecord | None = None
     edit_plan: EditPlanRecord | None = None
+    preview_video: RenderedVideoRecord | None = None
+    final_video: RenderedVideoRecord | None = None
     error_message: str = ""
 
 

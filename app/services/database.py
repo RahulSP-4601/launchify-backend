@@ -54,6 +54,8 @@ def ensure_projects_schema(cursor: Any) -> None:
             transcript jsonb not null default '[]'::jsonb,
             launch_script jsonb,
             edit_plan jsonb,
+            preview_video jsonb,
+            final_video jsonb,
             error_message text not null default '',
             created_at timestamptz not null,
             updated_at timestamptz not null
@@ -62,6 +64,8 @@ def ensure_projects_schema(cursor: Any) -> None:
     )
     cursor.execute("alter table projects add column if not exists launch_script jsonb")
     cursor.execute("alter table projects add column if not exists edit_plan jsonb")
+    cursor.execute("alter table projects add column if not exists preview_video jsonb")
+    cursor.execute("alter table projects add column if not exists final_video jsonb")
     cursor.execute(
         """
         create index if not exists idx_projects_user_updated

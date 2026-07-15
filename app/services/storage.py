@@ -6,9 +6,10 @@ from tempfile import NamedTemporaryFile
 from pathlib import Path
 from urllib import error, parse, request
 from urllib.parse import urlsplit
+from typing import Literal
 
 from app.core.config import get_settings
-from app.models.projects import AssetRecord
+from app.models.projects import AssetRecord, RenderedVideoRecord
 
 
 def upload_video(user_id: str, project_id: str, filename: str, content_type: str, file_bytes: bytes) -> AssetRecord:
@@ -103,6 +104,34 @@ def upload_video_file(
         content_type=resolved_type,
         size_bytes=source_path.stat().st_size,
         storage_path=storage_path,
+    )
+
+
+def upload_rendered_video_file(
+    user_id: str,
+    project_id: str,
+    variant: Literal["preview", "final"],
+    filename: str,
+    source_path: Path,
+    duration_seconds: float,
+) -> RenderedVideoRecord:
+    settings = get_settings()
+    bucket = settings.supabase_storage_bucket
+    safe_name = parse.quote(filename, safe=".-_")
+    storage_path = f"users/{user_id}/projects/{project_id}/renders/{variant}/{safe_name}"
+    send_storage_upload(
+        endpoint=f"{settings.supabase_url}/storage/v1/object/{bucket}/{storage_path}",
+        content_type="video/mp4",
+        content_length=source_path.stat().st_size,
+        source_path=source_path,
+    )
+    return RenderedVideoRecord(
+        filename=filename,
+        content_type="video/mp4",
+        size_bytes=source_path.stat().st_size,
+        storage_path=storage_path,
+        duration_seconds=duration_seconds,
+        variant=variant,
     )
 
 

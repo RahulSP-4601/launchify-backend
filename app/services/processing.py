@@ -3,13 +3,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Sequence
 
-from app.models.projects import ProjectRecord, TranscriptSegment
+from app.models.projects import LaunchScriptRecord, ProjectRecord, TranscriptSegment, VisualSceneAnalysisRecord
 from app.services.edit_planner import generate_edit_plan
 from app.services.job_store import job_store
 from app.services.project_store import StaleProjectAssetError, project_store
+from app.services.rendering import render_project_videos
 from app.services.script_writer import combine_transcript, generate_launch_script
 from app.services.storage import download_asset_to_file
 from app.services.transcription import transcribe_media_file
+from app.services.visual_analysis import analyze_video_scenes, visual_analysis_available
 
 
 def process_job(job_id: str) -> None:
@@ -45,8 +47,15 @@ def process_job(job_id: str) -> None:
         project_store.save_transcript(job.user_id, job.project_id, transcript, "scripting", asset_path=job.asset_path)
         launch_script = generate_launch_script(require_project(job.user_id, job.project_id))
         project_store.save_launch_script(job.user_id, job.project_id, launch_script, asset_path=job.asset_path)
-        edit_plan = generate_edit_plan(require_project(job.user_id, job.project_id))
+        if stale_asset_detected(job.user_id, job.project_id, job.asset_path, job.id):
+            return
+        visual_analyses = maybe_analyze_video_scenes(asset_file, launch_script, transcript)
+        edit_plan = generate_edit_plan(require_project(job.user_id, job.project_id), visual_analyses)
         project_store.save_edit_plan(job.user_id, job.project_id, edit_plan, asset_path=job.asset_path)
+        if stale_asset_detected(job.user_id, job.project_id, job.asset_path, job.id):
+            return
+        preview_video, final_video = render_project_videos(job.user_id, require_project(job.user_id, job.project_id))
+        project_store.save_render_outputs(job.user_id, job.project_id, preview_video, final_video, asset_path=job.asset_path)
         job_store.mark_completed(job.id)
     except StaleProjectAssetError:
         job_store.mark_completed(job.id)
@@ -73,6 +82,23 @@ def require_project(user_id: str, project_id: str) -> ProjectRecord:
     if project is None:
         raise RuntimeError("Project not found while generating the launch script.")
     return project
+
+
+def stale_asset_detected(user_id: str, project_id: str, asset_path: str, job_id: str) -> bool:
+    if is_latest_project_asset(user_id, project_id, asset_path):
+        return False
+    job_store.mark_completed(job_id)
+    return True
+
+
+def maybe_analyze_video_scenes(
+    asset_file: Path,
+    launch_script: LaunchScriptRecord,
+    transcript: list[TranscriptSegment],
+) -> list[VisualSceneAnalysisRecord] | None:
+    if not visual_analysis_available():
+        return None
+    return analyze_video_scenes(asset_file, launch_script, transcript)
 
 
 def handle_job_failure(user_id: str, project_id: str, asset_path: str, job_id: str, error_message: str) -> None:

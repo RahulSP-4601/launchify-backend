@@ -3,6 +3,8 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
+from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 
 from app.core.config import get_settings
 from app.models.projects import (
@@ -10,11 +12,12 @@ from app.models.projects import (
     ProjectDetail,
     ProjectRecord,
     ProjectSummary,
+    RenderedVideoRecord,
     TranscriptResponse,
 )
 from app.services.auth import get_authenticated_user_id
 from app.services.project_store import project_store
-from app.services.storage import upload_video_file
+from app.services.storage import download_asset_to_file, upload_video_file
 
 router = APIRouter()
 
@@ -45,6 +48,8 @@ async def list_projects(request: Request) -> list[ProjectSummary]:
             has_transcript=bool(project.transcript),
             has_launch_script=project.launch_script is not None,
             has_edit_plan=project.edit_plan is not None,
+            has_preview_video=project.preview_video is not None,
+            has_final_video=project.final_video is not None,
         )
         for project in projects
     ]
@@ -71,6 +76,21 @@ async def get_transcript(project_id: str, request: Request) -> TranscriptRespons
         project_id=project.id,
         status=project.status,
         transcript=project.transcript,
+    )
+
+
+@router.get("/projects/{project_id}/renders/{variant}", tags=["projects"])
+async def get_render_output(project_id: str, variant: str, request: Request) -> FileResponse:
+    user_id = get_authenticated_user_id(request)
+    project = must_get_project(user_id, project_id)
+    rendered_video = require_render_output(project, variant)
+    output_path = download_asset_to_file(rendered_video.storage_path)
+    return FileResponse(
+        path=output_path,
+        media_type=rendered_video.content_type,
+        filename=rendered_video.filename,
+        background=BackgroundTask(output_path.unlink, missing_ok=True),
+        headers={"Content-Disposition": f'inline; filename="{rendered_video.filename}"'},
     )
 
 
@@ -116,9 +136,13 @@ def to_project_detail(user_id: str, project_id: str) -> ProjectDetail:
         has_transcript=bool(project.transcript),
         has_launch_script=project.launch_script is not None,
         has_edit_plan=project.edit_plan is not None,
+        has_preview_video=project.preview_video is not None,
+        has_final_video=project.final_video is not None,
         asset=project.asset,
         launch_script=project.launch_script,
         edit_plan=project.edit_plan,
+        preview_video=project.preview_video,
+        final_video=project.final_video,
         error_message=project.error_message,
     )
 
@@ -128,6 +152,14 @@ def must_get_project(user_id: str, project_id: str) -> ProjectRecord:
     if project is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found.")
     return project
+
+
+def require_render_output(project: ProjectRecord, variant: str) -> RenderedVideoRecord:
+    if variant == "preview" and project.preview_video is not None:
+        return project.preview_video
+    if variant == "final" and project.final_video is not None:
+        return project.final_video
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rendered video not found.")
 
 
 async def write_upload_to_temp_file(upload: UploadFile) -> Path:

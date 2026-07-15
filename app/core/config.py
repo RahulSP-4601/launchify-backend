@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -21,6 +22,9 @@ class Settings(BaseSettings):
 
     openai_api_key: str = ""
     openai_script_model: str = "gpt-4.1-mini"
+    openai_vision_model: str = "gpt-4.1-mini"
+    ffmpeg_binary: str = "ffmpeg"
+    render_worker_dir: str = str(Path(__file__).resolve().parents[2] / "render-worker")
     posthog_api_key: str = ""
     sentry_dsn: str = ""
 
