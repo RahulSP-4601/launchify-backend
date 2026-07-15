@@ -5,8 +5,19 @@ from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import uuid4
 
-from app.models.projects import AssetRecord, CreateProjectRequest, ProjectRecord, ProjectStatus, TranscriptSegment
+from app.models.projects import (
+    AssetRecord,
+    CreateProjectRequest,
+    LaunchScriptRecord,
+    ProjectRecord,
+    ProjectStatus,
+    TranscriptSegment,
+)
 from app.services.database import connection_scope
+
+
+class StaleProjectAssetError(RuntimeError):
+    pass
 
 
 class ProjectStore:
@@ -16,7 +27,7 @@ class ProjectStore:
                 cursor.execute(
                     """
                     select id, project_name, product_name, product_description, target_audience,
-                           video_goal, status, asset, transcript, error_message, created_at, updated_at
+                           video_goal, status, asset, transcript, launch_script, error_message, created_at, updated_at
                     from projects
                     where user_id = %s
                     order by updated_at desc
@@ -45,9 +56,9 @@ class ProjectStore:
                     """
                     insert into projects (
                         id, user_id, project_name, product_name, product_description, target_audience,
-                        video_goal, status, asset, transcript, error_message, created_at, updated_at
+                        video_goal, status, asset, transcript, launch_script, error_message, created_at, updated_at
                     )
-                    values (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s)
+                    values (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s)
                     """,
                     (
                         project.id,
@@ -60,6 +71,7 @@ class ProjectStore:
                         project.status,
                         None,
                         json.dumps([]),
+                        None,
                         project.error_message,
                         project.created_at,
                         project.updated_at,
@@ -73,7 +85,7 @@ class ProjectStore:
                 cursor.execute(
                     """
                     select id, project_name, product_name, product_description, target_audience,
-                           video_goal, status, asset, transcript, error_message, created_at, updated_at
+                           video_goal, status, asset, transcript, launch_script, error_message, created_at, updated_at
                     from projects
                     where id = %s and user_id = %s
                     """,
@@ -90,6 +102,24 @@ class ProjectStore:
             where id = %s and user_id = %s
             """,
             (status, error_message, datetime.now(UTC), project_id, user_id),
+        )
+
+    def update_status_for_asset(
+        self,
+        user_id: str,
+        project_id: str,
+        asset_path: str,
+        status: ProjectStatus,
+        error_message: str = "",
+    ) -> None:
+        self._execute_update(
+            """
+            update projects
+            set status = %s, error_message = %s, updated_at = %s
+            where id = %s and user_id = %s and asset->>'storage_path' = %s
+            """,
+            (status, error_message, datetime.now(UTC), project_id, user_id, asset_path),
+            stale_error_message="Project asset was replaced by a newer upload.",
         )
 
     def attach_asset(self, user_id: str, project_id: str, asset: AssetRecord) -> None:
@@ -109,7 +139,8 @@ class ProjectStore:
                 cursor.execute(
                     """
                     update projects
-                    set asset = %s::jsonb, status = %s, error_message = '', updated_at = %s
+                    set asset = %s::jsonb, status = %s, transcript = '[]'::jsonb, launch_script = null,
+                        error_message = '', updated_at = %s
                     where id = %s and user_id = %s
                     """,
                     (
@@ -145,32 +176,108 @@ class ProjectStore:
                     ),
                 )
 
-    def save_transcript(self, user_id: str, project_id: str, transcript: list[TranscriptSegment]) -> None:
+    def save_transcript(
+        self,
+        user_id: str,
+        project_id: str,
+        transcript: list[TranscriptSegment],
+        status: ProjectStatus,
+        error_message: str = "",
+        asset_path: str | None = None,
+    ) -> None:
+        if asset_path is None:
+            self._execute_update(
+                """
+                update projects
+                set transcript = %s::jsonb, status = %s, error_message = %s, updated_at = %s
+                where id = %s and user_id = %s
+                """,
+                (
+                    json.dumps([segment.model_dump(mode="json") for segment in transcript]),
+                    status,
+                    error_message,
+                    datetime.now(UTC),
+                    project_id,
+                    user_id,
+                ),
+            )
+            return
         self._execute_update(
             """
             update projects
-            set transcript = %s::jsonb, status = %s, error_message = '', updated_at = %s
-            where id = %s and user_id = %s
+            set transcript = %s::jsonb, status = %s, error_message = %s, updated_at = %s
+            where id = %s and user_id = %s and asset->>'storage_path' = %s
             """,
             (
                 json.dumps([segment.model_dump(mode="json") for segment in transcript]),
+                status,
+                error_message,
+                datetime.now(UTC),
+                project_id,
+                user_id,
+                asset_path,
+            ),
+            stale_error_message="Project asset was replaced before transcript could be saved.",
+        )
+
+    def save_launch_script(
+        self,
+        user_id: str,
+        project_id: str,
+        launch_script: LaunchScriptRecord,
+        asset_path: str | None = None,
+    ) -> None:
+        if asset_path is None:
+            self._execute_update(
+                """
+                update projects
+                set launch_script = %s::jsonb, status = %s, error_message = '', updated_at = %s
+                where id = %s and user_id = %s
+                """,
+                (
+                    json.dumps(launch_script.model_dump(mode="json")),
+                    "ready",
+                    datetime.now(UTC),
+                    project_id,
+                    user_id,
+                ),
+            )
+            return
+        self._execute_update(
+            """
+            update projects
+            set launch_script = %s::jsonb, status = %s, error_message = '', updated_at = %s
+            where id = %s and user_id = %s and asset->>'storage_path' = %s
+            """,
+            (
+                json.dumps(launch_script.model_dump(mode="json")),
                 "ready",
                 datetime.now(UTC),
                 project_id,
                 user_id,
+                asset_path,
             ),
+            stale_error_message="Project asset was replaced before the launch script could be saved.",
         )
 
-    def _execute_update(self, sql: str, params: tuple[object, ...]) -> None:
+    def _execute_update(
+        self,
+        sql: str,
+        params: tuple[object, ...],
+        stale_error_message: str | None = None,
+    ) -> None:
         with connection_scope() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(sql, params)
                 if cursor.rowcount != 1:
+                    if stale_error_message is not None:
+                        raise StaleProjectAssetError(stale_error_message)
                     raise RuntimeError("Project not found.")
 
     def _row_to_project(self, user_id: str, row: tuple[object, ...]) -> ProjectRecord:
         asset = AssetRecord.model_validate(row[7]) if row[7] is not None else None
         transcript = [TranscriptSegment.model_validate(item) for item in self._as_list(row[8])]
+        launch_script = LaunchScriptRecord.model_validate(row[9]) if row[9] is not None else None
         return ProjectRecord(
             id=str(row[0]),
             project_name=str(row[1]),
@@ -181,9 +288,10 @@ class ProjectStore:
             status=cast(Any, row[6]),
             asset=asset,
             transcript=transcript,
-            error_message=str(row[9]),
-            created_at=cast(datetime, row[10]),
-            updated_at=cast(datetime, row[11]),
+            launch_script=launch_script,
+            error_message=str(row[10]),
+            created_at=cast(datetime, row[11]),
+            updated_at=cast(datetime, row[12]),
         )
 
     def _as_list(self, value: object) -> list[object]:

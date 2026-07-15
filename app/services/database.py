@@ -52,12 +52,14 @@ def ensure_projects_schema(cursor: Any) -> None:
             status text not null,
             asset jsonb,
             transcript jsonb not null default '[]'::jsonb,
+            launch_script jsonb,
             error_message text not null default '',
             created_at timestamptz not null,
             updated_at timestamptz not null
         )
         """,
     )
+    cursor.execute("alter table projects add column if not exists launch_script jsonb")
     cursor.execute(
         """
         create index if not exists idx_projects_user_updated

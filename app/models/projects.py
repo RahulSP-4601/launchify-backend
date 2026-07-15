@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-ProjectStatus = Literal["draft", "queued", "uploading", "transcribing", "ready", "failed"]
+ProjectStatus = Literal["draft", "queued", "uploading", "transcribing", "scripting", "ready", "failed"]
 JobStatus = Literal["pending", "processing", "completed", "failed"]
 
 
@@ -30,6 +30,24 @@ class TranscriptSegment(BaseModel):
     text: str
 
 
+class LaunchScriptScene(BaseModel):
+    scene_number: int
+    purpose: str
+    spoken_line: str
+    on_screen_text: str
+    source_excerpt: str
+    estimated_duration_seconds: float
+
+
+class LaunchScriptRecord(BaseModel):
+    hook: str
+    summary: str
+    title_options: list[str] = Field(default_factory=list)
+    scenes: list[LaunchScriptScene] = Field(default_factory=list)
+    cta: str
+    notes: list[str] = Field(default_factory=list)
+
+
 class ProjectRecord(BaseModel):
     id: str
     project_name: str
@@ -42,6 +60,7 @@ class ProjectRecord(BaseModel):
     updated_at: datetime
     asset: AssetRecord | None = None
     transcript: list[TranscriptSegment] = Field(default_factory=list)
+    launch_script: LaunchScriptRecord | None = None
     error_message: str = ""
 
 
@@ -54,12 +73,14 @@ class ProjectSummary(BaseModel):
     created_at: datetime
     updated_at: datetime
     has_transcript: bool
+    has_launch_script: bool
 
 
 class ProjectDetail(ProjectSummary):
     product_description: str
     target_audience: str
     asset: AssetRecord | None = None
+    launch_script: LaunchScriptRecord | None = None
     error_message: str = ""
 
 

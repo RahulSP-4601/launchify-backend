@@ -43,6 +43,7 @@ async def list_projects(request: Request) -> list[ProjectSummary]:
             created_at=project.created_at,
             updated_at=project.updated_at,
             has_transcript=bool(project.transcript),
+            has_launch_script=project.launch_script is not None,
         )
         for project in projects
     ]
@@ -112,7 +113,9 @@ def to_project_detail(user_id: str, project_id: str) -> ProjectDetail:
         created_at=project.created_at,
         updated_at=project.updated_at,
         has_transcript=bool(project.transcript),
+        has_launch_script=project.launch_script is not None,
         asset=project.asset,
+        launch_script=project.launch_script,
         error_message=project.error_message,
     )
 

@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     deepgram_api_key: str = ""
 
     openai_api_key: str = ""
+    openai_script_model: str = "gpt-4.1-mini"
     posthog_api_key: str = ""
     sentry_dsn: str = ""
 
