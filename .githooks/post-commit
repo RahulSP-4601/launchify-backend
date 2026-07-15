@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+cd "$ROOT_DIR"
+if ! coderabbit review --type committed --dir "$ROOT_DIR"; then
+  echo "CodeRabbit review failed. Commit succeeded; rerun it manually from launchify-backend."
+fi
