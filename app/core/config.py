@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     supabase_service_role_key: str = ""
     supabase_legacy_jwt_secret: str = ""
     database_url: str = ""
+    database_connect_timeout_seconds: int = 10
     supabase_storage_bucket: str = "launchify-assets"
     deepgram_api_key: str = ""
     deepgram_tts_model: str = "aura-2-thalia-en"

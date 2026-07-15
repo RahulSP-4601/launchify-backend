@@ -15,7 +15,10 @@ def get_connection() -> Any:
     settings = get_settings()
     if not settings.database_url:
         raise RuntimeError("DATABASE_URL is required for project and job persistence.")
-    return psycopg.connect(settings.database_url)
+    return psycopg.connect(
+        settings.database_url,
+        connect_timeout=settings.database_connect_timeout_seconds,
+    )
 
 
 @contextmanager

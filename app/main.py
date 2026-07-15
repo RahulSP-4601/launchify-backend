@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 from typing import AsyncIterator
 
 from fastapi import FastAPI
@@ -10,15 +11,19 @@ from app.services.database import ensure_schema
 from app.services.job_runner import job_runner
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    logger.info("Startup: ensuring database schema")
     ensure_schema()
+    logger.info("Startup: starting job runner")
     job_runner.start()
     try:
         yield
     finally:
+        logger.info("Shutdown: stopping job runner")
         await job_runner.stop()
 
 app = FastAPI(
