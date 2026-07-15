@@ -16,12 +16,8 @@ class Settings(BaseSettings):
     supabase_service_role_key: str = ""
     supabase_jwt_secret: str = ""
     database_url: str = ""
-
-    r2_account_id: str = ""
-    r2_access_key_id: str = ""
-    r2_secret_access_key: str = ""
-    r2_bucket: str = ""
-    r2_public_base_url: str = ""
+    supabase_storage_bucket: str = "launchify-assets"
+    deepgram_api_key: str = ""
 
     openai_api_key: str = ""
     posthog_api_key: str = ""
