@@ -320,6 +320,13 @@ class TranscriptResponse(BaseModel):
     transcript: list[TranscriptSegment]
 
 
+class UsageSummary(BaseModel):
+    limit_seconds: float
+    used_seconds: float
+    remaining_seconds: float
+    blocked: bool
+
+
 class ProcessingJobRecord(BaseModel):
     id: str
     user_id: str

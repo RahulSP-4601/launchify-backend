@@ -23,6 +23,7 @@ from app.services.rendering import render_project_videos
 from app.services.script_writer import combine_transcript, generate_launch_script
 from app.services.storage import download_asset_to_file
 from app.services.transcription import transcribe_media_file
+from app.services.usage_service import usage_lock
 from app.services.visual_analysis import analyze_video_scenes, visual_analysis_available
 
 
@@ -125,29 +126,30 @@ def save_planning_step(
 
 
 def save_render_step(job: ProcessingJobRecord) -> None:
-    preview_video, final_video, refined_edit_plan, refined_quality_report = render_project_videos(
-        job.user_id,
-        require_project(job.user_id, job.project_id),
-    )
-    project_store.save_refined_edit_plan(
-        job.user_id,
-        job.project_id,
-        refined_edit_plan,
-        asset_path=job.asset_path,
-    )
-    current_project = require_project(job.user_id, job.project_id)
-    benchmark_report = build_benchmark_report(current_project, refined_edit_plan, refined_quality_report)
-    project_store.save_phase_four_state(
-        job.user_id,
-        job.project_id,
-        refined_quality_report,
-        benchmark_report,
-        require_voiceover(current_project),
-        require_template_config(current_project),
-        require_manual_overrides(current_project),
-        asset_path=job.asset_path,
-    )
-    project_store.save_render_outputs(job.user_id, job.project_id, preview_video, final_video, asset_path=job.asset_path)
+    with usage_lock(job.user_id):
+        preview_video, final_video, refined_edit_plan, refined_quality_report = render_project_videos(
+            job.user_id,
+            require_project(job.user_id, job.project_id),
+        )
+        project_store.save_refined_edit_plan(
+            job.user_id,
+            job.project_id,
+            refined_edit_plan,
+            asset_path=job.asset_path,
+        )
+        current_project = require_project(job.user_id, job.project_id)
+        benchmark_report = build_benchmark_report(current_project, refined_edit_plan, refined_quality_report)
+        project_store.save_phase_four_state(
+            job.user_id,
+            job.project_id,
+            refined_quality_report,
+            benchmark_report,
+            require_voiceover(current_project),
+            require_template_config(current_project),
+            require_manual_overrides(current_project),
+            asset_path=job.asset_path,
+        )
+        project_store.save_render_outputs(job.user_id, job.project_id, preview_video, final_video, asset_path=job.asset_path)
     job_store.mark_completed(job.id)
 
 

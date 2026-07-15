@@ -15,11 +15,13 @@ from app.models.projects import (
     RenderedVideoRecord,
     TranscriptResponse,
     UpdatePhaseFourRequest,
+    UsageSummary,
 )
 from app.services.auth import get_authenticated_user_id
 from app.services.phase_four import apply_phase_four_update
 from app.services.project_store import project_store
 from app.services.storage import download_asset_to_file, upload_video_file
+from app.services.usage_service import total_rendered_seconds
 
 router = APIRouter()
 
@@ -58,6 +60,12 @@ async def list_projects(request: Request) -> list[ProjectSummary]:
         )
         for project in projects
     ]
+
+
+@router.get("/usage", response_model=UsageSummary, tags=["projects"])
+async def get_usage(request: Request) -> UsageSummary:
+    user_id = get_authenticated_user_id(request)
+    return usage_summary_for_user(user_id)
 
 
 @router.post("/projects", response_model=ProjectDetail, status_code=status.HTTP_201_CREATED, tags=["projects"])
@@ -134,6 +142,12 @@ async def upload_project_video(
     filename: str | None = Form(default=None),
 ) -> ProjectDetail:
     user_id = get_authenticated_user_id(request)
+    usage = usage_summary_for_user(user_id)
+    if usage.blocked:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Your 10 minute trial limit has been reached. Uploads are blocked for now.",
+        )
     upload_name = (filename or file.filename or "").strip()
     if not upload_name:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Filename is required.")
@@ -200,6 +214,19 @@ def require_render_output(project: ProjectRecord, variant: str) -> RenderedVideo
     if variant == "final" and project.final_video is not None:
         return project.final_video
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rendered video not found.")
+
+
+def usage_summary_for_user(user_id: str) -> UsageSummary:
+    settings = get_settings()
+    limit_seconds = float(settings.trial_minutes_limit * 60)
+    used_seconds = total_rendered_seconds(user_id)
+    remaining_seconds = max(limit_seconds - used_seconds, 0.0)
+    return UsageSummary(
+        limit_seconds=limit_seconds,
+        used_seconds=used_seconds,
+        remaining_seconds=remaining_seconds,
+        blocked=remaining_seconds <= 0,
+    )
 
 
 async def write_upload_to_temp_file(upload: UploadFile) -> Path:

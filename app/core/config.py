@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     ffmpeg_binary: str = "ffmpeg"
     tesseract_binary: str = "/opt/homebrew/bin/tesseract"
     render_worker_dir: str = str(Path(__file__).resolve().parents[2] / "render-worker")
+    trial_minutes_limit: int = 10
     posthog_api_key: str = ""
     sentry_dsn: str = ""
 

@@ -11,6 +11,7 @@ from app.models.projects import EditPlanRecord, ProjectRecord, QualityReportReco
 from app.services.render_payloads import build_render_payload, total_render_duration
 from app.services.render_review import refine_from_preview
 from app.services.storage import download_asset_to_file, upload_rendered_video_file
+from app.services.usage_service import projected_rendered_seconds, total_rendered_seconds
 
 
 def render_project_videos(
@@ -26,6 +27,7 @@ def render_project_videos(
             preview_output = temp_dir / "preview.mp4"
             render_preview_output(project, source_video, voiceover_audio, temp_dir, preview_output)
             reviewed_project, quality_report = reviewed_project(project, preview_output)
+            enforce_final_render_limit(user_id, reviewed_project)
             render_preview_output(reviewed_project, source_video, voiceover_audio, temp_dir, preview_output)
             preview_video = upload_variant(user_id, reviewed_project, preview_output, "preview")
             final_video = render_and_upload_variant(user_id, reviewed_project, source_video, voiceover_audio, temp_dir, "final")
@@ -129,6 +131,20 @@ def require_duration(project: ProjectRecord) -> float:
     if project.edit_plan is None:
         raise RuntimeError("Edit plan duration is required before uploading rendered outputs.")
     return total_render_duration(project.edit_plan.total_duration_seconds)
+
+
+def enforce_final_render_limit(user_id: str, project: ProjectRecord) -> None:
+    settings = get_settings()
+    duration_seconds = require_duration(project)
+    projected_seconds = projected_rendered_seconds(user_id, project.id, duration_seconds)
+    limit_seconds = float(settings.trial_minutes_limit * 60)
+    if projected_seconds > limit_seconds:
+        remaining_seconds = max(limit_seconds - total_rendered_seconds(user_id), 0.0)
+        remaining_minutes = remaining_seconds / 60
+        raise RuntimeError(
+            "This render would exceed your trial limit. "
+            f"Only {remaining_minutes:.1f} minutes remain before the {settings.trial_minutes_limit} minute cap."
+        )
 
 
 def download_voiceover_audio(project: ProjectRecord) -> Path | None:
