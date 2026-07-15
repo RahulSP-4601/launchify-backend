@@ -24,6 +24,8 @@ from app.services.storage import download_asset_to_file, upload_video_file
 from app.services.usage_service import total_rendered_seconds
 
 router = APIRouter()
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+MAX_UPLOAD_MB = 50
 
 
 @router.get("/health", tags=["system"])
@@ -237,6 +239,14 @@ async def write_upload_to_temp_file(upload: UploadFile) -> Path:
             if not chunk:
                 break
             total_bytes += len(chunk)
+            if total_bytes > MAX_UPLOAD_BYTES:
+                await upload.close()
+                temp_file.close()
+                os.unlink(temp_file.name)
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail=f"Uploaded file must be {MAX_UPLOAD_MB} MB or smaller.",
+                )
             temp_file.write(chunk)
     await upload.close()
     if total_bytes == 0:
