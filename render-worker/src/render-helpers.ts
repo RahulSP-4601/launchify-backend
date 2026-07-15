@@ -48,13 +48,17 @@ export function zoomTransform(zooms: RenderZoom[], localSeconds: number) {
     return {
       scale: 1,
       origin: "50% 50%",
+      translateX: 0,
+      translateY: 0,
     };
   }
   const confidenceScale = 1 + (activeZoom.scale - 1) * activeZoom.confidence;
-  const intensity = motionIntensity(activeZoom.start, activeZoom.end, localSeconds);
+  const intensity = easedMotionIntensity(activeZoom, localSeconds);
   return {
     scale: 1 + (confidenceScale - 1) * intensity,
     origin: focusBoxToOrigin(activeZoom.focus_box) ?? focusRegionToOrigin(activeZoom.focus_region),
+    translateX: activeZoom.x_offset * intensity,
+    translateY: activeZoom.y_offset * intensity,
   };
 }
 
@@ -77,6 +81,17 @@ export function motionOpacity(frame: number, durationInFrames: number) {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
+}
+
+export function transitionStyle(scene: RenderScene, frame: number, fps: number) {
+  const transitionFrames = Math.max(1, Math.round(scene.transition_duration_seconds * fps));
+  const entry = interpolate(frame, [0, transitionFrames], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const translateY = scene.transition_style === "slide-up" ? (1 - entry) * 40 : 0;
+  const focusScale = scene.transition_style === "focus-push" ? 1 + (1 - entry) * 0.04 : 1;
+  return { opacity: entry, translateY, focusScale };
 }
 
 function focusRegionToOrigin(region: string) {
@@ -129,14 +144,31 @@ function focusBoxToAnchor(box: FocusBox | null) {
   };
 }
 
-function motionIntensity(start: number, end: number, current: number) {
+function motionIntensity(start: number, end: number, current: number, holdRatio: number) {
   const duration = Math.max(end - start, 0.01);
   const progress = Math.min(Math.max((current - start) / duration, 0), 1);
-  if (progress <= 0.18) {
-    return progress / 0.18;
+  const entry = Math.max(0.12, 0.22 - holdRatio * 0.08);
+  const exitStart = Math.min(0.88, 0.78 + holdRatio * 0.08);
+  if (progress <= entry) {
+    return progress / entry;
   }
-  if (progress >= 0.82) {
-    return (1 - progress) / 0.18;
+  if (progress >= exitStart) {
+    return (1 - progress) / (1 - exitStart);
   }
   return 1;
+}
+
+
+function easedMotionIntensity(zoom: RenderZoom, localSeconds: number) {
+  const raw = motionIntensity(zoom.start, zoom.end, localSeconds, zoom.hold_ratio);
+  if (zoom.easing === "ease-in") {
+    return Math.pow(raw, 1.25);
+  }
+  if (zoom.easing === "ease-out") {
+    return 1 - Math.pow(1 - raw, 1.25);
+  }
+  if (zoom.easing === "ease-in-out") {
+    return raw < 0.5 ? 2 * raw * raw : 1 - Math.pow(-2 * raw + 2, 2) / 2;
+  }
+  return raw * (1 - zoom.smoothing) + raw * raw * zoom.smoothing;
 }

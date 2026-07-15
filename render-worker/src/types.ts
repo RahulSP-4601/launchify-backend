@@ -3,6 +3,7 @@ export type RenderPayload = {
   projectName: string;
   productName: string;
   quality: string;
+  voiceoverAudioPath?: string;
   dimensions: {
     width: number;
     height: number;
@@ -10,6 +11,27 @@ export type RenderPayload = {
   };
   introDurationSeconds: number;
   outroDurationSeconds: number;
+  templateConfig: {
+    theme: "clean" | "spotlight" | "bold";
+    caption_profile: "product" | "minimal" | "cinematic";
+    motion_profile: "balanced" | "dynamic" | "calm";
+  };
+  voiceover: {
+    provider: string;
+    model: string;
+    mode: "original" | "voiceover" | "mixed";
+    status: "disabled" | "script_only" | "ready";
+    script: string;
+    cues: Array<{
+      scene_number: number;
+      start: number;
+      end: number;
+      text: string;
+      duration_seconds: number;
+    }>;
+    audio_storage_path: string;
+    duration_seconds: number;
+  };
   editPlan: {
     overview: string;
     total_duration_seconds: number;
@@ -37,6 +59,9 @@ export type RenderScene = {
   spoken_line: string;
   on_screen_text: string;
   source_excerpt: string;
+  action_timestamp: number | null;
+  transition_style: "cut" | "fade" | "slide-up" | "focus-push";
+  transition_duration_seconds: number;
   captions: RenderCaption[];
   zooms: RenderZoom[];
   highlights: RenderHighlight[];
@@ -53,6 +78,8 @@ export type RenderCaption = {
   start: number;
   end: number;
   text: string;
+  emphasis_words: string[];
+  variant: string;
 };
 
 export type RenderZoom = {
@@ -63,6 +90,11 @@ export type RenderZoom = {
   reason: string;
   confidence: number;
   focus_box: FocusBox | null;
+  easing: string;
+  x_offset: number;
+  y_offset: number;
+  smoothing: number;
+  hold_ratio: number;
 };
 
 export type RenderHighlight = {
@@ -73,4 +105,6 @@ export type RenderHighlight = {
   anchor_region: string;
   confidence: number;
   focus_box: FocusBox | null;
+  placement_preference: string;
+  ui_label: string;
 };

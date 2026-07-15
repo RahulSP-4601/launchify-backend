@@ -14,8 +14,10 @@ from app.models.projects import (
     ProjectSummary,
     RenderedVideoRecord,
     TranscriptResponse,
+    UpdatePhaseFourRequest,
 )
 from app.services.auth import get_authenticated_user_id
+from app.services.phase_four import apply_phase_four_update
 from app.services.project_store import project_store
 from app.services.storage import download_asset_to_file, upload_video_file
 
@@ -48,6 +50,9 @@ async def list_projects(request: Request) -> list[ProjectSummary]:
             has_transcript=bool(project.transcript),
             has_launch_script=project.launch_script is not None,
             has_edit_plan=project.edit_plan is not None,
+            has_quality_report=project.quality_report is not None,
+            has_benchmark_report=project.benchmark_report is not None,
+            has_voiceover=project.voiceover is not None and bool(project.voiceover.script),
             has_preview_video=project.preview_video is not None,
             has_final_video=project.final_video is not None,
         )
@@ -66,6 +71,33 @@ async def create_project(payload: CreateProjectRequest, request: Request) -> Pro
 async def get_project(project_id: str, request: Request) -> ProjectDetail:
     user_id = get_authenticated_user_id(request)
     return to_project_detail(user_id, project_id)
+
+
+@router.put("/projects/{project_id}/phase4", response_model=ProjectDetail, tags=["projects"])
+async def update_phase_four(project_id: str, payload: UpdatePhaseFourRequest, request: Request) -> ProjectDetail:
+    user_id = get_authenticated_user_id(request)
+    project = must_get_project(user_id, project_id)
+    if project.edit_plan is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Edit plan is required before Phase 4 updates.")
+    refined_edit_plan, quality_report, benchmark_report, voiceover = apply_phase_four_update(
+        user_id,
+        project,
+        project.edit_plan,
+        payload.template_config,
+        payload.manual_overrides,
+        payload.voiceover_mode,
+    )
+    project_store.save_refined_edit_plan(user_id, project.id, refined_edit_plan)
+    project_store.save_phase_four_state(
+        user_id,
+        project.id,
+        quality_report,
+        benchmark_report,
+        voiceover,
+        payload.template_config,
+        payload.manual_overrides,
+    )
+    return to_project_detail(user_id, project.id)
 
 
 @router.get("/projects/{project_id}/transcript", response_model=TranscriptResponse, tags=["projects"])
@@ -136,11 +168,19 @@ def to_project_detail(user_id: str, project_id: str) -> ProjectDetail:
         has_transcript=bool(project.transcript),
         has_launch_script=project.launch_script is not None,
         has_edit_plan=project.edit_plan is not None,
+        has_quality_report=project.quality_report is not None,
+        has_benchmark_report=project.benchmark_report is not None,
+        has_voiceover=project.voiceover is not None and bool(project.voiceover.script),
         has_preview_video=project.preview_video is not None,
         has_final_video=project.final_video is not None,
         asset=project.asset,
         launch_script=project.launch_script,
         edit_plan=project.edit_plan,
+        template_config=project.template_config,
+        manual_overrides=project.manual_overrides,
+        quality_report=project.quality_report,
+        benchmark_report=project.benchmark_report,
+        voiceover=project.voiceover,
         preview_video=project.preview_video,
         final_video=project.final_video,
         error_message=project.error_message,

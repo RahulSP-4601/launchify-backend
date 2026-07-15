@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.models.projects import EditPlanRecord, ProjectRecord
+from app.models.projects import EditPlanRecord, ProjectRecord, TemplateConfigRecord, VoiceoverRecord
 
 PREVIEW_DIMENSIONS = {"width": 1280, "height": 720, "fps": 30}
 FINAL_DIMENSIONS = {"width": 1920, "height": 1080, "fps": 30}
@@ -8,7 +8,11 @@ INTRO_DURATION_SECONDS = 1.8
 OUTRO_DURATION_SECONDS = 2.2
 
 
-def build_render_payload(project: ProjectRecord, quality: str) -> dict[str, object]:
+def build_render_payload(
+    project: ProjectRecord,
+    quality: str,
+    voiceover_audio_path: str = "",
+) -> dict[str, object]:
     edit_plan = require_edit_plan(project.edit_plan)
     dimensions = render_dimensions(quality)
     return {
@@ -20,6 +24,9 @@ def build_render_payload(project: ProjectRecord, quality: str) -> dict[str, obje
         "introDurationSeconds": INTRO_DURATION_SECONDS,
         "outroDurationSeconds": OUTRO_DURATION_SECONDS,
         "editPlan": edit_plan.model_dump(mode="json"),
+        "templateConfig": template_config(project).model_dump(mode="json"),
+        "voiceover": voiceover(project).model_dump(mode="json"),
+        "voiceoverAudioPath": voiceover_audio_path,
     }
 
 
@@ -37,3 +44,11 @@ def render_dimensions(quality: str) -> dict[str, int]:
 
 def total_render_duration(content_duration_seconds: float) -> float:
     return round(INTRO_DURATION_SECONDS + content_duration_seconds + OUTRO_DURATION_SECONDS, 2)
+
+
+def template_config(project: ProjectRecord) -> TemplateConfigRecord:
+    return project.template_config or TemplateConfigRecord()
+
+
+def voiceover(project: ProjectRecord) -> VoiceoverRecord:
+    return project.voiceover or VoiceoverRecord()

@@ -59,6 +59,8 @@ class ScenePolicy:
     focus_box: FocusBox | None
     cursor_box: FocusBox | None
     click_target_box: FocusBox | None
+    anchor_box: FocusBox | None
+    target_label: str
     visual_summary: str
 
 
@@ -74,9 +76,15 @@ class PolicyEvidence:
     visual_confidence: float
     click_score: float
     motion_score: float
+    frame_diff_score: float
+    cursor_path_confidence: float
+    ocr_match_score: float
+    ocr_confidence: float
     focus_box: FocusBox | None
     cursor_box: FocusBox | None
     click_target_box: FocusBox | None
+    anchor_box: FocusBox | None
+    target_label: str
     visual_summary: str
 
 
@@ -100,6 +108,8 @@ def build_scene_policy(
         focus_box=evidence.focus_box,
         cursor_box=evidence.cursor_box,
         click_target_box=evidence.click_target_box,
+        anchor_box=evidence.anchor_box,
+        target_label=evidence.target_label,
         visual_summary=evidence.visual_summary,
         decision_summary=build_decision_summary(
             should_zoom,
@@ -117,25 +127,29 @@ def build_scene_policy(
 def confidence_scores(evidence: PolicyEvidence) -> tuple[float, float, float]:
     scene_confidence = weighted_average(
         (evidence.alignment_score, 0.24),
-        (evidence.visual_confidence, 0.24),
+        (evidence.visual_confidence, 0.2),
         (evidence.action_score, 0.18),
         (evidence.specificity_score, 0.14),
         (evidence.duration_score, 0.12),
         (evidence.label_score, 0.08),
+        (evidence.ocr_match_score, 0.04),
     )
     zoom_confidence = weighted_average(
-        (evidence.visual_confidence, 0.3),
-        (evidence.focus_confidence, 0.24),
-        (evidence.action_score, 0.18),
-        (evidence.click_score, 0.16),
+        (evidence.visual_confidence, 0.24),
+        (evidence.focus_confidence, 0.18),
+        (evidence.click_score, 0.18),
+        (evidence.cursor_path_confidence, 0.16),
+        (evidence.frame_diff_score, 0.12),
         (evidence.motion_score, 0.12),
     )
     highlight_confidence = weighted_average(
-        (evidence.visual_confidence, 0.3),
-        (evidence.label_score, 0.2),
+        (evidence.visual_confidence, 0.22),
         (evidence.click_score, 0.2),
-        (evidence.action_score, 0.16),
-        (evidence.specificity_score, 0.14),
+        (evidence.ocr_match_score, 0.18),
+        (evidence.ocr_confidence, 0.12),
+        (evidence.label_score, 0.16),
+        (evidence.cursor_path_confidence, 0.06),
+        (evidence.specificity_score, 0.06),
     )
     return scene_confidence, zoom_confidence, highlight_confidence
 
@@ -159,9 +173,15 @@ def gather_evidence(
         visual_confidence=visual_score(visual_analysis),
         click_score=click_score(visual_analysis),
         motion_score=visual_analysis.motion_score if visual_analysis else 0.0,
+        frame_diff_score=visual_analysis.frame_diff_score if visual_analysis else 0.0,
+        cursor_path_confidence=visual_analysis.cursor_path_confidence if visual_analysis else 0.0,
+        ocr_match_score=ocr_match_score(scene_text, visual_analysis),
+        ocr_confidence=visual_analysis.ocr_confidence if visual_analysis else 0.0,
         focus_box=visual_analysis.primary_focus_box if visual_analysis else None,
         cursor_box=visual_analysis.cursor_box if visual_analysis else None,
         click_target_box=visual_analysis.click_target_box if visual_analysis else None,
+        anchor_box=visual_analysis.anchor_box if visual_analysis else None,
+        target_label=best_label(visual_analysis),
         visual_summary=visual_analysis.summary if visual_analysis else "No frame analysis available for this scene.",
     )
 
@@ -230,10 +250,12 @@ def decide_zoom(evidence: PolicyEvidence, zoom_confidence: float) -> bool:
             and evidence.focus_confidence >= 0.5
         )
     return (
-        zoom_confidence >= 0.58
-        and evidence.visual_confidence >= 0.44
-        and evidence.action_score >= 0.22
-        and evidence.focus_confidence >= 0.5
+        zoom_confidence >= 0.6
+        and evidence.visual_confidence >= 0.48
+        and evidence.focus_confidence >= 0.54
+        and evidence.frame_diff_score >= 0.22
+        and evidence.cursor_path_confidence >= 0.38
+        and focus_signal_is_trustworthy(evidence)
     )
 
 
@@ -242,7 +264,13 @@ def decide_highlight(
     should_zoom: bool,
     highlight_confidence: float,
 ) -> bool:
-    return should_zoom and highlight_confidence >= 0.55 and evidence.click_score >= 0.4
+    return (
+        should_zoom
+        and highlight_confidence >= 0.58
+        and evidence.click_score >= 0.45
+        and evidence.anchor_box is not None
+        and target_signal_is_trustworthy(evidence)
+    )
 
 
 def infer_highlight_style(scene: LaunchScriptScene) -> str:
@@ -267,8 +295,8 @@ def build_decision_summary(
     marker = "highlight added" if should_highlight else "highlight skipped"
     return (
         f"{motion} because transcript alignment is {scene_confidence:.2f}, "
-        f"visual confidence is {evidence.visual_confidence:.2f}, zoom confidence is {zoom_confidence:.2f}, "
-        f"{marker}, and the strongest focus region is {evidence.focus_region}."
+        f"visual confidence is {evidence.visual_confidence:.2f}, cursor path confidence is {evidence.cursor_path_confidence:.2f}, "
+        f"zoom confidence is {zoom_confidence:.2f}, {marker}, and the strongest focus region is {evidence.focus_region}."
     )
 
 
@@ -282,6 +310,31 @@ def click_score(visual_analysis: VisualSceneAnalysisRecord | None) -> float:
     if visual_analysis.click_target_box is not None:
         return min(1.0, visual_analysis.confidence + 0.15)
     return visual_analysis.confidence * 0.8
+
+
+def ocr_match_score(scene_text: str, visual_analysis: VisualSceneAnalysisRecord | None) -> float:
+    if visual_analysis is None:
+        return 0.0
+    detected_text = " ".join(visual_analysis.visible_labels)
+    if not detected_text.strip():
+        return visual_analysis.ocr_match_score
+    return max(visual_analysis.ocr_match_score, overlap_score(scene_text, detected_text))
+
+
+def best_label(visual_analysis: VisualSceneAnalysisRecord | None) -> str:
+    if visual_analysis is None or not visual_analysis.visible_labels:
+        return ""
+    return visual_analysis.visible_labels[0]
+
+
+def focus_signal_is_trustworthy(evidence: PolicyEvidence) -> bool:
+    if evidence.target_label:
+        return evidence.ocr_confidence >= 0.32 or evidence.ocr_match_score >= 0.34
+    return evidence.visual_confidence >= 0.5
+
+
+def target_signal_is_trustworthy(evidence: PolicyEvidence) -> bool:
+    return evidence.ocr_confidence >= 0.36 or evidence.click_score >= 0.62
 
 
 def box_region(box: FocusBox) -> str:

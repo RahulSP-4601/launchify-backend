@@ -3,9 +3,21 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Sequence
 
-from app.models.projects import LaunchScriptRecord, ProjectRecord, TranscriptSegment, VisualSceneAnalysisRecord
+from app.models.projects import (
+    BenchmarkReportRecord,
+    LaunchScriptRecord,
+    ManualOverrideRecord,
+    ProcessingJobRecord,
+    ProjectRecord,
+    TemplateConfigRecord,
+    TranscriptSegment,
+    VisualSceneAnalysisRecord,
+    VoiceoverRecord,
+)
+from app.services.benchmarking import build_benchmark_report
 from app.services.edit_planner import generate_edit_plan
 from app.services.job_store import job_store
+from app.services.phase_four import apply_phase_four_defaults
 from app.services.project_store import StaleProjectAssetError, project_store
 from app.services.rendering import render_project_videos
 from app.services.script_writer import combine_transcript, generate_launch_script
@@ -29,34 +41,7 @@ def process_job(job_id: str) -> None:
     asset_file: Path | None = None
     try:
         asset_file = download_asset_to_file(job.asset_path)
-        transcript = transcribe_media_file(asset_file, job.content_type)
-        if not is_latest_project_asset(job.user_id, job.project_id, job.asset_path):
-            job_store.mark_completed(job.id)
-            return
-        if not transcript_is_usable(transcript):
-            project_store.save_transcript(
-                job.user_id,
-                job.project_id,
-                transcript,
-                "failed",
-                "We couldn't extract enough speech to generate a launch script.",
-                job.asset_path,
-            )
-            job_store.mark_failed(job.id, "Transcript was too short for AI script generation.")
-            return
-        project_store.save_transcript(job.user_id, job.project_id, transcript, "scripting", asset_path=job.asset_path)
-        launch_script = generate_launch_script(require_project(job.user_id, job.project_id))
-        project_store.save_launch_script(job.user_id, job.project_id, launch_script, asset_path=job.asset_path)
-        if stale_asset_detected(job.user_id, job.project_id, job.asset_path, job.id):
-            return
-        visual_analyses = maybe_analyze_video_scenes(asset_file, launch_script, transcript)
-        edit_plan = generate_edit_plan(require_project(job.user_id, job.project_id), visual_analyses)
-        project_store.save_edit_plan(job.user_id, job.project_id, edit_plan, asset_path=job.asset_path)
-        if stale_asset_detected(job.user_id, job.project_id, job.asset_path, job.id):
-            return
-        preview_video, final_video = render_project_videos(job.user_id, require_project(job.user_id, job.project_id))
-        project_store.save_render_outputs(job.user_id, job.project_id, preview_video, final_video, asset_path=job.asset_path)
-        job_store.mark_completed(job.id)
+        run_processing_pipeline(job, asset_file)
     except StaleProjectAssetError:
         job_store.mark_completed(job.id)
     except RuntimeError as exc:
@@ -75,6 +60,95 @@ def is_latest_project_asset(user_id: str, project_id: str, asset_path: str) -> b
 
 def transcript_is_usable(transcript: Sequence[TranscriptSegment]) -> bool:
     return len(combine_transcript(transcript).strip()) >= 40
+
+
+def run_processing_pipeline(job: ProcessingJobRecord, asset_file: Path) -> None:
+    transcript = transcribe_media_file(asset_file, job.content_type)
+    if stale_asset_detected(job.user_id, job.project_id, job.asset_path, job.id):
+        return
+    if not transcript_is_usable(transcript):
+        mark_transcript_failure(job, transcript)
+        return
+    launch_script = save_scripting_step(job, transcript)
+    if stale_asset_detected(job.user_id, job.project_id, job.asset_path, job.id):
+        return
+    save_planning_step(job, asset_file, launch_script, transcript)
+    if stale_asset_detected(job.user_id, job.project_id, job.asset_path, job.id):
+        return
+    save_render_step(job)
+
+
+def mark_transcript_failure(job: ProcessingJobRecord, transcript: Sequence[TranscriptSegment]) -> None:
+    project_store.save_transcript(
+        job.user_id,
+        job.project_id,
+        list(transcript),
+        "failed",
+        "We couldn't extract enough speech to generate a launch script.",
+        job.asset_path,
+    )
+    job_store.mark_failed(job.id, "Transcript was too short for AI script generation.")
+
+
+def save_scripting_step(job: ProcessingJobRecord, transcript: list[TranscriptSegment]) -> LaunchScriptRecord:
+    project_store.save_transcript(job.user_id, job.project_id, transcript, "scripting", asset_path=job.asset_path)
+    launch_script = generate_launch_script(require_project(job.user_id, job.project_id))
+    project_store.save_launch_script(job.user_id, job.project_id, launch_script, asset_path=job.asset_path)
+    return launch_script
+
+
+def save_planning_step(
+    job: ProcessingJobRecord,
+    asset_file: Path,
+    launch_script: LaunchScriptRecord,
+    transcript: list[TranscriptSegment],
+) -> None:
+    visual_analyses = maybe_analyze_video_scenes(asset_file, launch_script, transcript)
+    current_project = require_project(job.user_id, job.project_id)
+    edit_plan = generate_edit_plan(current_project, visual_analyses)
+    edit_plan, quality_report, benchmark_report, voiceover, template_config, manual_overrides = apply_phase_four_defaults(
+        job.user_id,
+        current_project,
+        edit_plan,
+    )
+    project_store.save_edit_plan(job.user_id, job.project_id, edit_plan, asset_path=job.asset_path)
+    project_store.save_phase_four_state(
+        job.user_id,
+        job.project_id,
+        quality_report,
+        benchmark_report,
+        voiceover,
+        template_config,
+        manual_overrides,
+        asset_path=job.asset_path,
+    )
+
+
+def save_render_step(job: ProcessingJobRecord) -> None:
+    preview_video, final_video, refined_edit_plan, refined_quality_report = render_project_videos(
+        job.user_id,
+        require_project(job.user_id, job.project_id),
+    )
+    project_store.save_refined_edit_plan(
+        job.user_id,
+        job.project_id,
+        refined_edit_plan,
+        asset_path=job.asset_path,
+    )
+    current_project = require_project(job.user_id, job.project_id)
+    benchmark_report = build_benchmark_report(current_project, refined_edit_plan, refined_quality_report)
+    project_store.save_phase_four_state(
+        job.user_id,
+        job.project_id,
+        refined_quality_report,
+        benchmark_report,
+        require_voiceover(current_project),
+        require_template_config(current_project),
+        require_manual_overrides(current_project),
+        asset_path=job.asset_path,
+    )
+    project_store.save_render_outputs(job.user_id, job.project_id, preview_video, final_video, asset_path=job.asset_path)
+    job_store.mark_completed(job.id)
 
 
 def require_project(user_id: str, project_id: str) -> ProjectRecord:
@@ -107,3 +181,21 @@ def handle_job_failure(user_id: str, project_id: str, asset_path: str, job_id: s
         job_store.mark_failed(job_id, error_message)
     except StaleProjectAssetError:
         job_store.mark_completed(job_id)
+
+
+def require_voiceover(project: ProjectRecord) -> VoiceoverRecord:
+    if project.voiceover is None:
+        raise RuntimeError("Voiceover state is missing before render review update.")
+    return project.voiceover
+
+
+def require_template_config(project: ProjectRecord) -> TemplateConfigRecord:
+    if project.template_config is None:
+        raise RuntimeError("Template config is missing before render review update.")
+    return project.template_config
+
+
+def require_manual_overrides(project: ProjectRecord) -> ManualOverrideRecord:
+    if project.manual_overrides is None:
+        raise RuntimeError("Manual overrides are missing before render review update.")
+    return project.manual_overrides

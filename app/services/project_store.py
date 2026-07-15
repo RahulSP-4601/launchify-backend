@@ -7,13 +7,18 @@ from uuid import uuid4
 
 from app.models.projects import (
     AssetRecord,
+    BenchmarkReportRecord,
     CreateProjectRequest,
     EditPlanRecord,
     LaunchScriptRecord,
+    ManualOverrideRecord,
     ProjectRecord,
     ProjectStatus,
+    QualityReportRecord,
     RenderedVideoRecord,
+    TemplateConfigRecord,
     TranscriptSegment,
+    VoiceoverRecord,
 )
 from app.services.database import connection_scope
 
@@ -30,6 +35,7 @@ class ProjectStore:
                     """
                     select id, project_name, product_name, product_description, target_audience,
                            video_goal, status, asset, transcript, launch_script, edit_plan,
+                           template_config, manual_overrides, quality_report, benchmark_report, voiceover,
                            preview_video, final_video, error_message, created_at, updated_at
                     from projects
                     where user_id = %s
@@ -50,6 +56,9 @@ class ProjectStore:
             target_audience=payload.target_audience,
             video_goal=payload.video_goal,
             status="draft",
+            template_config=TemplateConfigRecord(),
+            manual_overrides=ManualOverrideRecord(),
+            voiceover=VoiceoverRecord(),
             created_at=now,
             updated_at=now,
         )
@@ -60,29 +69,12 @@ class ProjectStore:
                     insert into projects (
                         id, user_id, project_name, product_name, product_description, target_audience,
                         video_goal, status, asset, transcript, launch_script, edit_plan,
+                        template_config, manual_overrides, quality_report, benchmark_report, voiceover,
                         preview_video, final_video, error_message, created_at, updated_at
                     )
-                    values (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s)
+                    values (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s)
                     """,
-                    (
-                        project.id,
-                        user_id,
-                        project.project_name,
-                        project.product_name,
-                        project.product_description,
-                        project.target_audience,
-                        project.video_goal,
-                        project.status,
-                        None,
-                        json.dumps([]),
-                        None,
-                        None,
-                        None,
-                        None,
-                        project.error_message,
-                        project.created_at,
-                        project.updated_at,
-                    ),
+                    create_project_params(project, user_id),
                 )
         return project
 
@@ -93,6 +85,7 @@ class ProjectStore:
                     """
                     select id, project_name, product_name, product_description, target_audience,
                            video_goal, status, asset, transcript, launch_script, edit_plan,
+                           template_config, manual_overrides, quality_report, benchmark_report, voiceover,
                            preview_video, final_video, error_message, created_at, updated_at
                     from projects
                     where id = %s and user_id = %s
@@ -148,6 +141,7 @@ class ProjectStore:
                     """
                     update projects
                     set asset = %s::jsonb, status = %s, transcript = '[]'::jsonb, launch_script = null, edit_plan = null,
+                        manual_overrides = %s::jsonb, quality_report = null, benchmark_report = null, voiceover = %s::jsonb,
                         preview_video = null, final_video = null,
                         error_message = '', updated_at = %s
                     where id = %s and user_id = %s
@@ -155,6 +149,8 @@ class ProjectStore:
                     (
                         json.dumps(asset.model_dump(mode="json")),
                         "queued",
+                        json.dumps(ManualOverrideRecord().model_dump(mode="json")),
+                        json.dumps(VoiceoverRecord().model_dump(mode="json")),
                         now,
                         project_id,
                         user_id,
@@ -309,6 +305,39 @@ class ProjectStore:
             stale_error_message="Project asset was replaced before the edit plan could be saved.",
         )
 
+    def save_refined_edit_plan(
+        self,
+        user_id: str,
+        project_id: str,
+        edit_plan: EditPlanRecord,
+        asset_path: str | None = None,
+    ) -> None:
+        payload = (
+            json.dumps(edit_plan.model_dump(mode="json")),
+            datetime.now(UTC),
+            project_id,
+            user_id,
+        )
+        if asset_path is None:
+            self._execute_update(
+                """
+                update projects
+                set edit_plan = %s::jsonb, updated_at = %s
+                where id = %s and user_id = %s
+                """,
+                payload,
+            )
+            return
+        self._execute_update(
+            """
+            update projects
+            set edit_plan = %s::jsonb, updated_at = %s
+            where id = %s and user_id = %s and asset->>'storage_path' = %s
+            """,
+            (*payload, asset_path),
+            stale_error_message="Project asset was replaced before the reviewed edit plan could be saved.",
+        )
+
     def save_render_outputs(
         self,
         user_id: str,
@@ -345,6 +374,49 @@ class ProjectStore:
             stale_error_message="Project asset was replaced before rendered outputs could be saved.",
         )
 
+    def save_phase_four_state(
+        self,
+        user_id: str,
+        project_id: str,
+        quality_report: QualityReportRecord,
+        benchmark_report: BenchmarkReportRecord,
+        voiceover: VoiceoverRecord,
+        template_config: TemplateConfigRecord,
+        manual_overrides: ManualOverrideRecord,
+        asset_path: str | None = None,
+    ) -> None:
+        payload = (
+            json.dumps(template_config.model_dump(mode="json")),
+            json.dumps(manual_overrides.model_dump(mode="json")),
+            json.dumps(quality_report.model_dump(mode="json")),
+            json.dumps(benchmark_report.model_dump(mode="json")),
+            json.dumps(voiceover.model_dump(mode="json")),
+            datetime.now(UTC),
+            project_id,
+            user_id,
+        )
+        if asset_path is None:
+            self._execute_update(
+                """
+                update projects
+                set template_config = %s::jsonb, manual_overrides = %s::jsonb, quality_report = %s::jsonb,
+                    benchmark_report = %s::jsonb, voiceover = %s::jsonb, updated_at = %s
+                where id = %s and user_id = %s
+                """,
+                payload,
+            )
+            return
+        self._execute_update(
+            """
+            update projects
+            set template_config = %s::jsonb, manual_overrides = %s::jsonb, quality_report = %s::jsonb,
+                benchmark_report = %s::jsonb, voiceover = %s::jsonb, updated_at = %s
+            where id = %s and user_id = %s and asset->>'storage_path' = %s
+            """,
+            (*payload, asset_path),
+            stale_error_message="Project asset was replaced before Phase 4 data could be saved.",
+        )
+
     def _execute_update(
         self,
         sql: str,
@@ -364,8 +436,13 @@ class ProjectStore:
         transcript = [TranscriptSegment.model_validate(item) for item in self._as_list(row[8])]
         launch_script = LaunchScriptRecord.model_validate(row[9]) if row[9] is not None else None
         edit_plan = EditPlanRecord.model_validate(row[10]) if row[10] is not None else None
-        preview_video = RenderedVideoRecord.model_validate(row[11]) if row[11] is not None else None
-        final_video = RenderedVideoRecord.model_validate(row[12]) if row[12] is not None else None
+        template_config = TemplateConfigRecord.model_validate(row[11]) if row[11] is not None else None
+        manual_overrides = ManualOverrideRecord.model_validate(row[12]) if row[12] is not None else None
+        quality_report = QualityReportRecord.model_validate(row[13]) if row[13] is not None else None
+        benchmark_report = BenchmarkReportRecord.model_validate(row[14]) if row[14] is not None else None
+        voiceover = VoiceoverRecord.model_validate(row[15]) if row[15] is not None else None
+        preview_video = RenderedVideoRecord.model_validate(row[16]) if row[16] is not None else None
+        final_video = RenderedVideoRecord.model_validate(row[17]) if row[17] is not None else None
         return ProjectRecord(
             id=str(row[0]),
             project_name=str(row[1]),
@@ -378,17 +455,46 @@ class ProjectStore:
             transcript=transcript,
             launch_script=launch_script,
             edit_plan=edit_plan,
+            template_config=template_config,
+            manual_overrides=manual_overrides,
+            quality_report=quality_report,
+            benchmark_report=benchmark_report,
+            voiceover=voiceover,
             preview_video=preview_video,
             final_video=final_video,
-            error_message=str(row[13]),
-            created_at=cast(datetime, row[14]),
-            updated_at=cast(datetime, row[15]),
+            error_message=str(row[18]),
+            created_at=cast(datetime, row[19]),
+            updated_at=cast(datetime, row[20]),
         )
 
     def _as_list(self, value: object) -> list[object]:
-        if isinstance(value, list):
-            return value
-        return []
-
-
+        return value if isinstance(value, list) else []
 project_store = ProjectStore()
+def create_project_params(project: ProjectRecord, user_id: str) -> tuple[object, ...]:
+    template_config = project.template_config or TemplateConfigRecord()
+    manual_overrides = project.manual_overrides or ManualOverrideRecord()
+    voiceover = project.voiceover or VoiceoverRecord()
+    return (
+        project.id,
+        user_id,
+        project.project_name,
+        project.product_name,
+        project.product_description,
+        project.target_audience,
+        project.video_goal,
+        project.status,
+        None,
+        json.dumps([]),
+        None,
+        None,
+        json.dumps(template_config.model_dump(mode="json")),
+        json.dumps(manual_overrides.model_dump(mode="json")),
+        None,
+        None,
+        json.dumps(voiceover.model_dump(mode="json")),
+        None,
+        None,
+        project.error_message,
+        project.created_at,
+        project.updated_at,
+    )

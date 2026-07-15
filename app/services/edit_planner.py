@@ -1,23 +1,23 @@
 from __future__ import annotations
 
 from app.models.projects import (
-    EditPlanCaption,
-    EditPlanHighlight,
     EditPlanRecord,
     EditPlanScene,
-    EditPlanZoom,
     LaunchScriptScene,
     LaunchScriptRecord,
+    ManualOverrideRecord,
     ProjectRecord,
     RenderSpecRecord,
     TranscriptSegment,
     VisualSceneAnalysisRecord,
 )
+from app.services.caption_designer import build_caption_track
+from app.services.motion_director import build_motion_track
+from app.services.override_manager import apply_manual_overrides
 from app.services.scene_alignment import align_script_scenes
+from app.services.timing_sync import sync_edit_plan_timing
 from app.services.visual_analysis import analysis_map
-from app.services.visual_policy import ScenePolicy, build_scene_policy
-
-CAPTION_MAX_CHARACTERS = 72
+from app.services.visual_policy import build_scene_policy
 
 
 def generate_edit_plan(
@@ -29,11 +29,17 @@ def generate_edit_plan(
     scene_ranges = align_script_scenes(launch_script.scenes, project.transcript)
     analyses_by_scene = analysis_map(visual_analyses or [])
     planned_scenes = [
-        build_edit_scene(scene, scene_range[0], scene_range[1], project.transcript, analyses_by_scene.get(scene.scene_number))
+        build_edit_scene(
+            scene,
+            scene_range[0],
+            scene_range[1],
+            project,
+            analyses_by_scene.get(scene.scene_number),
+        )
         for scene, scene_range in zip(launch_script.scenes, scene_ranges, strict=True)
     ]
     total_duration = round(max((scene.end for scene in planned_scenes), default=0.0), 2)
-    return EditPlanRecord(
+    planned_edit = EditPlanRecord(
         overview=build_overview(project, launch_script, bool(visual_analyses)),
         total_duration_seconds=total_duration,
         scenes=planned_scenes,
@@ -44,6 +50,8 @@ def generate_edit_plan(
             total_duration_seconds=total_duration,
         ),
     )
+    synced_edit = sync_edit_plan_timing(planned_edit, visual_analyses)
+    return apply_manual_overrides(synced_edit, normalized_overrides(project.manual_overrides))
 
 
 def require_launch_script(launch_script: LaunchScriptRecord | None) -> LaunchScriptRecord:
@@ -61,11 +69,13 @@ def build_edit_scene(
     scene: LaunchScriptScene,
     start: float,
     end: float,
-    transcript: list[TranscriptSegment],
+    project: ProjectRecord,
     visual_analysis: VisualSceneAnalysisRecord | None,
 ) -> EditPlanScene:
-    transcript_slice = slice_transcript(transcript, start, end)
+    transcript_slice = slice_transcript(project.transcript, start, end)
     policy = build_scene_policy(scene, transcript_slice, visual_analysis)
+    captions = build_caption_track(transcript_slice, start, end, project.template_config)
+    zooms, highlights = build_motion_track(scene, start, end, policy, project.template_config)
     return EditPlanScene(
         scene_number=scene.scene_number,
         title=f"Scene {scene.scene_number}",
@@ -79,101 +89,21 @@ def build_edit_scene(
         spoken_line=scene.spoken_line,
         on_screen_text=scene.on_screen_text,
         source_excerpt=scene.source_excerpt,
-        captions=build_captions(transcript_slice, start, end),
-        zooms=build_zooms(start, end, policy),
-        highlights=build_highlights(scene, transcript_slice, start, end, policy),
+        action_timestamp=None,
+        transition_style="fade",
+        transition_duration_seconds=0.32,
+        captions=captions,
+        zooms=zooms,
+        highlights=highlights,
     )
 
 
-def slice_transcript(transcript: list[TranscriptSegment], start: float, end: float) -> list[TranscriptSegment]:
+def slice_transcript(
+    transcript: list[TranscriptSegment],
+    start: float,
+    end: float,
+) -> list[TranscriptSegment]:
     return [segment for segment in transcript if segment.end >= start and segment.start <= end]
-
-
-def build_captions(
-    transcript: list[TranscriptSegment],
-    start: float,
-    end: float,
-) -> list[EditPlanCaption]:
-    if not transcript:
-        return [EditPlanCaption(start=start, end=end, text="Narration begins here.")]
-    captions: list[EditPlanCaption] = []
-    current_text: list[str] = []
-    current_start = transcript[0].start
-    current_end = transcript[0].end
-    for segment in transcript:
-        current_start, current_end, current_text = append_caption_segment(
-            captions,
-            current_start,
-            current_end,
-            current_text,
-            segment,
-        )
-    if current_text:
-        captions.append(caption_record(current_start, current_end, current_text))
-    return captions
-
-
-def append_caption_segment(
-    captions: list[EditPlanCaption],
-    current_start: float,
-    current_end: float,
-    current_text: list[str],
-    segment: TranscriptSegment,
-) -> tuple[float, float, list[str]]:
-    segment_text = segment.text.strip()
-    candidate = " ".join([*current_text, segment_text]).strip()
-    if current_text and len(candidate) > CAPTION_MAX_CHARACTERS:
-        captions.append(caption_record(current_start, current_end, current_text))
-        return segment.start, segment.end, [segment_text]
-    return current_start, segment.end, [*current_text, segment_text]
-
-
-def caption_record(start: float, end: float, text_parts: list[str]) -> EditPlanCaption:
-    return EditPlanCaption(start=round(start, 2), end=round(end, 2), text=" ".join(text_parts))
-
-
-def build_zooms(start: float, end: float, policy: ScenePolicy) -> list[EditPlanZoom]:
-    duration = max(end - start, 0.5)
-    if not policy.should_zoom:
-        return []
-    midpoint = round(start + duration * 0.18, 2)
-    return [
-        EditPlanZoom(
-            start=midpoint,
-            end=round(min(end, midpoint + duration * 0.62), 2),
-            scale=1.14 if policy.focus_region == "center" else 1.2,
-            focus_region=policy.focus_region,
-            reason="Confidence-approved focus move around the strongest UI action.",
-            confidence=policy.zoom_confidence,
-            focus_box=policy.focus_box,
-        )
-    ]
-
-
-def build_highlights(
-    scene: LaunchScriptScene,
-    transcript: list[TranscriptSegment],
-    start: float,
-    end: float,
-    policy: ScenePolicy,
-) -> list[EditPlanHighlight]:
-    if not policy.should_highlight:
-        return []
-    label = scene.on_screen_text.strip() or scene.purpose.strip()
-    marker_start = transcript[0].start if transcript else start
-    marker_end = min(end, marker_start + 1.6)
-    focus_box = policy.click_target_box or policy.cursor_box or policy.focus_box
-    return [
-        EditPlanHighlight(
-            start=round(marker_start, 2),
-            end=round(marker_end, 2),
-            label=label[:80],
-            style=policy.highlight_style,
-            anchor_region=policy.anchor_region,
-            confidence=policy.highlight_confidence,
-            focus_box=focus_box,
-        )
-    ]
 
 
 def build_overview(
@@ -187,3 +117,9 @@ def build_overview(
         f"Launchify tightened the recording for {audience}, aligned {len(launch_script.scenes)} scenes "
         f"to the source walkthrough, and prepared captions, zooms, and highlights using {visual_note}."
     )
+
+
+def normalized_overrides(manual_overrides: ManualOverrideRecord | None) -> ManualOverrideRecord | None:
+    if manual_overrides is None:
+        return None
+    return manual_overrides

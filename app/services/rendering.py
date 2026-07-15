@@ -7,22 +7,33 @@ from tempfile import TemporaryDirectory
 from typing import Literal
 
 from app.core.config import get_settings
-from app.models.projects import ProjectRecord, RenderedVideoRecord
+from app.models.projects import EditPlanRecord, ProjectRecord, QualityReportRecord, RenderedVideoRecord
 from app.services.render_payloads import build_render_payload, total_render_duration
+from app.services.render_review import refine_from_preview
 from app.services.storage import download_asset_to_file, upload_rendered_video_file
 
 
-def render_project_videos(user_id: str, project: ProjectRecord) -> tuple[RenderedVideoRecord, RenderedVideoRecord]:
+def render_project_videos(
+    user_id: str,
+    project: ProjectRecord,
+) -> tuple[RenderedVideoRecord, RenderedVideoRecord, EditPlanRecord, QualityReportRecord]:
     asset_path = require_asset_path(project)
     with TemporaryDirectory(prefix="launchify-render-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
         source_video = download_asset_to_file(asset_path)
+        voiceover_audio = download_voiceover_audio(project)
         try:
-            preview_video = render_and_upload_variant(user_id, project, source_video, temp_dir, "preview")
-            final_video = render_and_upload_variant(user_id, project, source_video, temp_dir, "final")
-            return preview_video, final_video
+            preview_output = temp_dir / "preview.mp4"
+            render_preview_output(project, source_video, voiceover_audio, temp_dir, preview_output)
+            reviewed_project, quality_report = reviewed_project(project, preview_output)
+            render_preview_output(reviewed_project, source_video, voiceover_audio, temp_dir, preview_output)
+            preview_video = upload_variant(user_id, reviewed_project, preview_output, "preview")
+            final_video = render_and_upload_variant(user_id, reviewed_project, source_video, voiceover_audio, temp_dir, "final")
+            return preview_video, final_video, require_edit_plan(reviewed_project), quality_report
         finally:
             source_video.unlink(missing_ok=True)
+            if voiceover_audio is not None:
+                voiceover_audio.unlink(missing_ok=True)
 
 
 def require_asset_path(project: ProjectRecord) -> str:
@@ -35,18 +46,36 @@ def render_and_upload_variant(
     user_id: str,
     project: ProjectRecord,
     source_video: Path,
+    voiceover_audio: Path | None,
     temp_dir: Path,
     quality: Literal["preview", "final"],
 ) -> RenderedVideoRecord:
     output_path = temp_dir / f"{quality}.mp4"
-    render_payload_path = write_render_payload(project, temp_dir, quality)
+    render_payload_path = write_render_payload(project, temp_dir, quality, voiceover_audio)
     invoke_render_worker(render_payload_path, source_video, output_path, quality)
     return upload_variant(user_id, project, output_path, quality)
 
 
-def write_render_payload(project: ProjectRecord, temp_dir: Path, quality: Literal["preview", "final"]) -> Path:
+def render_preview_output(
+    project: ProjectRecord,
+    source_video: Path,
+    voiceover_audio: Path | None,
+    temp_dir: Path,
+    output_path: Path,
+) -> None:
+    render_payload_path = write_render_payload(project, temp_dir, "preview", voiceover_audio)
+    invoke_render_worker(render_payload_path, source_video, output_path, "preview")
+
+
+def write_render_payload(
+    project: ProjectRecord,
+    temp_dir: Path,
+    quality: Literal["preview", "final"],
+    voiceover_audio: Path | None,
+) -> Path:
     payload_path = temp_dir / f"{quality}-payload.json"
-    payload_path.write_text(json.dumps(build_render_payload(project, quality)), encoding="utf-8")
+    payload = build_render_payload(project, quality, str(voiceover_audio) if voiceover_audio is not None else "")
+    payload_path.write_text(json.dumps(payload), encoding="utf-8")
     return payload_path
 
 
@@ -100,3 +129,23 @@ def require_duration(project: ProjectRecord) -> float:
     if project.edit_plan is None:
         raise RuntimeError("Edit plan duration is required before uploading rendered outputs.")
     return total_render_duration(project.edit_plan.total_duration_seconds)
+
+
+def download_voiceover_audio(project: ProjectRecord) -> Path | None:
+    if project.voiceover is None or not project.voiceover.audio_storage_path:
+        return None
+    return download_asset_to_file(project.voiceover.audio_storage_path)
+
+
+def reviewed_project(
+    project: ProjectRecord,
+    preview_output: Path,
+) -> tuple[ProjectRecord, QualityReportRecord]:
+    refined_edit_plan, quality_report = refine_from_preview(project, preview_output)
+    return project.model_copy(update={"edit_plan": refined_edit_plan, "quality_report": quality_report}), quality_report
+
+
+def require_edit_plan(project: ProjectRecord) -> EditPlanRecord:
+    if project.edit_plan is None:
+        raise RuntimeError("Edit plan is required before saving reviewed render outputs.")
+    return project.edit_plan

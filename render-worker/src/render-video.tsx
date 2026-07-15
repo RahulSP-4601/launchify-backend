@@ -1,6 +1,7 @@
 import React from "react";
 import {
   AbsoluteFill,
+  Audio,
   OffthreadVideo,
   Sequence,
   useCurrentFrame,
@@ -12,6 +13,7 @@ import {
   motionOpacity,
   sceneDurationFrames,
   spotlightStyle,
+  transitionStyle,
   titleStyles,
   totalFrames,
   zoomTransform,
@@ -25,6 +27,7 @@ export const LaunchifyRender: React.FC<RenderPayload> = (payload) => {
 
   return (
     <AbsoluteFill style={shellStyle()}>
+      <AudioTrack introFrames={introFrames} payload={payload} />
       <Sequence durationInFrames={introFrames}>
         <IntroCard payload={payload} />
       </Sequence>
@@ -84,12 +87,13 @@ const SceneComposition: React.FC<{ payload: RenderPayload; scene: RenderScene }>
   const caption = activeCaption(scene, localSeconds);
   const zoom = zoomTransform(scene.zooms, localSeconds);
   const spotlight = spotlightStyle(scene.highlights, localSeconds);
+  const transition = transitionStyle(scene, frame, payload.dimensions.fps);
   return (
-    <AbsoluteFill style={videoShellStyle()}>
-      <VideoLayer payload={payload} scene={scene} zoom={zoom} />
+    <AbsoluteFill style={videoShellStyle(transition.opacity, transition.translateY)}>
+      <VideoLayer payload={payload} scene={scene} zoom={zoom} transitionScale={transition.focusScale} />
       <GradientMask />
-      <SceneHeader scene={scene} />
-      {caption ? <CaptionPill text={caption.text} /> : null}
+      <SceneHeader payload={payload} scene={scene} />
+      {caption ? <CaptionPill payload={payload} caption={caption} /> : null}
       {spotlight ? (
         <HighlightBadge
           label={spotlight.label}
@@ -106,19 +110,20 @@ const SceneComposition: React.FC<{ payload: RenderPayload; scene: RenderScene }>
 const VideoLayer: React.FC<{
   payload: RenderPayload;
   scene: RenderScene;
-  zoom: { origin: string; scale: number };
-}> = ({ payload, scene, zoom }) => {
+  zoom: { origin: string; scale: number; translateX: number; translateY: number };
+  transitionScale: number;
+}> = ({ payload, scene, zoom, transitionScale }) => {
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
       <OffthreadVideo
-        muted
         src={payload.sourceVideoPath ?? ""}
         startFrom={Math.round(scene.start * payload.dimensions.fps)}
         endAt={Math.round(scene.end * payload.dimensions.fps)}
+        volume={sourceVideoVolume(payload)}
         style={{
           height: "100%",
           objectFit: "cover",
-          transform: `scale(${zoom.scale})`,
+          transform: `translate(${(zoom.translateX * 100).toFixed(2)}%, ${(zoom.translateY * 100).toFixed(2)}%) scale(${(zoom.scale * transitionScale).toFixed(3)})`,
           transformOrigin: zoom.origin,
           width: "100%",
         }}
@@ -127,22 +132,38 @@ const VideoLayer: React.FC<{
   );
 };
 
+const AudioTrack: React.FC<{ introFrames: number; payload: RenderPayload }> = ({ introFrames, payload }) => {
+  if (!payload.voiceoverAudioPath || payload.voiceover.mode === "original") {
+    return null;
+  }
+  return <Sequence from={introFrames}><Audio src={payload.voiceoverAudioPath} volume={voiceoverVolume(payload)} /></Sequence>;
+};
+
 const GradientMask = () => <AbsoluteFill style={gradientMaskStyle()} />;
 
-const SceneHeader: React.FC<{ scene: RenderScene }> = ({ scene }) => {
+const SceneHeader: React.FC<{ payload: RenderPayload; scene: RenderScene }> = ({ payload, scene }) => {
+  const accent = payload.templateConfig.theme === "bold" ? "#f97316" : "#7dd3fc";
   return (
     <div style={sceneHeaderStyle()}>
-      <p style={titleStyles.eyebrow}>Scene {scene.scene_number}</p>
+      <p style={{ ...titleStyles.eyebrow, color: accent }}>Scene {scene.scene_number}</p>
       <h3 style={{ ...titleStyles.body, color: "#f8fafc", fontSize: 34 }}>{scene.purpose}</h3>
       <p style={{ ...titleStyles.body, fontSize: 22 }}>{scene.on_screen_text}</p>
     </div>
   );
 };
 
-const CaptionPill: React.FC<{ text: string }> = ({ text }) => {
+const CaptionPill: React.FC<{
+  payload: RenderPayload;
+  caption: RenderScene["captions"][number];
+}> = ({ payload, caption }) => {
   return (
-    <div style={captionStyle()}>
-      <p style={{ color: "#f8fafc", fontFamily: "Arial, sans-serif", fontSize: 30, lineHeight: 1.35 }}>{text}</p>
+    <div style={captionStyle(payload.templateConfig.theme, caption.variant)}>
+      <CaptionText
+        emphasisWords={caption.emphasis_words}
+        profile={payload.templateConfig.caption_profile}
+        text={caption.text}
+        variant={caption.variant}
+      />
     </div>
   );
 };
@@ -179,9 +200,11 @@ function cardShell(opacity: number): React.CSSProperties {
   };
 }
 
-function videoShellStyle(): React.CSSProperties {
+function videoShellStyle(opacity: number, translateY: number): React.CSSProperties {
   return {
     backgroundColor: "#020617",
+    opacity,
+    transform: `translateY(${translateY}px)`,
   };
 }
 
@@ -200,17 +223,62 @@ function sceneHeaderStyle(): React.CSSProperties {
   };
 }
 
-function captionStyle(): React.CSSProperties {
+function captionStyle(theme: string, variant: string): React.CSSProperties {
+  const backgroundColor = theme === "bold" ? "rgba(124, 45, 18, 0.82)" : "rgba(15, 23, 42, 0.78)";
+  const maxWidth = variant === "hero" ? "90%" : "84%";
   return {
     backdropFilter: "blur(10px)",
-    backgroundColor: "rgba(15, 23, 42, 0.78)",
+    backgroundColor,
     border: "1px solid rgba(148, 163, 184, 0.18)",
     borderRadius: 28,
     bottom: 42,
     left: 42,
-    maxWidth: "84%",
+    maxWidth,
     padding: "22px 28px",
     position: "absolute",
+  };
+}
+
+function captionTextStyle(profile: string, variant: string): React.CSSProperties {
+  const fontSize = profile === "cinematic" || variant === "hero" ? 34 : profile === "minimal" ? 26 : 30;
+  const fontFamily = profile === "cinematic" ? "Georgia, serif" : "Arial, sans-serif";
+  const fontWeight = variant === "hero" ? 700 : 500;
+  return {
+    color: "#f8fafc",
+    fontFamily,
+    fontSize,
+    fontWeight,
+    lineHeight: 1.35,
+  };
+}
+
+const CaptionText: React.FC<{
+  emphasisWords: string[];
+  profile: string;
+  text: string;
+  variant: string;
+}> = ({ emphasisWords, profile, text, variant }) => {
+  const words = text.split(/(\s+)/);
+  const emphasis = new Set(emphasisWords.map((word) => word.toLowerCase()));
+  return (
+    <p style={captionTextStyle(profile, variant)}>
+      {words.map((word, index) =>
+        emphasis.has(word.trim().toLowerCase()) ? (
+          <span key={`${word}-${index}`} style={emphasisStyle(profile)}>
+            {word}
+          </span>
+        ) : (
+          <span key={`${word}-${index}`}>{word}</span>
+        ),
+      )}
+    </p>
+  );
+};
+
+function emphasisStyle(profile: string): React.CSSProperties {
+  return {
+    color: profile === "cinematic" ? "#fcd34d" : "#67e8f9",
+    fontWeight: 700,
   };
 }
 
@@ -251,4 +319,18 @@ function highlightLabelStyle(intensity: number): React.CSSProperties {
     opacity: 0.8 + intensity * 0.2,
     padding: "12px 18px",
   };
+}
+
+function sourceVideoVolume(payload: RenderPayload): number {
+  if (payload.voiceover.mode === "voiceover") {
+    return 0;
+  }
+  if (payload.voiceover.mode === "mixed") {
+    return 0.35;
+  }
+  return 1;
+}
+
+function voiceoverVolume(payload: RenderPayload): number {
+  return payload.voiceover.mode === "mixed" ? 0.82 : 1;
 }
