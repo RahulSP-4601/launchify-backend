@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import http.client
 import mimetypes
+import re
 from tempfile import NamedTemporaryFile
 from pathlib import Path
 from urllib import error, parse, request
@@ -11,11 +13,13 @@ from typing import Literal
 from app.core.config import get_settings
 from app.models.projects import AssetRecord, RenderedVideoRecord
 
+FILENAME_SANITIZE_PATTERN = re.compile(r"[^A-Za-z0-9._-]+")
+
 
 def upload_video(user_id: str, project_id: str, filename: str, content_type: str, file_bytes: bytes) -> AssetRecord:
     settings = get_settings()
     bucket = settings.supabase_storage_bucket
-    safe_name = parse.quote(filename, safe=".-_")
+    safe_name = sanitize_storage_filename(filename)
     storage_path = f"users/{user_id}/projects/{project_id}/video/{safe_name}"
     send_storage_upload(
         endpoint=f"{settings.supabase_url}/storage/v1/object/{bucket}/{storage_path}",
@@ -90,7 +94,7 @@ def upload_video_file(
 ) -> AssetRecord:
     settings = get_settings()
     bucket = settings.supabase_storage_bucket
-    safe_name = parse.quote(filename, safe=".-_")
+    safe_name = sanitize_storage_filename(filename)
     storage_path = f"users/{user_id}/projects/{project_id}/video/{safe_name}"
     resolved_type = content_type or guess_content_type(filename)
     send_storage_upload(
@@ -117,7 +121,7 @@ def upload_rendered_video_file(
 ) -> RenderedVideoRecord:
     settings = get_settings()
     bucket = settings.supabase_storage_bucket
-    safe_name = parse.quote(filename, safe=".-_")
+    safe_name = sanitize_storage_filename(filename)
     storage_path = f"users/{user_id}/projects/{project_id}/renders/{variant}/{safe_name}"
     send_storage_upload(
         endpoint=f"{settings.supabase_url}/storage/v1/object/{bucket}/{storage_path}",
@@ -143,7 +147,7 @@ def upload_audio_file(
 ) -> AssetRecord:
     settings = get_settings()
     bucket = settings.supabase_storage_bucket
-    safe_name = parse.quote(filename, safe=".-_")
+    safe_name = sanitize_storage_filename(filename)
     storage_path = f"users/{user_id}/projects/{project_id}/audio/{safe_name}"
     content_type = "audio/mpeg"
     send_storage_upload(
@@ -201,6 +205,17 @@ def upload_headers(content_type: str, content_length: int) -> dict[str, str]:
         "Content-Length": str(content_length),
         "x-upsert": "true",
     }
+
+
+def sanitize_storage_filename(filename: str) -> str:
+    cleaned = filename.strip().replace("/", "-").replace("\\", "-")
+    stem = Path(cleaned).stem or "upload"
+    suffix = Path(cleaned).suffix
+    safe_stem = FILENAME_SANITIZE_PATTERN.sub("-", stem).strip(".-_") or "upload"
+    safe_suffix = FILENAME_SANITIZE_PATTERN.sub("", suffix)[:10]
+    filename_digest = hashlib.sha1(cleaned.encode("utf-8")).hexdigest()[:8]
+    safe_name = f"{safe_stem}-{filename_digest}{safe_suffix}".lower()
+    return parse.quote(safe_name, safe=".-_")
 
 
 def stream_request_body(
