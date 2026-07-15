@@ -44,6 +44,7 @@ async def list_projects(request: Request) -> list[ProjectSummary]:
             updated_at=project.updated_at,
             has_transcript=bool(project.transcript),
             has_launch_script=project.launch_script is not None,
+            has_edit_plan=project.edit_plan is not None,
         )
         for project in projects
     ]
@@ -114,8 +115,10 @@ def to_project_detail(user_id: str, project_id: str) -> ProjectDetail:
         updated_at=project.updated_at,
         has_transcript=bool(project.transcript),
         has_launch_script=project.launch_script is not None,
+        has_edit_plan=project.edit_plan is not None,
         asset=project.asset,
         launch_script=project.launch_script,
+        edit_plan=project.edit_plan,
         error_message=project.error_message,
     )
 

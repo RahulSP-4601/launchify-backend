@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-ProjectStatus = Literal["draft", "queued", "uploading", "transcribing", "scripting", "ready", "failed"]
+ProjectStatus = Literal["draft", "queued", "uploading", "transcribing", "scripting", "planning", "ready", "failed"]
 JobStatus = Literal["pending", "processing", "completed", "failed"]
 
 
@@ -48,6 +48,55 @@ class LaunchScriptRecord(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class EditPlanCaption(BaseModel):
+    start: float
+    end: float
+    text: str
+
+
+class EditPlanZoom(BaseModel):
+    start: float
+    end: float
+    scale: float
+    focus_region: str
+    reason: str
+
+
+class EditPlanHighlight(BaseModel):
+    start: float
+    end: float
+    label: str
+    style: str
+
+
+class EditPlanScene(BaseModel):
+    scene_number: int
+    title: str
+    purpose: str
+    start: float
+    end: float
+    spoken_line: str
+    on_screen_text: str
+    source_excerpt: str
+    captions: list[EditPlanCaption] = Field(default_factory=list)
+    zooms: list[EditPlanZoom] = Field(default_factory=list)
+    highlights: list[EditPlanHighlight] = Field(default_factory=list)
+
+
+class RenderSpecRecord(BaseModel):
+    title_card: str
+    title_options: list[str] = Field(default_factory=list)
+    cta: str
+    total_duration_seconds: float
+
+
+class EditPlanRecord(BaseModel):
+    overview: str
+    total_duration_seconds: float
+    scenes: list[EditPlanScene] = Field(default_factory=list)
+    render_spec: RenderSpecRecord
+
+
 class ProjectRecord(BaseModel):
     id: str
     project_name: str
@@ -61,6 +110,7 @@ class ProjectRecord(BaseModel):
     asset: AssetRecord | None = None
     transcript: list[TranscriptSegment] = Field(default_factory=list)
     launch_script: LaunchScriptRecord | None = None
+    edit_plan: EditPlanRecord | None = None
     error_message: str = ""
 
 
@@ -74,6 +124,7 @@ class ProjectSummary(BaseModel):
     updated_at: datetime
     has_transcript: bool
     has_launch_script: bool
+    has_edit_plan: bool
 
 
 class ProjectDetail(ProjectSummary):
@@ -81,6 +132,7 @@ class ProjectDetail(ProjectSummary):
     target_audience: str
     asset: AssetRecord | None = None
     launch_script: LaunchScriptRecord | None = None
+    edit_plan: EditPlanRecord | None = None
     error_message: str = ""
 
 

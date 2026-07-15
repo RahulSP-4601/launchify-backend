@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Sequence
 
 from app.models.projects import ProjectRecord, TranscriptSegment
+from app.services.edit_planner import generate_edit_plan
 from app.services.job_store import job_store
 from app.services.project_store import StaleProjectAssetError, project_store
 from app.services.script_writer import combine_transcript, generate_launch_script
@@ -44,6 +45,8 @@ def process_job(job_id: str) -> None:
         project_store.save_transcript(job.user_id, job.project_id, transcript, "scripting", asset_path=job.asset_path)
         launch_script = generate_launch_script(require_project(job.user_id, job.project_id))
         project_store.save_launch_script(job.user_id, job.project_id, launch_script, asset_path=job.asset_path)
+        edit_plan = generate_edit_plan(require_project(job.user_id, job.project_id))
+        project_store.save_edit_plan(job.user_id, job.project_id, edit_plan, asset_path=job.asset_path)
         job_store.mark_completed(job.id)
     except StaleProjectAssetError:
         job_store.mark_completed(job.id)

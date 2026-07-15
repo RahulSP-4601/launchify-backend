@@ -8,6 +8,7 @@ from uuid import uuid4
 from app.models.projects import (
     AssetRecord,
     CreateProjectRequest,
+    EditPlanRecord,
     LaunchScriptRecord,
     ProjectRecord,
     ProjectStatus,
@@ -27,7 +28,7 @@ class ProjectStore:
                 cursor.execute(
                     """
                     select id, project_name, product_name, product_description, target_audience,
-                           video_goal, status, asset, transcript, launch_script, error_message, created_at, updated_at
+                           video_goal, status, asset, transcript, launch_script, edit_plan, error_message, created_at, updated_at
                     from projects
                     where user_id = %s
                     order by updated_at desc
@@ -56,9 +57,9 @@ class ProjectStore:
                     """
                     insert into projects (
                         id, user_id, project_name, product_name, product_description, target_audience,
-                        video_goal, status, asset, transcript, launch_script, error_message, created_at, updated_at
+                        video_goal, status, asset, transcript, launch_script, edit_plan, error_message, created_at, updated_at
                     )
-                    values (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s)
+                    values (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s)
                     """,
                     (
                         project.id,
@@ -71,6 +72,7 @@ class ProjectStore:
                         project.status,
                         None,
                         json.dumps([]),
+                        None,
                         None,
                         project.error_message,
                         project.created_at,
@@ -85,7 +87,7 @@ class ProjectStore:
                 cursor.execute(
                     """
                     select id, project_name, product_name, product_description, target_audience,
-                           video_goal, status, asset, transcript, launch_script, error_message, created_at, updated_at
+                           video_goal, status, asset, transcript, launch_script, edit_plan, error_message, created_at, updated_at
                     from projects
                     where id = %s and user_id = %s
                     """,
@@ -139,7 +141,7 @@ class ProjectStore:
                 cursor.execute(
                     """
                     update projects
-                    set asset = %s::jsonb, status = %s, transcript = '[]'::jsonb, launch_script = null,
+                    set asset = %s::jsonb, status = %s, transcript = '[]'::jsonb, launch_script = null, edit_plan = null,
                         error_message = '', updated_at = %s
                     where id = %s and user_id = %s
                     """,
@@ -236,7 +238,7 @@ class ProjectStore:
                 """,
                 (
                     json.dumps(launch_script.model_dump(mode="json")),
-                    "ready",
+                    "planning",
                     datetime.now(UTC),
                     project_id,
                     user_id,
@@ -251,13 +253,53 @@ class ProjectStore:
             """,
             (
                 json.dumps(launch_script.model_dump(mode="json")),
-                "ready",
+                "planning",
                 datetime.now(UTC),
                 project_id,
                 user_id,
                 asset_path,
             ),
             stale_error_message="Project asset was replaced before the launch script could be saved.",
+        )
+
+    def save_edit_plan(
+        self,
+        user_id: str,
+        project_id: str,
+        edit_plan: EditPlanRecord,
+        asset_path: str | None = None,
+    ) -> None:
+        if asset_path is None:
+            self._execute_update(
+                """
+                update projects
+                set edit_plan = %s::jsonb, status = %s, error_message = '', updated_at = %s
+                where id = %s and user_id = %s
+                """,
+                (
+                    json.dumps(edit_plan.model_dump(mode="json")),
+                    "ready",
+                    datetime.now(UTC),
+                    project_id,
+                    user_id,
+                ),
+            )
+            return
+        self._execute_update(
+            """
+            update projects
+            set edit_plan = %s::jsonb, status = %s, error_message = '', updated_at = %s
+            where id = %s and user_id = %s and asset->>'storage_path' = %s
+            """,
+            (
+                json.dumps(edit_plan.model_dump(mode="json")),
+                "ready",
+                datetime.now(UTC),
+                project_id,
+                user_id,
+                asset_path,
+            ),
+            stale_error_message="Project asset was replaced before the edit plan could be saved.",
         )
 
     def _execute_update(
@@ -278,6 +320,7 @@ class ProjectStore:
         asset = AssetRecord.model_validate(row[7]) if row[7] is not None else None
         transcript = [TranscriptSegment.model_validate(item) for item in self._as_list(row[8])]
         launch_script = LaunchScriptRecord.model_validate(row[9]) if row[9] is not None else None
+        edit_plan = EditPlanRecord.model_validate(row[10]) if row[10] is not None else None
         return ProjectRecord(
             id=str(row[0]),
             project_name=str(row[1]),
@@ -289,9 +332,10 @@ class ProjectStore:
             asset=asset,
             transcript=transcript,
             launch_script=launch_script,
-            error_message=str(row[10]),
-            created_at=cast(datetime, row[11]),
-            updated_at=cast(datetime, row[12]),
+            edit_plan=edit_plan,
+            error_message=str(row[11]),
+            created_at=cast(datetime, row[12]),
+            updated_at=cast(datetime, row[13]),
         )
 
     def _as_list(self, value: object) -> list[object]:
