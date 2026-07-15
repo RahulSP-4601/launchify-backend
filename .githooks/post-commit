@@ -5,6 +5,11 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 cd "$ROOT_DIR"
-if ! coderabbit review --type committed --dir "$ROOT_DIR"; then
+if [[ -z "${CODERABBIT_API_KEY:-}" ]]; then
+  echo "Skipping CodeRabbit review: CODERABBIT_API_KEY is not set."
+  exit 0
+fi
+
+if ! coderabbit review --type committed --dir "$ROOT_DIR" --api-key "$CODERABBIT_API_KEY"; then
   echo "CodeRabbit review failed. Commit succeeded; rerun it manually from launchify-backend."
 fi
