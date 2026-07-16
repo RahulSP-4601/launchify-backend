@@ -30,7 +30,7 @@ def frame_diff_scores(video_path: Path, timestamps: list[float]) -> FrameDiffRes
     if not frames:
         return FrameDiffResult(scores=[], available=False)
     scores = [0.0]
-    scores.extend(diff_score(previous, current) for previous, current in zip(frames, frames[1:], strict=True))
+    scores.extend(diff_score(previous, current) for previous, current in zip(frames, frames[1:]))
     return FrameDiffResult(scores=[round(score, 3) for score in normalize_scores(scores)], available=True)
 
 
