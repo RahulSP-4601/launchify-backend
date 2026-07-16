@@ -12,6 +12,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const mode = process.argv[2] ?? "preview";
 const options = parseArgs(process.argv.slice(3));
+const renderConcurrency = positiveInt(process.env.RENDER_CONCURRENCY, 1);
+const offthreadVideoThreads = positiveInt(process.env.RENDER_OFFTHREAD_VIDEO_THREADS, 1);
+const mediaCacheSizeInBytes = positiveInt(process.env.RENDER_MEDIA_CACHE_SIZE_MB, 64) * 1024 * 1024;
+const offthreadVideoCacheSizeInBytes =
+  positiveInt(process.env.RENDER_OFFTHREAD_VIDEO_CACHE_SIZE_MB, 64) * 1024 * 1024;
 
 await renderVideo(mode, options);
 
@@ -21,18 +26,29 @@ async function renderVideo(mode, options) {
   assertOption(options.source, "--source is required");
   const payload = await readPayload(options.input, options.source);
   const entryPoint = path.join(__dirname, "../src/index.ts");
+  console.log(
+    `[launchify-render-worker] Starting ${mode} render at ${payload.dimensions.width}x${payload.dimensions.height}` +
+      ` with concurrency=${renderConcurrency}, offthreadVideoThreads=${offthreadVideoThreads}.`,
+  );
   const bundled = await getBundledServeUrl(entryPoint);
   const compositions = await getCompositions(bundled, { inputProps: payload });
   const composition = requireComposition(compositions);
   await renderMedia({
     codec: "h264",
+    concurrency: renderConcurrency,
     composition,
     chromiumOptions: { disableWebSecurity: true },
+    disallowParallelEncoding: true,
+    logLevel: "info",
+    mediaCacheSizeInBytes,
     inputProps: payload,
+    offthreadVideoCacheSizeInBytes,
+    offthreadVideoThreads,
     outputLocation: options.output,
     pixelFormat: "yuv420p",
     serveUrl: bundled,
   });
+  console.log(`[launchify-render-worker] Completed ${mode} render: ${options.output}`);
 }
 
 async function getBundledServeUrl(entryPoint) {
@@ -116,6 +132,14 @@ function assertOption(value, message) {
   if (!value) {
     throw new Error(message);
   }
+}
+
+function positiveInt(value, fallback) {
+  const parsed = Number.parseInt(value ?? "", 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return fallback;
+  }
+  return parsed;
 }
 
 async function readPayload(inputPath, sourcePath) {

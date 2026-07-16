@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -14,11 +16,15 @@ from app.services.storage import download_asset_to_file, upload_rendered_video_f
 from app.services.timing import timed_stage
 from app.services.usage_service import projected_rendered_seconds, total_rendered_seconds
 
+logger = logging.getLogger(__name__)
+
 
 def render_project_videos(
     user_id: str,
     project: ProjectRecord,
     heartbeat: Callable[[], None] | None = None,
+    preview_ready: Callable[[RenderedVideoRecord], None] | None = None,
+    final_ready: Callable[[RenderedVideoRecord], None] | None = None,
 ) -> tuple[RenderedVideoRecord, RenderedVideoRecord, EditPlanRecord, QualityReportRecord]:
     asset_path = require_asset_path(project)
     settings = get_settings()
@@ -30,21 +36,29 @@ def render_project_videos(
         try:
             preview_output = temp_dir / "preview.mp4"
             beat(heartbeat)
+            log_render_stage("preview_render_initial", project.id)
             with timed_stage("preview_render_initial", settings.preview_render_warn_seconds):
                 render_preview_output(project, source_video, voiceover_audio, temp_dir, preview_output)
             beat(heartbeat)
+            log_render_stage("preview_review", project.id)
             with timed_stage("preview_review", settings.planning_warn_seconds):
                 reviewed_project, quality_report, rerender_preview = reviewed_project(project, preview_output)
             beat(heartbeat)
             enforce_final_render_limit(user_id, reviewed_project)
             if rerender_preview:
+                log_render_stage("preview_render_refined", project.id)
                 with timed_stage("preview_render_refined", settings.preview_render_warn_seconds):
                     render_preview_output(reviewed_project, source_video, voiceover_audio, temp_dir, preview_output)
                 beat(heartbeat)
             preview_video = upload_variant(user_id, reviewed_project, preview_output, "preview")
+            if preview_ready is not None:
+                preview_ready(preview_video)
             beat(heartbeat)
+            log_render_stage("final_render", project.id)
             with timed_stage("final_render", settings.final_render_warn_seconds):
                 final_video = render_and_upload_variant(user_id, reviewed_project, source_video, voiceover_audio, temp_dir, "final")
+            if final_ready is not None:
+                final_ready(final_video)
             beat(heartbeat)
             return preview_video, final_video, require_edit_plan(reviewed_project), quality_report
         finally:
@@ -104,6 +118,11 @@ def invoke_render_worker(
 ) -> None:
     settings = get_settings()
     worker_dir = Path(settings.render_worker_dir).resolve()
+    env = os.environ.copy()
+    env["RENDER_CONCURRENCY"] = str(settings.render_concurrency)
+    env["RENDER_OFFTHREAD_VIDEO_THREADS"] = str(settings.render_offthread_video_threads)
+    env["RENDER_MEDIA_CACHE_SIZE_MB"] = str(settings.render_media_cache_size_mb)
+    env["RENDER_OFFTHREAD_VIDEO_CACHE_SIZE_MB"] = str(settings.render_offthread_video_cache_size_mb)
     command = [
         "npm",
         "run",
@@ -121,8 +140,7 @@ def invoke_render_worker(
             command,
             cwd=worker_dir,
             check=True,
-            capture_output=True,
-            text=True,
+            env=env,
             timeout=settings.render_timeout_seconds,
         )
     except FileNotFoundError as exc:
@@ -130,7 +148,7 @@ def invoke_render_worker(
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(f"Render worker timed out after {settings.render_timeout_seconds} seconds.") from exc
     except subprocess.CalledProcessError as exc:
-        raise RuntimeError(exc.stderr.strip() or exc.stdout.strip() or "Render worker failed.") from exc
+        raise RuntimeError(f"Render worker failed while producing the {quality} video.") from exc
 
 
 def upload_variant(
@@ -207,3 +225,7 @@ def ensure_render_worker_ready() -> None:
 def beat(heartbeat: Callable[[], None] | None) -> None:
     if heartbeat is not None:
         heartbeat()
+
+
+def log_render_stage(stage_name: str, project_id: str) -> None:
+    logger.info("Render stage %s started for project %s.", stage_name, project_id)

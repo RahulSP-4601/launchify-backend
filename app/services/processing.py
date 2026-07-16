@@ -162,6 +162,22 @@ def save_render_step(job: ProcessingJobRecord) -> None:
             job.user_id,
             require_project(job.user_id, job.project_id),
             heartbeat=heartbeat,
+            preview_ready=lambda preview: project_store.save_partial_render_output(
+                "preview_video",
+                "preview output",
+                job.user_id,
+                job.project_id,
+                preview,
+                asset_path=job.asset_path,
+            ),
+            final_ready=lambda final: project_store.save_partial_render_output(
+                "final_video",
+                "final output",
+                job.user_id,
+                job.project_id,
+                final,
+                asset_path=job.asset_path,
+            ),
         )
         project_store.save_refined_edit_plan(
             job.user_id,

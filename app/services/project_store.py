@@ -35,6 +35,9 @@ class StaleProjectAssetError(RuntimeError):
     pass
 
 
+PARTIAL_RENDER_OUTPUT_COLUMNS = frozenset({"preview_video", "final_video"})
+
+
 class ProjectStore:
     def list_projects(self, user_id: str) -> list[ProjectRecord]:
         with connection_scope() as connection:
@@ -317,14 +320,65 @@ class ProjectStore:
         final_video: RenderedVideoRecord,
         asset_path: str | None = None,
     ) -> None:
+        self._save_render_outputs_payload(
+            user_id,
+            project_id,
+            (
+                json.dumps(preview_video.model_dump(mode="json")),
+                json.dumps(final_video.model_dump(mode="json")),
+                "ready",
+                datetime.now(UTC),
+                project_id,
+                user_id,
+            ),
+            asset_path,
+        )
+
+    def save_partial_render_output(
+        self,
+        column_name: str,
+        output_label: str,
+        user_id: str,
+        project_id: str,
+        video: RenderedVideoRecord,
+        asset_path: str | None,
+    ) -> None:
+        if column_name not in PARTIAL_RENDER_OUTPUT_COLUMNS:
+            raise ValueError(f"Unsupported render output column: {column_name}")
         payload = (
-            json.dumps(preview_video.model_dump(mode="json")),
-            json.dumps(final_video.model_dump(mode="json")),
-            "ready",
+            json.dumps(video.model_dump(mode="json")),
+            "rendering",
             datetime.now(UTC),
             project_id,
             user_id,
         )
+        if asset_path is None:
+            self._execute_update(
+                f"""
+                update projects
+                set {column_name} = %s::jsonb, status = %s, error_message = '', updated_at = %s
+                where id = %s and user_id = %s
+                """,
+                payload,
+            )
+            return
+        self._execute_update(
+            f"""
+            update projects
+            set {column_name} = %s::jsonb, status = %s, error_message = '', updated_at = %s
+            where id = %s and user_id = %s and asset->>'storage_path' = %s
+            """,
+            (*payload, asset_path),
+            stale_error_message=f"Project asset was replaced before the {output_label} could be saved.",
+        )
+
+    def _save_render_outputs_payload(
+        self,
+        user_id: str,
+        project_id: str,
+        payload: tuple[object, ...],
+        asset_path: str | None,
+    ) -> None:
         if asset_path is None:
             self._execute_update(
                 """
