@@ -4,10 +4,9 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 from uuid import uuid4
 
+from app.core.config import get_settings
 from app.models.projects import ProcessingJobRecord
 from app.services.database import connection_scope
-
-STALE_CLAIM_WINDOW = timedelta(minutes=45)
 
 
 class JobStore:
@@ -57,7 +56,7 @@ class JobStore:
 
     def claim_next_job(self) -> ProcessingJobRecord | None:
         now = datetime.now(UTC)
-        stale_before = now - STALE_CLAIM_WINDOW
+        stale_before = now - timedelta(seconds=get_settings().effective_job_stale_claim_window_seconds)
         with connection_scope() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(

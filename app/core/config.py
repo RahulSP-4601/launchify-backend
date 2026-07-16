@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     render_offthread_video_cache_size_mb: int = 64
     run_job_runner: bool | None = None
     job_runner_poll_interval_seconds: int = 3
+    job_stale_claim_window_seconds: int = 900
+    job_heartbeat_interval_seconds: int = 10
     transcription_warn_seconds: int = 45
     script_generation_warn_seconds: int = 25
     planning_warn_seconds: int = 45
@@ -78,6 +80,14 @@ class Settings(BaseSettings):
     @property
     def serves_worker(self) -> bool:
         return self.process_role in {"worker", "all"}
+
+    @property
+    def effective_job_stale_claim_window_seconds(self) -> int:
+        # Never reclaim an active job before a healthy render stage has had time to finish.
+        return max(
+            self.job_stale_claim_window_seconds,
+            self.render_timeout_seconds + (self.job_heartbeat_interval_seconds * 3),
+        )
 
 
 @lru_cache

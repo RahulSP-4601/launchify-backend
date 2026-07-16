@@ -14,10 +14,28 @@ def align_script_scenes(
 ) -> list[tuple[float, float]]:
     if not transcript:
         raise RuntimeError("Transcript is required before generating the edit plan.")
+    total_weight = sum(scene_weight(scene) for scene in scenes) or 1.0
+    transcript_start = transcript[0].start
+    transcript_end = transcript[-1].end
+    accumulated_weight = 0.0
     ranges: list[tuple[float, float]] = []
     search_start = 0
-    for scene in scenes:
-        start_index, end_index = best_window_for_scene(scene, transcript, search_start)
+    for index, scene in enumerate(scenes):
+        remaining_scenes = len(scenes) - index
+        latest_start = max(search_start, len(transcript) - remaining_scenes)
+        remaining_after = len(scenes) - index - 1
+        latest_end = len(transcript) - remaining_after - 1
+        start_progress = accumulated_weight / total_weight
+        accumulated_weight += scene_weight(scene)
+        end_progress = accumulated_weight / total_weight
+        start_index, end_index = best_window_for_scene(
+            scene,
+            transcript,
+            search_start,
+            latest_start,
+            latest_end,
+            target_midpoint=weighted_midpoint(transcript_start, transcript_end, start_progress, end_progress),
+        )
         ranges.append((transcript[start_index].start, transcript[end_index].end))
         search_start = min(end_index + 1, len(transcript) - 1)
     return normalize_ranges(ranges, transcript[-1].end)
@@ -27,18 +45,28 @@ def best_window_for_scene(
     scene: LaunchScriptScene,
     transcript: list[TranscriptSegment],
     search_start: int,
+    latest_start: int,
+    latest_end: int,
+    *,
+    target_midpoint: float,
 ) -> tuple[int, int]:
     desired_segments = max(1, round(scene.estimated_duration_seconds / 4))
     max_window = min(max(2, desired_segments + 1), 5)
     scene_text = scene_text_for_matching(scene)
     best_score = -1.0
     best_range = (search_start, search_start)
-    for start in range(search_start, len(transcript)):
+    desired_duration = max(scene.estimated_duration_seconds, 1.0)
+    for start in range(search_start, latest_start + 1):
         for window_size in range(1, max_window + 1):
             end = start + window_size - 1
-            if end >= len(transcript):
+            if end > latest_end or end >= len(transcript):
                 break
-            score = score_window(scene_text, transcript[start : end + 1])
+            score = score_window(scene_text, transcript[start : end + 1]) + timing_score(
+                transcript[start].start,
+                transcript[end].end,
+                target_midpoint,
+                desired_duration,
+            )
             if score > best_score:
                 best_score = score
                 best_range = (start, end)
@@ -70,12 +98,32 @@ def tokenize(value: str) -> set[str]:
     return {token for token in TOKEN_PATTERN.findall(value.lower()) if len(token) > 1}
 
 
+def scene_weight(scene: LaunchScriptScene) -> float:
+    return max(scene.estimated_duration_seconds, 1.0)
+
+
+def weighted_midpoint(start: float, end: float, start_progress: float, end_progress: float) -> float:
+    return start + ((start_progress + end_progress) / 2) * max(end - start, 0.0)
+
+
+def timing_score(start: float, end: float, target_midpoint: float, desired_duration: float) -> float:
+    midpoint = (start + end) / 2
+    midpoint_penalty = abs(midpoint - target_midpoint) / max(desired_duration * 2, 1.0)
+    duration_penalty = abs((end - start) - desired_duration) / max(desired_duration, 1.0)
+    return max(0.0, 0.35 - (midpoint_penalty * 0.2) - (duration_penalty * 0.15))
+
+
 def normalize_ranges(ranges: list[tuple[float, float]], max_end: float) -> list[tuple[float, float]]:
-    normalized: list[tuple[float, float]] = []
-    previous_end = 0.0
-    for start, end in ranges:
-        bounded_start = max(previous_end, round(start, 2))
-        bounded_end = max(bounded_start + 0.25, round(min(end, max_end), 2))
-        normalized.append((bounded_start, bounded_end))
-        previous_end = bounded_end
-    return normalized
+    normalized_reversed: list[tuple[float, float]] = []
+    total_ranges = len(ranges)
+    next_start = round(max_end, 2)
+    for reversed_index, (start, end) in enumerate(reversed(ranges)):
+        remaining_before = total_ranges - reversed_index - 1
+        minimum_end = round((remaining_before + 1) * 0.25, 2)
+        bounded_end = min(round(min(end, max_end), 2), next_start)
+        bounded_end = max(bounded_end, minimum_end)
+        latest_start = max(0.0, round(bounded_end - 0.25, 2))
+        bounded_start = min(round(start, 2), latest_start)
+        normalized_reversed.append((bounded_start, bounded_end))
+        next_start = bounded_start
+    return list(reversed(normalized_reversed))

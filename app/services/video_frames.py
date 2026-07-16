@@ -104,6 +104,35 @@ def extract_frame(
     jpeg_quality: int = 2,
 ) -> Path:
     output_path = output_dir / f"scene-{scene_number}-frame-{frame_index}.jpg"
+    extraction_error: RuntimeError | None = None
+    for candidate_timestamp in candidate_timestamps(timestamp):
+        output_path.unlink(missing_ok=True)
+        try:
+            run_ffmpeg_capture(
+                video_path,
+                output_path,
+                candidate_timestamp,
+                frame_width=frame_width,
+                jpeg_quality=jpeg_quality,
+            )
+        except RuntimeError as exc:
+            extraction_error = exc
+            continue
+        if output_path.exists() and output_path.stat().st_size > 0:
+            return output_path
+    if extraction_error is not None:
+        raise extraction_error
+    raise RuntimeError("FFmpeg did not write a usable frame image.")
+
+
+def run_ffmpeg_capture(
+    video_path: Path,
+    output_path: Path,
+    timestamp: float,
+    *,
+    frame_width: int | None,
+    jpeg_quality: int,
+) -> None:
     command = build_ffmpeg_command(video_path, output_path, timestamp, frame_width=frame_width, jpeg_quality=jpeg_quality)
     try:
         subprocess.run(
@@ -122,9 +151,16 @@ def extract_frame(
     except subprocess.CalledProcessError as exc:
         detail = exc.stderr.strip() or exc.stdout.strip() or "Unknown FFmpeg failure."
         raise RuntimeError(f"FFmpeg failed while extracting video frames: {detail}") from exc
-    if not output_path.exists() or output_path.stat().st_size == 0:
-        raise RuntimeError("FFmpeg did not write a usable frame image.")
-    return output_path
+
+
+def candidate_timestamps(timestamp: float) -> list[float]:
+    offsets = (0.0, 0.08, 0.16, 0.28, 0.4, 0.6)
+    candidates: list[float] = []
+    for offset in offsets:
+        candidate = round(max(timestamp - offset, 0.0), 2)
+        if candidate not in candidates:
+            candidates.append(candidate)
+    return candidates
 
 
 def build_ffmpeg_command(
