@@ -11,6 +11,7 @@ from app.models.projects import EditPlanRecord, ProjectRecord, QualityReportReco
 from app.services.render_payloads import build_render_payload, total_render_duration
 from app.services.render_review import refine_from_preview
 from app.services.storage import download_asset_to_file, upload_rendered_video_file
+from app.services.timing import timed_stage
 from app.services.usage_service import projected_rendered_seconds, total_rendered_seconds
 
 
@@ -19,18 +20,25 @@ def render_project_videos(
     project: ProjectRecord,
 ) -> tuple[RenderedVideoRecord, RenderedVideoRecord, EditPlanRecord, QualityReportRecord]:
     asset_path = require_asset_path(project)
+    settings = get_settings()
+    ensure_render_worker_ready()
     with TemporaryDirectory(prefix="launchify-render-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
         source_video = download_asset_to_file(asset_path)
         voiceover_audio = download_voiceover_audio(project)
         try:
             preview_output = temp_dir / "preview.mp4"
-            render_preview_output(project, source_video, voiceover_audio, temp_dir, preview_output)
-            reviewed_project, quality_report = reviewed_project(project, preview_output)
+            with timed_stage("preview_render_initial", settings.preview_render_warn_seconds):
+                render_preview_output(project, source_video, voiceover_audio, temp_dir, preview_output)
+            with timed_stage("preview_review", settings.planning_warn_seconds):
+                reviewed_project, quality_report, rerender_preview = reviewed_project(project, preview_output)
             enforce_final_render_limit(user_id, reviewed_project)
-            render_preview_output(reviewed_project, source_video, voiceover_audio, temp_dir, preview_output)
+            if rerender_preview:
+                with timed_stage("preview_render_refined", settings.preview_render_warn_seconds):
+                    render_preview_output(reviewed_project, source_video, voiceover_audio, temp_dir, preview_output)
             preview_video = upload_variant(user_id, reviewed_project, preview_output, "preview")
-            final_video = render_and_upload_variant(user_id, reviewed_project, source_video, voiceover_audio, temp_dir, "final")
+            with timed_stage("final_render", settings.final_render_warn_seconds):
+                final_video = render_and_upload_variant(user_id, reviewed_project, source_video, voiceover_audio, temp_dir, "final")
             return preview_video, final_video, require_edit_plan(reviewed_project), quality_report
         finally:
             source_video.unlink(missing_ok=True)
@@ -87,7 +95,8 @@ def invoke_render_worker(
     output_path: Path,
     quality: Literal["preview", "final"],
 ) -> None:
-    worker_dir = Path(get_settings().render_worker_dir).resolve()
+    settings = get_settings()
+    worker_dir = Path(settings.render_worker_dir).resolve()
     command = [
         "npm",
         "run",
@@ -101,9 +110,18 @@ def invoke_render_worker(
         str(output_path),
     ]
     try:
-        subprocess.run(command, cwd=worker_dir, check=True, capture_output=True, text=True)
+        subprocess.run(
+            command,
+            cwd=worker_dir,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=settings.render_timeout_seconds,
+        )
     except FileNotFoundError as exc:
         raise RuntimeError("Render worker dependencies are missing. Install the backend render worker.") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"Render worker timed out after {settings.render_timeout_seconds} seconds.") from exc
     except subprocess.CalledProcessError as exc:
         raise RuntimeError(exc.stderr.strip() or exc.stdout.strip() or "Render worker failed.") from exc
 
@@ -156,12 +174,24 @@ def download_voiceover_audio(project: ProjectRecord) -> Path | None:
 def reviewed_project(
     project: ProjectRecord,
     preview_output: Path,
-) -> tuple[ProjectRecord, QualityReportRecord]:
-    refined_edit_plan, quality_report = refine_from_preview(project, preview_output)
-    return project.model_copy(update={"edit_plan": refined_edit_plan, "quality_report": quality_report}), quality_report
+) -> tuple[ProjectRecord, QualityReportRecord, bool]:
+    refined_edit_plan, quality_report, rerender_preview = refine_from_preview(project, preview_output)
+    return (
+        project.model_copy(update={"edit_plan": refined_edit_plan, "quality_report": quality_report}),
+        quality_report,
+        rerender_preview,
+    )
 
 
 def require_edit_plan(project: ProjectRecord) -> EditPlanRecord:
     if project.edit_plan is None:
         raise RuntimeError("Edit plan is required before saving reviewed render outputs.")
     return project.edit_plan
+
+
+def ensure_render_worker_ready() -> None:
+    worker_dir = Path(get_settings().render_worker_dir).resolve()
+    if not worker_dir.exists():
+        raise RuntimeError("Render worker directory is missing. Install the backend render worker.")
+    if not (worker_dir / "package.json").exists():
+        raise RuntimeError("Render worker package.json is missing. Install the backend render worker.")

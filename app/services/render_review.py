@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from urllib import error, request
@@ -35,14 +36,14 @@ class ReviewIssue:
 def refine_from_preview(
     project: ProjectRecord,
     preview_video_path: Path,
-) -> tuple[EditPlanRecord, QualityReportRecord]:
+) -> tuple[EditPlanRecord, QualityReportRecord, bool]:
     edit_plan = require_edit_plan(project)
     issues = review_issues(project, preview_video_path)
     if not issues:
-        return edit_plan, build_quality_report(project, edit_plan)
+        return edit_plan, build_quality_report(project, edit_plan), False
     refined_plan = apply_review_actions(edit_plan, issues)
     quality_report = report_with_review(project, refined_plan, issues)
-    return refined_plan, quality_report
+    return refined_plan, quality_report, plan_changed(edit_plan, refined_plan)
 
 
 def require_edit_plan(project: ProjectRecord) -> EditPlanRecord:
@@ -55,11 +56,13 @@ def review_issues(project: ProjectRecord, preview_video_path: Path) -> list[Revi
     if not review_available():
         return []
     extracted = extracted_scene_frames(project, preview_video_path)
-    return [
-        issue
-        for scene_number, frames in extracted.items()
-        for issue in scene_review(project, scene_number, frames)
-    ]
+    max_workers = min(max(get_settings().visual_analysis_concurrency, 1), max(len(extracted), 1))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        issues_by_scene = executor.map(
+            lambda scene_frames: scene_review(project, scene_frames[0], scene_frames[1]),
+            extracted.items(),
+        )
+        return [issue for scene_issues in issues_by_scene for issue in scene_issues]
 
 
 def review_available() -> bool:
@@ -227,3 +230,7 @@ def issue_severity(value: str) -> IssueSeverity:
     if value == "medium":
         return "medium"
     return "low"
+
+
+def plan_changed(original: EditPlanRecord, updated: EditPlanRecord) -> bool:
+    return original.model_dump(mode="json") != updated.model_dump(mode="json")

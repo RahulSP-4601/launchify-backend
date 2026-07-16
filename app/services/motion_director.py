@@ -63,11 +63,12 @@ def zoom_record(
     smoothing: float,
     hold_ratio: float,
 ) -> EditPlanZoom:
-    base_scale = 1.14 if policy.focus_region == "center" else 1.2
+    base_scale = zoom_base_scale(policy)
+    scale = capped_zoom_scale(base_scale * multiplier, policy)
     return EditPlanZoom(
         start=round(start, 2),
         end=round(end, 2),
-        scale=round(base_scale * multiplier, 2),
+        scale=scale,
         focus_region=policy.focus_region,
         reason="Confidence-approved focus move around the strongest UI action.",
         confidence=policy.zoom_confidence,
@@ -93,8 +94,8 @@ def build_highlights(
     return [
         EditPlanHighlight(
             start=round(start, 2),
-            end=round(min(end, start + 1.6), 2),
-            label=(policy.target_label or scene.on_screen_text.strip() or scene.purpose.strip())[:80],
+            end=round(min(end, start + 1.35), 2),
+            label=highlight_label(policy, scene),
             style=policy.highlight_style,
             anchor_region=policy.anchor_region,
             confidence=policy.highlight_confidence,
@@ -120,3 +121,27 @@ def offset_for_box(box: FocusBox | None, region: str, axis: str) -> float:
         return offset_for_region(region, axis)
     center = box.x + box.width / 2 if axis == "x" else box.y + box.height / 2
     return float(round((center - 0.5) * 0.12, 3))
+
+
+def zoom_base_scale(policy: ScenePolicy) -> float:
+    if policy.anchor_box is not None:
+        area = policy.anchor_box.width * policy.anchor_box.height
+        if area < 0.04:
+            return 1.18
+        if area < 0.1:
+            return 1.14
+        return 1.1
+    return 1.12 if policy.focus_region == "center" else 1.16
+
+
+def capped_zoom_scale(scale: float, policy: ScenePolicy) -> float:
+    confidence_modifier = max(0.0, min(policy.zoom_confidence, 1.0))
+    limit = 1.14 + confidence_modifier * 0.1
+    return round(min(scale, limit), 2)
+
+
+def highlight_label(policy: ScenePolicy, scene: LaunchScriptScene) -> str:
+    source = policy.target_label or scene.on_screen_text.strip() or scene.purpose.strip()
+    words = source.split()
+    compact = " ".join(words[:6]).strip()
+    return compact[:56]

@@ -57,9 +57,22 @@ def grayscale_frame(video_path: Path, timestamp: float) -> bytes | None:
 def run_raw_frame_command(video_path: Path, timestamp: float) -> bytes | None:
     command = ffmpeg_raw_frame_command(video_path, timestamp)
     try:
-        result = subprocess.run(command, check=True, capture_output=True)
+        result = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            timeout=get_settings().ffmpeg_timeout_seconds,
+        )
     except FileNotFoundError as exc:
         raise RuntimeError("FFmpeg is required for frame-diff analysis.") from exc
+    except subprocess.TimeoutExpired:
+        logger.warning(
+            "FFmpeg frame-diff extraction timed out for %s at %.3fs after %ss",
+            video_path.name,
+            timestamp,
+            get_settings().ffmpeg_timeout_seconds,
+        )
+        return None
     except subprocess.CalledProcessError as exc:
         detail = exc.stderr.decode("utf-8", errors="ignore").strip()
         logger.warning("FFmpeg frame-diff extraction failed for %s at %.3fs: %s", video_path.name, timestamp, detail)

@@ -185,7 +185,7 @@ const HighlightBadge: React.FC<{
 
 function shellStyle(): React.CSSProperties {
   return {
-    background: "linear-gradient(135deg, #020617 0%, #0f172a 45%, #172554 100%)",
+    background: "radial-gradient(circle at top left, rgba(56, 189, 248, 0.16), transparent 28%), linear-gradient(135deg, #020617 0%, #0f172a 38%, #172554 100%)",
   };
 }
 
@@ -196,7 +196,7 @@ function cardShell(opacity: number): React.CSSProperties {
     flexDirection: "column",
     justifyContent: "center",
     opacity,
-    padding: "120px",
+    padding: "112px 120px",
   };
 }
 
@@ -210,45 +210,52 @@ function videoShellStyle(opacity: number, translateY: number): React.CSSProperti
 
 function gradientMaskStyle(): React.CSSProperties {
   return {
-    background: "linear-gradient(180deg, rgba(2,6,23,0.18) 0%, rgba(2,6,23,0.04) 35%, rgba(2,6,23,0.55) 100%)",
+    background: "linear-gradient(180deg, rgba(2,6,23,0.22) 0%, rgba(2,6,23,0.04) 28%, rgba(2,6,23,0.62) 100%)",
   };
 }
 
 function sceneHeaderStyle(): React.CSSProperties {
   return {
-    left: 48,
-    maxWidth: 720,
+    background: "linear-gradient(135deg, rgba(15,23,42,0.72), rgba(15,23,42,0.28))",
+    border: "1px solid rgba(191, 219, 254, 0.14)",
+    borderRadius: 28,
+    boxShadow: "0 18px 50px rgba(2, 6, 23, 0.24)",
+    left: 40,
+    maxWidth: 760,
+    padding: "20px 24px 18px",
     position: "absolute",
-    top: 40,
+    top: 32,
   };
 }
 
 function captionStyle(theme: string, variant: string): React.CSSProperties {
-  const backgroundColor = theme === "bold" ? "rgba(124, 45, 18, 0.82)" : "rgba(15, 23, 42, 0.78)";
+  const backgroundColor = theme === "bold" ? "rgba(127, 29, 29, 0.84)" : "rgba(15, 23, 42, 0.7)";
   const maxWidth = variant === "hero" ? "90%" : "84%";
   return {
     backdropFilter: "blur(10px)",
     backgroundColor,
-    border: "1px solid rgba(148, 163, 184, 0.18)",
-    borderRadius: 28,
-    bottom: 42,
-    left: 42,
+    border: "1px solid rgba(191, 219, 254, 0.18)",
+    borderRadius: 24,
+    bottom: 34,
+    boxShadow: "0 14px 34px rgba(2, 6, 23, 0.28)",
+    left: 34,
     maxWidth,
-    padding: "22px 28px",
+    padding: "18px 22px",
     position: "absolute",
   };
 }
 
 function captionTextStyle(profile: string, variant: string): React.CSSProperties {
-  const fontSize = profile === "cinematic" || variant === "hero" ? 34 : profile === "minimal" ? 26 : 30;
-  const fontFamily = profile === "cinematic" ? "Georgia, serif" : "Arial, sans-serif";
+  const fontSize = profile === "cinematic" || variant === "hero" ? 34 : profile === "minimal" ? 25 : 29;
+  const fontFamily = profile === "cinematic" ? "\"Iowan Old Style\", Georgia, serif" : "\"Avenir Next\", \"Segoe UI\", sans-serif";
   const fontWeight = variant === "hero" ? 700 : 500;
   return {
     color: "#f8fafc",
     fontFamily,
     fontSize,
     fontWeight,
-    lineHeight: 1.35,
+    letterSpacing: "0.01em",
+    lineHeight: 1.3,
   };
 }
 
@@ -298,26 +305,28 @@ function highlightRingStyle(
   const width = focusBox ? Math.max(90, Math.round(focusBox.width * dimensions.width)) : 120;
   const height = focusBox ? Math.max(60, Math.round(focusBox.height * dimensions.height)) : 120;
   return {
-    border: "4px solid rgba(34, 211, 238, 0.95)",
+    background: "rgba(34, 211, 238, 0.05)",
+    border: "3px solid rgba(125, 211, 252, 0.92)",
     borderRadius: focusBox ? 28 : 9999,
-    boxShadow: `0 0 0 ${12 + intensity * 12}px rgba(34, 211, 238, ${0.08 + intensity * 0.12})`,
+    boxShadow: `0 0 0 ${10 + intensity * 10}px rgba(56, 189, 248, ${0.06 + intensity * 0.1}), 0 10px 24px rgba(2, 6, 23, 0.18)`,
     height,
-    opacity: 0.72 + intensity * 0.28,
+    opacity: 0.76 + intensity * 0.2,
     width,
   };
 }
 
 function highlightLabelStyle(intensity: number): React.CSSProperties {
   return {
-    backgroundColor: "rgba(15, 23, 42, 0.86)",
-    border: "1px solid rgba(125, 211, 252, 0.32)",
+    backgroundColor: "rgba(15, 23, 42, 0.88)",
+    border: "1px solid rgba(191, 219, 254, 0.28)",
     borderRadius: 9999,
     color: "#f8fafc",
-    fontFamily: "Arial, sans-serif",
-    fontSize: 22,
-    marginTop: 16,
+    fontFamily: "\"Avenir Next\", \"Segoe UI\", sans-serif",
+    fontSize: 20,
+    fontWeight: 600,
+    marginTop: 12,
     opacity: 0.8 + intensity * 0.2,
-    padding: "12px 18px",
+    padding: "10px 16px",
   };
 }
 

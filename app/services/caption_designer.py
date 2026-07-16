@@ -5,7 +5,9 @@ import re
 from app.models.projects import EditPlanCaption, TemplateConfigRecord, TranscriptSegment
 
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9]+")
-CAPTION_MAX_CHARACTERS = 64
+CAPTION_MAX_CHARACTERS = 56
+CAPTION_IDEAL_SECONDS = 2.8
+CAPTION_MAX_SECONDS = 4.8
 
 
 def build_caption_track(
@@ -44,7 +46,8 @@ def append_segment(
 ) -> tuple[float, float, list[str]]:
     segment_text = segment.text.strip()
     candidate = " ".join([*current_text, segment_text]).strip()
-    if current_text and len(candidate) > CAPTION_MAX_CHARACTERS:
+    candidate_duration = max(segment.end - current_start, 0.0)
+    if current_text and should_split_caption(candidate, segment_text, candidate_duration):
         captions.append(caption_record(current_start, current_end, current_text, template_config))
         return segment.start, segment.end, [segment_text]
     return current_start, segment.end, [*current_text, segment_text]
@@ -67,7 +70,7 @@ def caption_record(
 
 
 def emphasis_words(text: str) -> list[str]:
-    tokens = [token for token in TOKEN_PATTERN.findall(text) if len(token) > 4]
+    tokens = [token for token in TOKEN_PATTERN.findall(text) if len(token) > 4 and token.lower() not in STOPWORDS]
     return tokens[:3]
 
 
@@ -89,7 +92,7 @@ def caption_text(text: str, template_config: TemplateConfigRecord | None) -> str
 
 
 def balanced_break(text: str) -> str:
-    if len(text) <= 36:
+    if len(text) <= 32:
         return text
     midpoint = len(text) // 2
     split_index = nearest_space(text, midpoint)
@@ -107,3 +110,32 @@ def nearest_space(text: str, midpoint: int) -> int:
         (abs(index - midpoint), index) for index, character in enumerate(text) if character == " "
     )
     return distances[0][1] if distances else -1
+
+
+def should_split_caption(candidate: str, latest_segment_text: str, duration_seconds: float) -> bool:
+    if len(candidate) > CAPTION_MAX_CHARACTERS:
+        return True
+    if duration_seconds > CAPTION_MAX_SECONDS:
+        return True
+    return duration_seconds > CAPTION_IDEAL_SECONDS and sentence_boundary(latest_segment_text)
+
+
+def sentence_boundary(value: str) -> bool:
+    return value.endswith((".", "!", "?", ":", ";"))
+
+
+STOPWORDS = {
+    "about",
+    "after",
+    "before",
+    "from",
+    "into",
+    "their",
+    "there",
+    "these",
+    "those",
+    "where",
+    "which",
+    "while",
+    "with",
+}

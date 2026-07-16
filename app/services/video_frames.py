@@ -79,9 +79,19 @@ def extract_frame(
     output_path = output_dir / f"scene-{scene_number}-frame-{frame_index}.jpg"
     command = build_ffmpeg_command(video_path, output_path, timestamp)
     try:
-        subprocess.run(command, check=True, capture_output=True, text=True)
+        subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=get_settings().ffmpeg_timeout_seconds,
+        )
     except FileNotFoundError as exc:
         raise RuntimeError("FFmpeg is required for visual analysis. Configure FFMPEG_BINARY in the backend env.") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"FFmpeg timed out while extracting video frames after {get_settings().ffmpeg_timeout_seconds} seconds."
+        ) from exc
     except subprocess.CalledProcessError as exc:
         detail = exc.stderr.strip() or exc.stdout.strip() or "Unknown FFmpeg failure."
         raise RuntimeError(f"FFmpeg failed while extracting video frames: {detail}") from exc

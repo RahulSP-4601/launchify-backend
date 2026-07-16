@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Sequence
 from urllib import error, request
 
@@ -12,6 +13,16 @@ from app.models.projects import LaunchScriptRecord, ProjectRecord, TranscriptSeg
 MIN_TRANSCRIPT_CHARACTERS = 40
 MIN_SCENE_COUNT = 3
 MAX_SCENE_COUNT = 6
+FILLER_PHRASES = (
+    "kind of",
+    "sort of",
+    "basically",
+    "actually",
+    "simply",
+    "just",
+    "you know",
+    "i mean",
+)
 
 
 def generate_launch_script(project: ProjectRecord) -> LaunchScriptRecord:
@@ -72,6 +83,9 @@ def system_prompt() -> str:
         "Always respond as valid JSON with keys: hook, summary, title_options, scenes, cta, notes. "
         "Each scene must include scene_number, purpose, spoken_line, on_screen_text, "
         "source_excerpt, estimated_duration_seconds. Create 3 to 6 scenes only. "
+        "Remove filler words, keep sentences crisp, preserve factual meaning, and make each scene feel like one clean product step. "
+        "Write like a polished product marketer or customer educator, not a generic AI assistant. "
+        "Hooks should be concrete and benefit-led. CTAs should feel professional, specific, and short. "
         "Keep every field plain JSON without markdown fences or commentary."
     )
 
@@ -84,7 +98,8 @@ def user_prompt(project: ProjectRecord, transcript_text: str) -> str:
         f"Target audience: {project.target_audience or 'Not provided'}\n"
         f"Video goal: {project.video_goal}\n\n"
         "Rewrite the transcript into a sharper launch video script. Keep it concise, clearer, "
-        "and more persuasive than the raw narration. Preserve factual meaning. Create 3 to 6 scenes.\n\n"
+        "and more persuasive than the raw narration. Preserve factual meaning. Create 3 to 6 scenes.\n"
+        "Each scene should cover exactly one idea, workflow step, or product benefit. Avoid generic hype.\n\n"
         f"Transcript:\n{transcript_text}"
     )
 
@@ -183,10 +198,10 @@ def launch_script_schema() -> dict[str, object]:
 
 def normalize_launch_script_payload(payload: dict[str, object], transcript_text: str) -> dict[str, object]:
     normalized: dict[str, object] = {
-        "hook": as_text(payload.get("hook")) or fallback_hook(payload),
-        "summary": as_text(payload.get("summary")) or fallback_summary(transcript_text),
-        "title_options": as_text_list(payload.get("title_options")) or build_title_options(payload, transcript_text),
-        "cta": as_text(payload.get("cta")) or "Start your free launch workflow today.",
+        "hook": polished_line(as_text(payload.get("hook")) or fallback_hook(payload)),
+        "summary": polished_line(as_text(payload.get("summary")) or fallback_summary(transcript_text)),
+        "title_options": polished_titles(as_text_list(payload.get("title_options")) or build_title_options(payload, transcript_text)),
+        "cta": polished_cta(as_text(payload.get("cta")) or "See how this workflow looks in your product."),
         "notes": as_text_list(payload.get("notes")),
     }
     normalized["scenes"] = normalize_scenes(payload.get("scenes"), transcript_text)
@@ -219,11 +234,14 @@ def normalize_scene_item(index: int, value: object) -> dict[str, object] | None:
         return None
     return {
         "scene_number": as_int(value.get("scene_number"), index),
-        "purpose": purpose,
-        "spoken_line": spoken_line,
-        "on_screen_text": on_screen_text,
-        "source_excerpt": source_excerpt,
-        "estimated_duration_seconds": as_float(value.get("estimated_duration_seconds"), estimate_scene_duration_seconds(spoken_line)),
+        "purpose": polished_line(purpose),
+        "spoken_line": polished_line(spoken_line),
+        "on_screen_text": polished_screen_text(on_screen_text),
+        "source_excerpt": polished_excerpt(source_excerpt),
+        "estimated_duration_seconds": as_float(
+            value.get("estimated_duration_seconds"),
+            estimate_scene_duration_seconds(spoken_line),
+        ),
     }
 
 
@@ -235,9 +253,9 @@ def fallback_scenes(transcript_text: str) -> list[dict[str, object]]:
             {
                 "scene_number": index,
                 "purpose": fallback_scene_purpose(index, len(chunks)),
-                "spoken_line": chunk,
-                "on_screen_text": chunk[:120],
-                "source_excerpt": chunk[:220],
+                "spoken_line": polished_line(chunk),
+                "on_screen_text": polished_screen_text(chunk[:120]),
+                "source_excerpt": polished_excerpt(chunk[:220]),
                 "estimated_duration_seconds": estimate_scene_duration_seconds(chunk),
             }
         )
@@ -323,7 +341,77 @@ def first_sentence(text: str) -> str:
 
 def estimate_scene_duration_seconds(text: str) -> float:
     words = max(1, len(text.split()))
-    return round(max(4.0, min(18.0, words / 2.8)), 2)
+    return round(max(3.5, min(14.0, words / 3.1)), 2)
+
+
+def polished_titles(titles: list[str]) -> list[str]:
+    polished: list[str] = []
+    for title in titles:
+        candidate = polished_line(title)[:80]
+        if candidate and candidate not in polished:
+            polished.append(candidate)
+    return polished[:3]
+
+
+def polished_cta(value: str) -> str:
+    candidate = polished_line(value)
+    if not candidate:
+        return "See how this workflow looks in your product."
+    if len(candidate.split()) > 12:
+        candidate = " ".join(candidate.split()[:12]).strip()
+    if not candidate.endswith((".", "!", "?")):
+        candidate = f"{candidate}."
+    return candidate
+
+
+def polished_screen_text(value: str) -> str:
+    return trimmed_sentence(polished_line(value), 90)
+
+
+def polished_excerpt(value: str) -> str:
+    return trimmed_sentence(collapse_whitespace(value), 180)
+
+
+def polished_line(value: str) -> str:
+    cleaned = collapse_whitespace(value)
+    cleaned = remove_fillers(cleaned)
+    cleaned = dedupe_phrase_runs(cleaned)
+    cleaned = cleaned.strip(" ,.;:-")
+    if not cleaned:
+        return ""
+    cleaned = cleaned[0].upper() + cleaned[1:]
+    return trimmed_sentence(cleaned, 220)
+
+
+def collapse_whitespace(value: str) -> str:
+    return " ".join(value.split())
+
+
+def remove_fillers(value: str) -> str:
+    cleaned = value
+    for filler in FILLER_PHRASES:
+        cleaned = re.sub(rf"\b{re.escape(filler)}\b", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+,", ",", cleaned)
+    return collapse_whitespace(cleaned)
+
+
+def dedupe_phrase_runs(value: str) -> str:
+    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", value) if part.strip()]
+    deduped: list[str] = []
+    seen_normalized: set[str] = set()
+    for sentence in sentences:
+        normalized = sentence.lower().strip(".!? ")
+        if normalized and normalized not in seen_normalized:
+            deduped.append(sentence)
+            seen_normalized.add(normalized)
+    return " ".join(deduped) if deduped else value
+
+
+def trimmed_sentence(value: str, limit: int) -> str:
+    if len(value) <= limit:
+        return value
+    truncated = value[:limit].rsplit(" ", 1)[0].strip()
+    return truncated or value[:limit].strip()
 
 
 def as_text(value: object) -> str:

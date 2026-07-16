@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Sequence
 
+from app.core.config import get_settings
 from app.models.projects import (
     BenchmarkReportRecord,
     LaunchScriptRecord,
@@ -22,6 +23,7 @@ from app.services.project_store import StaleProjectAssetError, project_store
 from app.services.rendering import render_project_videos
 from app.services.script_writer import combine_transcript, generate_launch_script
 from app.services.storage import download_asset_to_file
+from app.services.timing import timed_stage
 from app.services.transcription import transcribe_media_file
 from app.services.usage_service import usage_lock
 from app.services.visual_analysis import analyze_video_scenes, visual_analysis_available
@@ -64,19 +66,24 @@ def transcript_is_usable(transcript: Sequence[TranscriptSegment]) -> bool:
 
 
 def run_processing_pipeline(job: ProcessingJobRecord, asset_file: Path) -> None:
-    transcript = transcribe_media_file(asset_file, job.content_type)
+    settings = get_settings()
+    with timed_stage("transcription", settings.transcription_warn_seconds):
+        transcript = transcribe_media_file(asset_file, job.content_type)
     if stale_asset_detected(job.user_id, job.project_id, job.asset_path, job.id):
         return
     if not transcript_is_usable(transcript):
         mark_transcript_failure(job, transcript)
         return
-    launch_script = save_scripting_step(job, transcript)
+    with timed_stage("script_generation", settings.script_generation_warn_seconds):
+        launch_script = save_scripting_step(job, transcript)
     if stale_asset_detected(job.user_id, job.project_id, job.asset_path, job.id):
         return
-    save_planning_step(job, asset_file, launch_script, transcript)
+    with timed_stage("planning", settings.planning_warn_seconds):
+        save_planning_step(job, asset_file, launch_script, transcript)
     if stale_asset_detected(job.user_id, job.project_id, job.asset_path, job.id):
         return
-    save_render_step(job)
+    with timed_stage("render_pipeline", settings.total_pipeline_warn_seconds):
+        save_render_step(job)
 
 
 def mark_transcript_failure(job: ProcessingJobRecord, transcript: Sequence[TranscriptSegment]) -> None:

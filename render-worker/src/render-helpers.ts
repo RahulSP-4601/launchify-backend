@@ -4,24 +4,25 @@ import { FocusBox, RenderHighlight, RenderPayload, RenderScene, RenderZoom } fro
 
 export const titleStyles = {
   eyebrow: {
-    color: "#7dd3fc",
-    fontFamily: "Arial, sans-serif",
-    fontSize: 24,
-    letterSpacing: "0.24em",
+    color: "#93c5fd",
+    fontFamily: "\"Avenir Next\", \"Segoe UI\", sans-serif",
+    fontSize: 22,
+    fontWeight: 600,
+    letterSpacing: "0.28em",
     textTransform: "uppercase" as const,
   },
   headline: {
-    color: "#f8fafc",
-    fontFamily: "Georgia, serif",
-    fontSize: 72,
+    color: "#eff6ff",
+    fontFamily: "\"Iowan Old Style\", Georgia, serif",
+    fontSize: 78,
     fontWeight: 700,
-    lineHeight: 1.05,
+    lineHeight: 1.02,
   },
   body: {
-    color: "#cbd5e1",
-    fontFamily: "Arial, sans-serif",
-    fontSize: 28,
-    lineHeight: 1.5,
+    color: "#dbeafe",
+    fontFamily: "\"Avenir Next\", \"Segoe UI\", sans-serif",
+    fontSize: 26,
+    lineHeight: 1.45,
   },
 };
 

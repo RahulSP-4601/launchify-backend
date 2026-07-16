@@ -263,12 +263,22 @@ def decide_zoom(evidence: PolicyEvidence, zoom_confidence: float) -> bool:
             and evidence.specificity_score >= 0.24
             and evidence.focus_confidence >= 0.5
         )
+    if evidence.anchor_box is not None and focus_signal_is_trustworthy(evidence):
+        return (
+            zoom_confidence >= 0.57
+            and evidence.visual_confidence >= 0.44
+            and (
+                evidence.cursor_path_confidence >= 0.34
+                or evidence.click_score >= 0.52
+                or evidence.ocr_match_score >= 0.42
+            )
+        )
     return (
         zoom_confidence >= 0.6
         and evidence.visual_confidence >= 0.48
         and evidence.focus_confidence >= 0.54
-        and evidence.frame_diff_score >= 0.22
-        and evidence.cursor_path_confidence >= 0.38
+        and (evidence.frame_diff_score >= 0.22 or evidence.click_score >= 0.62)
+        and evidence.cursor_path_confidence >= 0.34
         and focus_signal_is_trustworthy(evidence)
     )
 
@@ -338,7 +348,11 @@ def ocr_match_score(scene_text: str, visual_analysis: VisualSceneAnalysisRecord 
 def best_label(visual_analysis: VisualSceneAnalysisRecord | None) -> str:
     if visual_analysis is None or not visual_analysis.visible_labels:
         return ""
-    return visual_analysis.visible_labels[0]
+    ranked = sorted(
+        (label.strip() for label in visual_analysis.visible_labels if label.strip()),
+        key=lambda label: (len(label.split()) > 4, len(label), label.lower()),
+    )
+    return ranked[0] if ranked else ""
 
 
 def focus_signal_is_trustworthy(evidence: PolicyEvidence) -> bool:

@@ -32,7 +32,7 @@ def build_voiceover(
         script=script,
         cues=cues,
         audio_storage_path=audio_asset.storage_path if audio_asset is not None else "",
-        duration_seconds=round(sum(cue.duration_seconds for cue in cues), 2),
+        duration_seconds=round(cues[-1].end, 2) if cues else 0.0,
     )
 
 
@@ -40,17 +40,20 @@ def cue_track(launch_script: LaunchScriptRecord) -> list[VoiceoverCueRecord]:
     cues: list[VoiceoverCueRecord] = []
     cursor = 0.0
     for scene in launch_script.scenes:
-        duration = max(scene.estimated_duration_seconds, 1.0)
+        text = normalized_voice_line(scene.spoken_line)
+        spoken_duration = max(scene.estimated_duration_seconds, estimated_voice_duration_seconds(text))
+        pause_duration = pause_padding_seconds(text)
+        total_duration = spoken_duration + pause_duration
         cues.append(
             VoiceoverCueRecord(
                 scene_number=scene.scene_number,
                 start=round(cursor, 2),
-                end=round(cursor + duration, 2),
-                text=scene.spoken_line.strip(),
-                duration_seconds=round(duration, 2),
+                end=round(cursor + total_duration, 2),
+                text=text,
+                duration_seconds=round(total_duration, 2),
             )
         )
-        cursor += duration
+        cursor += total_duration
     return [cue for cue in cues if cue.text]
 
 
@@ -94,3 +97,21 @@ def request_tts_audio(script: str, model: str) -> Path | None:
         connection.close()
     saved_file = Path(temp_file.name)
     return saved_file if saved_file.stat().st_size > 0 else None
+
+
+def normalized_voice_line(value: str) -> str:
+    cleaned = " ".join(value.split()).strip()
+    if not cleaned:
+        return ""
+    return cleaned if cleaned.endswith((".", "!", "?")) else f"{cleaned}."
+
+
+def estimated_voice_duration_seconds(text: str) -> float:
+    words = max(1, len(text.split()))
+    return round(max(2.8, min(10.0, words / 2.6)), 2)
+
+
+def pause_padding_seconds(text: str) -> float:
+    if text.endswith(("!", "?")):
+        return 0.28
+    return 0.18

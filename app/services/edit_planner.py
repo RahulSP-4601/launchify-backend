@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
+from app.core.config import get_settings
 from app.models.projects import (
     EditPlanRecord,
     EditPlanScene,
@@ -28,16 +31,20 @@ def generate_edit_plan(
     require_scene_plan(launch_script)
     scene_ranges = align_script_scenes(launch_script.scenes, project.transcript)
     analyses_by_scene = analysis_map(visual_analyses or [])
-    planned_scenes = [
-        build_edit_scene(
-            scene,
-            scene_range[0],
-            scene_range[1],
-            project,
-            analyses_by_scene.get(scene.scene_number),
+    max_workers = min(max(get_settings().visual_analysis_concurrency, 1), max(len(launch_script.scenes), 1))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        planned_scenes = list(
+            executor.map(
+                lambda scene_inputs: build_edit_scene(
+                    scene_inputs[0],
+                    scene_inputs[1][0],
+                    scene_inputs[1][1],
+                    project,
+                    analyses_by_scene.get(scene_inputs[0].scene_number),
+                ),
+                zip(launch_script.scenes, scene_ranges, strict=True),
+            )
         )
-        for scene, scene_range in zip(launch_script.scenes, scene_ranges, strict=True)
-    ]
     total_duration = round(max((scene.end for scene in planned_scenes), default=0.0), 2)
     planned_edit = EditPlanRecord(
         overview=build_overview(project, launch_script, bool(visual_analyses)),

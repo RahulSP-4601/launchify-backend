@@ -46,8 +46,16 @@ def tesseract_tsv(image_path: Path, page_mode: int) -> str:
         "tsv",
     ]
     try:
-        result = subprocess.run(command, check=True, capture_output=True, text=True)
+        result = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=get_settings().tesseract_timeout_seconds,
+        )
     except FileNotFoundError:
+        return ""
+    except subprocess.TimeoutExpired:
         return ""
     except subprocess.CalledProcessError:
         return ""
