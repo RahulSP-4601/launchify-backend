@@ -11,6 +11,13 @@ from typing import Callable, Literal
 
 from app.core.config import Settings, get_settings
 from app.models.projects import EditPlanRecord, ProjectRecord, QualityReportRecord, RenderedVideoRecord
+from app.services.render_hardening import (
+    RenderStageUpdate,
+    notify_render_stage,
+    run_with_retry,
+    verify_render_artifact,
+    verify_uploaded_variant,
+)
 from app.services.render_payloads import build_render_payload, total_render_duration
 from app.services.render_review import refine_from_preview
 from app.services.storage import download_asset_to_file, upload_rendered_video_file
@@ -24,6 +31,7 @@ def render_project_videos(
     user_id: str,
     project: ProjectRecord,
     heartbeat: Callable[[], None] | None = None,
+    stage_update: RenderStageUpdate | None = None,
     preview_ready: Callable[[RenderedVideoRecord], None] | None = None,
     final_ready: Callable[[RenderedVideoRecord], None] | None = None,
 ) -> tuple[RenderedVideoRecord, RenderedVideoRecord, EditPlanRecord, QualityReportRecord]:
@@ -46,6 +54,7 @@ def render_project_videos(
                 temp_dir,
                 settings,
                 heartbeat,
+                stage_update,
                 preview_ready,
                 final_ready,
             )
@@ -66,31 +75,107 @@ def execute_render_pipeline(
     temp_dir: Path,
     settings: Settings,
     heartbeat: Callable[[], None] | None,
+    stage_update: RenderStageUpdate | None,
     preview_ready: Callable[[RenderedVideoRecord], None] | None,
     final_ready: Callable[[RenderedVideoRecord], None] | None,
 ) -> tuple[RenderedVideoRecord, RenderedVideoRecord, EditPlanRecord, QualityReportRecord]:
+    preview_video, reviewed_project, quality_report = execute_preview_pipeline(
+        user_id,
+        project,
+        render_source,
+        voiceover_audio,
+        temp_dir,
+        settings,
+        heartbeat,
+        stage_update,
+        preview_ready,
+    )
+    enforce_final_render_limit(user_id, reviewed_project)
+    final_video = execute_final_pipeline(
+        user_id,
+        reviewed_project,
+        source_video,
+        voiceover_audio,
+        temp_dir,
+        settings,
+        heartbeat,
+        stage_update,
+        final_ready,
+    )
+    return preview_video, final_video, require_edit_plan(reviewed_project), quality_report
+
+
+def execute_preview_pipeline(
+    user_id: str,
+    project: ProjectRecord,
+    render_source: Path,
+    voiceover_audio: Path | None,
+    temp_dir: Path,
+    settings: Settings,
+    heartbeat: Callable[[], None] | None,
+    stage_update: RenderStageUpdate | None,
+    preview_ready: Callable[[RenderedVideoRecord], None] | None,
+) -> tuple[RenderedVideoRecord, ProjectRecord, QualityReportRecord]:
     preview_output = temp_dir / "preview.mp4"
     beat(heartbeat)
-    log_render_stage("preview_render_initial", project.id)
+    notify_render_stage(stage_update, "preview_render_initial", project.id)
     with timed_stage("preview_render_initial", settings.preview_render_warn_seconds):
-        render_preview_output(project, render_source, voiceover_audio, temp_dir, preview_output, heartbeat)
+        run_with_retry(
+            "preview render",
+            lambda: render_preview_output(project, render_source, voiceover_audio, temp_dir, preview_output, heartbeat),
+        )
     beat(heartbeat)
-    log_render_stage("preview_review", project.id)
+    notify_render_stage(stage_update, "preview_review", project.id)
     with timed_stage("preview_review", settings.planning_warn_seconds):
         reviewed_project, quality_report, rerender_preview = reviewed_project(project, preview_output)
     beat(heartbeat)
-    enforce_final_render_limit(user_id, reviewed_project)
     if rerender_preview:
-        rerender_refined_preview(reviewed_project, render_source, voiceover_audio, temp_dir, settings, heartbeat, preview_output)
-    preview_video = upload_variant(user_id, reviewed_project, preview_output, "preview")
+        rerender_refined_preview(
+            reviewed_project,
+            render_source,
+            voiceover_audio,
+            temp_dir,
+            settings,
+            heartbeat,
+            stage_update,
+            preview_output,
+        )
+    notify_render_stage(stage_update, "preview_upload", reviewed_project.id)
+    preview_video = run_with_retry(
+        "preview upload",
+        lambda: upload_variant(user_id, reviewed_project, preview_output, "preview"),
+    )
     if preview_ready is not None:
         preview_ready(preview_video)
     beat(heartbeat)
-    final_video = render_final_variant(user_id, reviewed_project, source_video, voiceover_audio, temp_dir, settings, heartbeat)
+    return preview_video, reviewed_project, quality_report
+
+
+def execute_final_pipeline(
+    user_id: str,
+    project: ProjectRecord,
+    source_video: Path,
+    voiceover_audio: Path | None,
+    temp_dir: Path,
+    settings: Settings,
+    heartbeat: Callable[[], None] | None,
+    stage_update: RenderStageUpdate | None,
+    final_ready: Callable[[RenderedVideoRecord], None] | None,
+) -> RenderedVideoRecord:
+    final_video = render_final_variant(
+        user_id,
+        project,
+        source_video,
+        voiceover_audio,
+        temp_dir,
+        settings,
+        heartbeat,
+        stage_update,
+    )
     if final_ready is not None:
         final_ready(final_video)
     beat(heartbeat)
-    return preview_video, final_video, require_edit_plan(reviewed_project), quality_report
+    return final_video
 
 
 def rerender_refined_preview(
@@ -100,11 +185,15 @@ def rerender_refined_preview(
     temp_dir: Path,
     settings: Settings,
     heartbeat: Callable[[], None] | None,
+    stage_update: RenderStageUpdate | None,
     preview_output: Path,
 ) -> None:
-    log_render_stage("preview_render_refined", project.id)
+    notify_render_stage(stage_update, "preview_render_refined", project.id)
     with timed_stage("preview_render_refined", settings.preview_render_warn_seconds):
-        render_preview_output(project, render_source, voiceover_audio, temp_dir, preview_output, heartbeat)
+        run_with_retry(
+            "refined preview render",
+            lambda: render_preview_output(project, render_source, voiceover_audio, temp_dir, preview_output, heartbeat),
+        )
     beat(heartbeat)
 
 
@@ -116,17 +205,22 @@ def render_final_variant(
     temp_dir: Path,
     settings: Settings,
     heartbeat: Callable[[], None] | None,
+    stage_update: RenderStageUpdate | None,
 ) -> RenderedVideoRecord:
-    log_render_stage("final_render", project.id)
+    notify_render_stage(stage_update, "final_render", project.id)
     with timed_stage("final_render", settings.final_render_warn_seconds):
-        return render_and_upload_variant(
-            user_id,
-            project,
-            source_video,
-            voiceover_audio,
-            temp_dir,
-            "final",
-            heartbeat,
+        return run_with_retry(
+            "final render and upload",
+            lambda: render_and_upload_variant(
+                user_id,
+                project,
+                source_video,
+                voiceover_audio,
+                temp_dir,
+                "final",
+                heartbeat,
+                stage_update,
+            ),
         )
 
 
@@ -144,10 +238,12 @@ def render_and_upload_variant(
     temp_dir: Path,
     quality: Literal["preview", "final"],
     heartbeat: Callable[[], None] | None = None,
+    stage_update: RenderStageUpdate | None = None,
 ) -> RenderedVideoRecord:
     output_path = temp_dir / f"{quality}.mp4"
     render_payload_path = write_render_payload(project, temp_dir, quality, voiceover_audio)
     invoke_render_worker(render_payload_path, source_video, output_path, quality, heartbeat=heartbeat)
+    notify_render_stage(stage_update, f"{quality}_upload", project.id)
     return upload_variant(user_id, project, output_path, quality)
 
 
@@ -303,10 +399,9 @@ def upload_variant(
     output_path: Path,
     quality: Literal["preview", "final"],
 ) -> RenderedVideoRecord:
-    if output_path.stat().st_size == 0:
-        raise RuntimeError(f"{quality.title()} render produced an empty video file.")
+    verify_render_artifact(output_path, quality)
     duration = require_duration(project)
-    return upload_rendered_video_file(
+    uploaded_video = upload_rendered_video_file(
         user_id=user_id,
         project_id=project.id,
         variant=quality,
@@ -314,6 +409,8 @@ def upload_variant(
         source_path=output_path,
         duration_seconds=duration,
     )
+    verify_uploaded_variant(uploaded_video, quality)
+    return uploaded_video
 
 
 def require_duration(project: ProjectRecord) -> float:
@@ -371,7 +468,3 @@ def ensure_render_worker_ready() -> None:
 def beat(heartbeat: Callable[[], None] | None) -> None:
     if heartbeat is not None:
         heartbeat()
-
-
-def log_render_stage(stage_name: str, project_id: str) -> None:
-    logger.info("Render stage %s started for project %s.", stage_name, project_id)

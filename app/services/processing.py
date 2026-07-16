@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence
 
 from app.core.config import get_settings
 from app.models.projects import (
@@ -153,15 +153,15 @@ def save_planning_step(
 
 
 def save_render_step(job: ProcessingJobRecord) -> None:
-    def heartbeat() -> None:
-        job_store.heartbeat(job.id)
-
     logger.info("Render pipeline started for project %s.", job.project_id)
+    heartbeat = build_job_heartbeat(job)
+    update_render_stage = build_render_stage_updater(job, heartbeat)
     with usage_lock(job.user_id, heartbeat=heartbeat):
         preview_video, final_video, refined_edit_plan, refined_quality_report = render_project_videos(
             job.user_id,
             require_project(job.user_id, job.project_id),
             heartbeat=heartbeat,
+            stage_update=update_render_stage,
             preview_ready=lambda preview: project_store.save_partial_render_output(
                 "preview_video",
                 "preview output",
@@ -236,6 +236,34 @@ def handle_job_failure(user_id: str, project_id: str, asset_path: str, job_id: s
         job_store.mark_failed(job_id, error_message)
     except StaleProjectAssetError:
         job_store.mark_completed(job_id)
+
+
+def build_job_heartbeat(job: ProcessingJobRecord) -> Callable[[], None]:
+    def heartbeat() -> None:
+        job_store.heartbeat(job.id)
+
+    return heartbeat
+
+
+def build_render_stage_updater(job: ProcessingJobRecord, heartbeat: Callable[[], None]) -> Callable[[str], None]:
+    def update_render_stage(stage_name: str) -> None:
+        heartbeat()
+        logger.info("Render progress for project %s: %s", job.project_id, render_stage_message(stage_name))
+        project_store.update_status_for_asset(job.user_id, job.project_id, job.asset_path, "rendering")
+
+    return update_render_stage
+
+
+def render_stage_message(stage_name: str) -> str:
+    messages = {
+        "preview_render_initial": "Rendering initial preview output.",
+        "preview_review": "Reviewing the preview and refining the edit plan.",
+        "preview_render_refined": "Rerendering the refined preview output.",
+        "preview_upload": "Uploading the preview video.",
+        "final_render": "Rendering the final video output.",
+        "final_upload": "Uploading the final video output.",
+    }
+    return messages.get(stage_name, "Rendering video outputs.")
 
 
 def require_voiceover(project: ProjectRecord) -> VoiceoverRecord:

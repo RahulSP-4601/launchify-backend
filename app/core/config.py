@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     openai_script_model: str = "gpt-4.1-mini"
     openai_vision_model: str = "gpt-4.1-mini"
     ffmpeg_binary: str = "ffmpeg"
+    ffprobe_binary: str = "ffprobe"
     ffmpeg_timeout_seconds: int = 30
     tesseract_binary: str = "/opt/homebrew/bin/tesseract"
     tesseract_timeout_seconds: int = 15
@@ -46,6 +47,7 @@ class Settings(BaseSettings):
     render_offthread_video_threads: int = 1
     render_media_cache_size_mb: int = 64
     render_offthread_video_cache_size_mb: int = 64
+    render_retry_attempts: int = 1
     run_job_runner: bool | None = None
     job_runner_poll_interval_seconds: int = 3
     job_stale_claim_window_seconds: int = 900
