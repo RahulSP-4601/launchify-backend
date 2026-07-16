@@ -1,4 +1,5 @@
 from functools import lru_cache
+import logging
 from pathlib import Path
 from typing import Literal
 
@@ -13,6 +14,7 @@ class Settings(BaseSettings):
     app_url: str = "http://localhost:8000"
     frontend_url: str = "http://localhost:3000"
     process_role: Literal["web", "worker", "all"] = "web"
+    log_level: str = "INFO"
 
     supabase_url: str = ""
     supabase_anon_key: str = ""
@@ -36,6 +38,8 @@ class Settings(BaseSettings):
     visual_analysis_frames_per_scene: int = 4
     visual_analysis_frame_width: int = 960
     visual_analysis_jpeg_quality: int = 6
+    visual_analysis_scene_timeout_seconds: int = 60
+    visual_analysis_total_budget_seconds: int = 120
     render_worker_dir: str = str(Path(__file__).resolve().parents[2] / "render-worker")
     render_timeout_seconds: int = 240
     run_job_runner: bool | None = None
@@ -75,3 +79,13 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def configure_logging() -> None:
+    level_name = get_settings().log_level.upper()
+    level = getattr(logging, level_name, logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        force=True,
+    )

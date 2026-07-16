@@ -72,7 +72,7 @@ def request_openai_vision(
         method="POST",
     )
     try:
-        with request.urlopen(api_request, timeout=180) as response:
+        with request.urlopen(api_request, timeout=get_settings().visual_analysis_scene_timeout_seconds) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="ignore")

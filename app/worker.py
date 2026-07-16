@@ -3,10 +3,11 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from app.core.config import get_settings
+from app.core.config import configure_logging, get_settings
 from app.services.database import ensure_schema
 from app.services.job_runner import job_runner
 
+configure_logging()
 logger = logging.getLogger(__name__)
 settings = get_settings()
 

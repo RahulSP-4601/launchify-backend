@@ -36,6 +36,7 @@ def process_job(job_id: str) -> None:
     job = job_store.get_job(job_id)
     if job is None:
         raise RuntimeError("Processing job not found.")
+    logger.info("Processing job %s started for project %s.", job.id, job.project_id)
     if not is_latest_project_asset(job.user_id, job.project_id, job.asset_path):
         job_store.mark_completed(job.id)
         return
@@ -64,6 +65,7 @@ def process_job(job_id: str) -> None:
     finally:
         if asset_file is not None:
             asset_file.unlink(missing_ok=True)
+        logger.info("Processing job %s finished.", job.id)
 
 
 def is_latest_project_asset(user_id: str, project_id: str, asset_path: str) -> bool:
@@ -127,6 +129,7 @@ def save_planning_step(
     launch_script: LaunchScriptRecord,
     transcript: list[TranscriptSegment],
 ) -> None:
+    logger.info("Planning started for project %s.", job.project_id)
     visual_analyses = maybe_analyze_video_scenes(asset_file, launch_script, transcript)
     current_project = require_project(job.user_id, job.project_id)
     edit_plan = generate_edit_plan(current_project, visual_analyses)
@@ -146,12 +149,14 @@ def save_planning_step(
         manual_overrides,
         asset_path=job.asset_path,
     )
+    logger.info("Planning completed for project %s.", job.project_id)
 
 
 def save_render_step(job: ProcessingJobRecord) -> None:
     def heartbeat() -> None:
         job_store.heartbeat(job.id)
 
+    logger.info("Render pipeline started for project %s.", job.project_id)
     with usage_lock(job.user_id, heartbeat=heartbeat):
         preview_video, final_video, refined_edit_plan, refined_quality_report = render_project_videos(
             job.user_id,
@@ -178,6 +183,7 @@ def save_render_step(job: ProcessingJobRecord) -> None:
         )
         project_store.save_render_outputs(job.user_id, job.project_id, preview_video, final_video, asset_path=job.asset_path)
     job_store.mark_completed(job.id)
+    logger.info("Render pipeline completed for project %s.", job.project_id)
 
 
 def require_project(user_id: str, project_id: str) -> ProjectRecord:

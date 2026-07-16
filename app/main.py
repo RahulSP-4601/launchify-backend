@@ -6,10 +6,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
-from app.core.config import get_settings
+from app.core.config import configure_logging, get_settings
 from app.services.database import ensure_schema
 from app.services.job_runner import job_runner
 
+configure_logging()
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
