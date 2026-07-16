@@ -21,6 +21,14 @@ from app.models.projects import (
     VoiceoverRecord,
 )
 from app.services.database import connection_scope
+from app.services.project_store_helpers import (
+    create_processing_job_params,
+    create_project_params,
+    has_active_job,
+    insert_processing_job_sql,
+    reset_project_for_asset_params,
+    reset_project_for_asset_sql,
+)
 
 
 class StaleProjectAssetError(RuntimeError):
@@ -137,49 +145,12 @@ class ProjectStore:
         now = datetime.now(UTC)
         with connection_scope() as connection:
             with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    update projects
-                    set asset = %s::jsonb, status = %s, transcript = '[]'::jsonb, launch_script = null, edit_plan = null,
-                        manual_overrides = %s::jsonb, quality_report = null, benchmark_report = null, voiceover = %s::jsonb,
-                        preview_video = null, final_video = null,
-                        error_message = '', updated_at = %s
-                    where id = %s and user_id = %s
-                    """,
-                    (
-                        json.dumps(asset.model_dump(mode="json")),
-                        "queued",
-                        json.dumps(ManualOverrideRecord().model_dump(mode="json")),
-                        json.dumps(VoiceoverRecord().model_dump(mode="json")),
-                        now,
-                        project_id,
-                        user_id,
-                    ),
-                )
+                if has_active_job(cursor, project_id, asset.storage_path):
+                    return
+                cursor.execute(reset_project_for_asset_sql(), reset_project_for_asset_params(asset, now, project_id, user_id))
                 if cursor.rowcount != 1:
                     raise RuntimeError("Project not found.")
-                cursor.execute(
-                    """
-                    insert into processing_jobs (
-                        id, user_id, project_id, asset_path, content_type, status,
-                        attempts, error_message, created_at, updated_at, claimed_at
-                    )
-                    values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        str(uuid4()),
-                        user_id,
-                        project_id,
-                        asset.storage_path,
-                        asset.content_type,
-                        "pending",
-                        0,
-                        "",
-                        now,
-                        now,
-                        None,
-                    ),
-                )
+                cursor.execute(insert_processing_job_sql(), create_processing_job_params(user_id, project_id, asset, now))
 
     def save_transcript(
         self,
@@ -469,32 +440,6 @@ class ProjectStore:
 
     def _as_list(self, value: object) -> list[object]:
         return value if isinstance(value, list) else []
+
+
 project_store = ProjectStore()
-def create_project_params(project: ProjectRecord, user_id: str) -> tuple[object, ...]:
-    template_config = project.template_config or TemplateConfigRecord()
-    manual_overrides = project.manual_overrides or ManualOverrideRecord()
-    voiceover = project.voiceover or VoiceoverRecord()
-    return (
-        project.id,
-        user_id,
-        project.project_name,
-        project.product_name,
-        project.product_description,
-        project.target_audience,
-        project.video_goal,
-        project.status,
-        None,
-        json.dumps([]),
-        None,
-        None,
-        json.dumps(template_config.model_dump(mode="json")),
-        json.dumps(manual_overrides.model_dump(mode="json")),
-        None,
-        None,
-        json.dumps(voiceover.model_dump(mode="json")),
-        None,
-        None,
-        project.error_message,
-        project.created_at,
-        project.updated_at,
-    )

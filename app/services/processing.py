@@ -79,6 +79,7 @@ def transcript_is_usable(transcript: Sequence[TranscriptSegment]) -> bool:
 
 def run_processing_pipeline(job: ProcessingJobRecord, asset_file: Path) -> None:
     settings = get_settings()
+    job_store.heartbeat(job.id)
     with timed_stage("transcription", settings.transcription_warn_seconds):
         transcript = transcribe_media_file(asset_file, job.content_type)
     if stale_asset_detected(job.user_id, job.project_id, job.asset_path, job.id):
@@ -86,14 +87,17 @@ def run_processing_pipeline(job: ProcessingJobRecord, asset_file: Path) -> None:
     if not transcript_is_usable(transcript):
         mark_transcript_failure(job, transcript)
         return
+    job_store.heartbeat(job.id)
     with timed_stage("script_generation", settings.script_generation_warn_seconds):
         launch_script = save_scripting_step(job, transcript)
     if stale_asset_detected(job.user_id, job.project_id, job.asset_path, job.id):
         return
+    job_store.heartbeat(job.id)
     with timed_stage("planning", settings.planning_warn_seconds):
         save_planning_step(job, asset_file, launch_script, transcript)
     if stale_asset_detected(job.user_id, job.project_id, job.asset_path, job.id):
         return
+    job_store.heartbeat(job.id)
     with timed_stage("render_pipeline", settings.total_pipeline_warn_seconds):
         save_render_step(job)
 

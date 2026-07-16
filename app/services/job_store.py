@@ -7,7 +7,7 @@ from uuid import uuid4
 from app.models.projects import ProcessingJobRecord
 from app.services.database import connection_scope
 
-STALE_CLAIM_WINDOW = timedelta(minutes=15)
+STALE_CLAIM_WINDOW = timedelta(minutes=45)
 
 
 class JobStore:
@@ -106,6 +106,18 @@ class JobStore:
 
     def mark_failed(self, job_id: str, error_message: str) -> None:
         self._update_job_status(job_id, "failed", error_message)
+
+    def heartbeat(self, job_id: str) -> None:
+        with connection_scope() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    update processing_jobs
+                    set updated_at = %s, claimed_at = %s
+                    where id = %s and status = 'processing'
+                    """,
+                    (datetime.now(UTC), datetime.now(UTC), job_id),
+                )
 
     def _update_job_status(self, job_id: str, status: str, error_message: str) -> None:
         with connection_scope() as connection:

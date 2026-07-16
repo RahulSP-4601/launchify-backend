@@ -20,7 +20,13 @@ def build_voiceover(
     cues = cue_track(launch_script)
     script = " ".join(cue.text for cue in cues).strip()
     if mode == "original":
-        return VoiceoverRecord(mode=mode, status="disabled", script=script, cues=cues)
+        return VoiceoverRecord(
+            mode=mode,
+            status="disabled",
+            script=script,
+            cues=cues,
+            duration_seconds=round(cues[-1].end, 2) if cues else 0.0,
+        )
     if not script:
         return VoiceoverRecord(mode=mode, status="disabled", script="", cues=[])
     audio_asset = synthesize_voiceover(user_id, project_id, script)
