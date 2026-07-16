@@ -36,6 +36,8 @@ async def health_check() -> dict[str, str]:
         "status": "ok",
         "service": settings.app_name,
         "environment": settings.app_env,
+        "process_role": settings.process_role,
+        "job_runner_enabled": "true" if settings.should_run_job_runner else "false",
     }
 
 

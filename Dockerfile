@@ -57,7 +57,8 @@ RUN npm ci --prefix ./render-worker
 
 COPY app ./app
 COPY render-worker ./render-worker
+COPY start.sh ./start.sh
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "./start.sh"]

@@ -18,7 +18,8 @@ logger = logging.getLogger(__name__)
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     logger.info("Startup: ensuring database schema")
     ensure_schema()
-    if settings.run_job_runner:
+    logger.info("Startup: process role=%s job_runner_enabled=%s", settings.process_role, settings.should_run_job_runner)
+    if settings.should_run_job_runner:
         logger.info("Startup: starting job runner")
         job_runner.start()
     else:
@@ -26,7 +27,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
-        if settings.run_job_runner:
+        if settings.should_run_job_runner:
             logger.info("Shutdown: stopping job runner")
             await job_runner.stop()
 

@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -11,6 +12,7 @@ class Settings(BaseSettings):
     app_port: int = 8000
     app_url: str = "http://localhost:8000"
     frontend_url: str = "http://localhost:3000"
+    process_role: Literal["web", "worker", "all"] = "web"
 
     supabase_url: str = ""
     supabase_anon_key: str = ""
@@ -33,7 +35,7 @@ class Settings(BaseSettings):
     visual_analysis_concurrency: int = 1
     render_worker_dir: str = str(Path(__file__).resolve().parents[2] / "render-worker")
     render_timeout_seconds: int = 240
-    run_job_runner: bool = True
+    run_job_runner: bool | None = None
     job_runner_poll_interval_seconds: int = 3
     transcription_warn_seconds: int = 45
     script_generation_warn_seconds: int = 25
@@ -51,6 +53,12 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    @property
+    def should_run_job_runner(self) -> bool:
+        if self.run_job_runner is not None:
+            return self.run_job_runner
+        return self.process_role in {"worker", "all"}
 
 
 @lru_cache
