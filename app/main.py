@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    if not settings.serves_api:
+        raise RuntimeError("PROCESS_ROLE=worker must start via `python -m app.worker`, not `uvicorn app.main:app`.")
     logger.info("Startup: ensuring database schema")
     ensure_schema()
     logger.info("Startup: process role=%s job_runner_enabled=%s", settings.process_role, settings.should_run_job_runner)

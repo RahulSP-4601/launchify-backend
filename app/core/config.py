@@ -60,6 +60,14 @@ class Settings(BaseSettings):
             return self.run_job_runner
         return self.process_role in {"worker", "all"}
 
+    @property
+    def serves_api(self) -> bool:
+        return self.process_role in {"web", "all"}
+
+    @property
+    def serves_worker(self) -> bool:
+        return self.process_role in {"worker", "all"}
+
 
 @lru_cache
 def get_settings() -> Settings:
