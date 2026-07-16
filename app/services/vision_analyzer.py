@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 from pathlib import Path
 from urllib import error, request
 
@@ -13,6 +14,8 @@ from app.services.frame_signal_analyzer import FrameDiffResult, frame_diff_score
 from app.services.ocr_pipeline import OcrFrameResult
 from app.services.script_writer import describe_transport_error, openai_headers
 from app.services.video_frames import ExtractedFrame
+
+logger = logging.getLogger(__name__)
 
 
 def analyze_scene_frames(
@@ -129,13 +132,24 @@ def vision_text_message(
 
 
 def vision_image_messages(extracted_frames: list[ExtractedFrame]) -> list[dict[str, object]]:
-    return [
-        {
-            "type": "image_url",
-            "image_url": {"url": data_url(frame.image_path)},
-        }
-        for frame in extracted_frames
-    ]
+    messages: list[dict[str, object]] = []
+    for frame in extracted_frames:
+        if not frame.image_path.exists():
+            logger.warning(
+                "Skipping missing visual-analysis frame at %.2fs: %s",
+                frame.timestamp,
+                frame.image_path,
+            )
+            continue
+        messages.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": data_url(frame.image_path)},
+            }
+        )
+    if not messages:
+        raise RuntimeError("No usable visual-analysis frame images remained for OpenAI vision.")
+    return messages
 
 
 def data_url(frame_path: Path) -> str:
@@ -277,7 +291,7 @@ def cursor_path_confidence(frames: list[FrameSignalRecord]) -> float:
 def movement_consistency(frames: list[FrameSignalRecord]) -> float:
     deltas = [
         center_delta(previous.cursor_box, current.cursor_box)
-        for previous, current in zip(frames, frames[1:], strict=True)
+        for previous, current in zip(frames, frames[1:])
         if previous.cursor_box is not None and current.cursor_box is not None
     ]
     if not deltas:
