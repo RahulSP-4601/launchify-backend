@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
 from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -47,10 +50,10 @@ def extract_frames_for_scene(
     frame_width: int | None = None,
     jpeg_quality: int = 2,
 ) -> list[ExtractedFrame]:
-    extracted_frames = [
-        ExtractedFrame(
-            timestamp=frame_time,
-            image_path=extract_frame(
+    extracted_frames: list[ExtractedFrame] = []
+    for frame_index, frame_time in enumerate(sample_times(*scene_range, frame_budget=frame_budget), start=1):
+        try:
+            image_path = extract_frame(
                 video_path,
                 output_dir,
                 scene_number,
@@ -58,10 +61,20 @@ def extract_frames_for_scene(
                 frame_time,
                 frame_width=frame_width,
                 jpeg_quality=jpeg_quality,
-            ),
-        )
-        for frame_index, frame_time in enumerate(sample_times(*scene_range, frame_budget=frame_budget), start=1)
-    ]
+            )
+        except RuntimeError as exc:
+            logger.warning(
+                "Skipping scene %s frame %s at %.2fs for %s: %s",
+                scene_number,
+                frame_index,
+                frame_time,
+                video_path.name,
+                exc,
+            )
+            continue
+        extracted_frames.append(ExtractedFrame(timestamp=frame_time, image_path=image_path))
+    if not extracted_frames:
+        raise RuntimeError(f"No visual-analysis frames could be extracted for scene {scene_number}.")
     extracted_frames.sort(key=lambda frame: frame.timestamp)
     return extracted_frames
 
@@ -109,6 +122,8 @@ def extract_frame(
     except subprocess.CalledProcessError as exc:
         detail = exc.stderr.strip() or exc.stdout.strip() or "Unknown FFmpeg failure."
         raise RuntimeError(f"FFmpeg failed while extracting video frames: {detail}") from exc
+    if not output_path.exists() or output_path.stat().st_size == 0:
+        raise RuntimeError("FFmpeg did not write a usable frame image.")
     return output_path
 
 
