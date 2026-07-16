@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Any, Generator, cast
+from time import sleep
+from typing import Any, Callable, Generator, cast
 
 from app.services.database import connection_scope, get_connection
 
@@ -40,12 +41,10 @@ def projected_rendered_seconds(user_id: str, project_id: str, additional_seconds
 
 
 @contextmanager
-def usage_lock(user_id: str) -> Generator[None, None, None]:
+def usage_lock(user_id: str, heartbeat: Callable[[], None] | None = None) -> Generator[None, None, None]:
     connection = get_connection()
     try:
-        with connection.cursor() as cursor:
-            cursor.execute("select pg_advisory_lock(hashtext(%s))", (user_id,))
-        connection.commit()
+        acquire_usage_lock(connection, user_id, heartbeat)
         yield
     finally:
         try:
@@ -54,3 +53,16 @@ def usage_lock(user_id: str) -> Generator[None, None, None]:
             connection.commit()
         finally:
             connection.close()
+
+
+def acquire_usage_lock(connection: Any, user_id: str, heartbeat: Callable[[], None] | None = None) -> None:
+    while True:
+        with connection.cursor() as cursor:
+            cursor.execute("select pg_try_advisory_lock(hashtext(%s))", (user_id,))
+            row = cursor.fetchone()
+        connection.commit()
+        if row and bool(row[0]):
+            return
+        if heartbeat is not None:
+            heartbeat()
+        sleep(0.25)

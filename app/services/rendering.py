@@ -4,7 +4,7 @@ import json
 import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Literal
+from typing import Callable, Literal
 
 from app.core.config import get_settings
 from app.models.projects import EditPlanRecord, ProjectRecord, QualityReportRecord, RenderedVideoRecord
@@ -18,6 +18,7 @@ from app.services.usage_service import projected_rendered_seconds, total_rendere
 def render_project_videos(
     user_id: str,
     project: ProjectRecord,
+    heartbeat: Callable[[], None] | None = None,
 ) -> tuple[RenderedVideoRecord, RenderedVideoRecord, EditPlanRecord, QualityReportRecord]:
     asset_path = require_asset_path(project)
     settings = get_settings()
@@ -28,17 +29,23 @@ def render_project_videos(
         voiceover_audio = download_voiceover_audio(project)
         try:
             preview_output = temp_dir / "preview.mp4"
+            beat(heartbeat)
             with timed_stage("preview_render_initial", settings.preview_render_warn_seconds):
                 render_preview_output(project, source_video, voiceover_audio, temp_dir, preview_output)
+            beat(heartbeat)
             with timed_stage("preview_review", settings.planning_warn_seconds):
                 reviewed_project, quality_report, rerender_preview = reviewed_project(project, preview_output)
+            beat(heartbeat)
             enforce_final_render_limit(user_id, reviewed_project)
             if rerender_preview:
                 with timed_stage("preview_render_refined", settings.preview_render_warn_seconds):
                     render_preview_output(reviewed_project, source_video, voiceover_audio, temp_dir, preview_output)
+                beat(heartbeat)
             preview_video = upload_variant(user_id, reviewed_project, preview_output, "preview")
+            beat(heartbeat)
             with timed_stage("final_render", settings.final_render_warn_seconds):
                 final_video = render_and_upload_variant(user_id, reviewed_project, source_video, voiceover_audio, temp_dir, "final")
+            beat(heartbeat)
             return preview_video, final_video, require_edit_plan(reviewed_project), quality_report
         finally:
             source_video.unlink(missing_ok=True)
@@ -195,3 +202,8 @@ def ensure_render_worker_ready() -> None:
         raise RuntimeError("Render worker directory is missing. Install the backend render worker.")
     if not (worker_dir / "package.json").exists():
         raise RuntimeError("Render worker package.json is missing. Install the backend render worker.")
+
+
+def beat(heartbeat: Callable[[], None] | None) -> None:
+    if heartbeat is not None:
+        heartbeat()

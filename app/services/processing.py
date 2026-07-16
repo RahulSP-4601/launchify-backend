@@ -149,10 +149,14 @@ def save_planning_step(
 
 
 def save_render_step(job: ProcessingJobRecord) -> None:
-    with usage_lock(job.user_id):
+    def heartbeat() -> None:
+        job_store.heartbeat(job.id)
+
+    with usage_lock(job.user_id, heartbeat=heartbeat):
         preview_video, final_video, refined_edit_plan, refined_quality_report = render_project_videos(
             job.user_id,
             require_project(job.user_id, job.project_id),
+            heartbeat=heartbeat,
         )
         project_store.save_refined_edit_plan(
             job.user_id,
