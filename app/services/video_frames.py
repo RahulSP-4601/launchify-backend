@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import subprocess
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,53 +18,65 @@ def extract_scene_frames(
     scene_numbers: list[int],
     scene_ranges: list[tuple[float, float]],
     output_dir: Path,
+    *,
+    frame_budget: int | None = None,
+    frame_width: int | None = None,
+    jpeg_quality: int = 2,
 ) -> dict[int, list[ExtractedFrame]]:
-    planned_frames = [
-        (scene_number, frame_index, frame_time)
-        for scene_number, scene_range in zip(scene_numbers, scene_ranges, strict=True)
-        for frame_index, frame_time in enumerate(sample_times(*scene_range), start=1)
-    ]
-    max_workers = min(max(get_settings().visual_analysis_concurrency, 1) * 2, max(len(planned_frames), 1))
-    frames_by_scene: dict[int, list[ExtractedFrame]] = {scene_number: [] for scene_number in scene_numbers}
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        extracted = executor.map(
-            lambda frame: build_extracted_frame(video_path, output_dir, *frame),
-            planned_frames,
+    return {
+        scene_number: extract_frames_for_scene(
+            video_path,
+            scene_number,
+            scene_range,
+            output_dir,
+            frame_budget=frame_budget,
+            frame_width=frame_width,
+            jpeg_quality=jpeg_quality,
         )
-        for scene_number, extracted_frame in extracted:
-            frames_by_scene[scene_number].append(extracted_frame)
-    for extracted_frames in frames_by_scene.values():
-        extracted_frames.sort(key=lambda frame: frame.timestamp)
-    return frames_by_scene
+        for scene_number, scene_range in zip(scene_numbers, scene_ranges, strict=True)
+    }
 
 
-def build_extracted_frame(
+def extract_frames_for_scene(
     video_path: Path,
-    output_dir: Path,
     scene_number: int,
-    frame_index: int,
-    timestamp: float,
-) -> tuple[int, ExtractedFrame]:
-    return (
-        scene_number,
+    scene_range: tuple[float, float],
+    output_dir: Path,
+    *,
+    frame_budget: int | None = None,
+    frame_width: int | None = None,
+    jpeg_quality: int = 2,
+) -> list[ExtractedFrame]:
+    extracted_frames = [
         ExtractedFrame(
-            timestamp=timestamp,
-            image_path=extract_frame(video_path, output_dir, scene_number, frame_index, timestamp),
-        ),
-    )
+            timestamp=frame_time,
+            image_path=extract_frame(
+                video_path,
+                output_dir,
+                scene_number,
+                frame_index,
+                frame_time,
+                frame_width=frame_width,
+                jpeg_quality=jpeg_quality,
+            ),
+        )
+        for frame_index, frame_time in enumerate(sample_times(*scene_range, frame_budget=frame_budget), start=1)
+    ]
+    extracted_frames.sort(key=lambda frame: frame.timestamp)
+    return extracted_frames
 
 
-def sample_times(start: float, end: float) -> list[float]:
+def sample_times(start: float, end: float, *, frame_budget: int | None = None) -> list[float]:
+    effective_frame_budget = max(frame_budget or 6, 2)
     duration = max(end - start, 0.3)
+    earliest = start + min(0.2, duration * 0.08)
+    latest = end - min(0.2, duration * 0.08)
+    if effective_frame_budget == 2:
+        return unique_times([earliest, latest])
+    sampling_span = max(latest - earliest, 0.01)
+    step = sampling_span / max(effective_frame_budget - 1, 1)
     return unique_times(
-        [
-            start + min(0.2, duration * 0.08),
-            start + duration * 0.2,
-            start + duration * 0.4,
-            start + duration * 0.6,
-            start + duration * 0.8,
-            end - min(0.2, duration * 0.08),
-        ]
+        [min(earliest + (step * index), latest) for index in range(effective_frame_budget - 1)] + [latest]
     )
 
 
@@ -75,9 +86,12 @@ def extract_frame(
     scene_number: int,
     frame_index: int,
     timestamp: float,
+    *,
+    frame_width: int | None = None,
+    jpeg_quality: int = 2,
 ) -> Path:
     output_path = output_dir / f"scene-{scene_number}-frame-{frame_index}.jpg"
-    command = build_ffmpeg_command(video_path, output_path, timestamp)
+    command = build_ffmpeg_command(video_path, output_path, timestamp, frame_width=frame_width, jpeg_quality=jpeg_quality)
     try:
         subprocess.run(
             command,
@@ -98,9 +112,17 @@ def extract_frame(
     return output_path
 
 
-def build_ffmpeg_command(video_path: Path, output_path: Path, timestamp: float) -> list[str]:
-    ffmpeg_binary = get_settings().ffmpeg_binary
-    return [
+def build_ffmpeg_command(
+    video_path: Path,
+    output_path: Path,
+    timestamp: float,
+    *,
+    frame_width: int | None = None,
+    jpeg_quality: int = 2,
+) -> list[str]:
+    settings = get_settings()
+    ffmpeg_binary = settings.ffmpeg_binary
+    command = [
         ffmpeg_binary,
         "-y",
         "-ss",
@@ -110,9 +132,12 @@ def build_ffmpeg_command(video_path: Path, output_path: Path, timestamp: float) 
         "-frames:v",
         "1",
         "-q:v",
-        "2",
-        str(output_path),
+        str(jpeg_quality),
     ]
+    if frame_width is not None:
+        command.extend(["-vf", f"scale='min(iw,{frame_width})':-2"])
+    command.append(str(output_path))
+    return command
 
 
 def unique_times(timestamps: list[float]) -> list[float]:

@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     tesseract_binary: str = "/opt/homebrew/bin/tesseract"
     tesseract_timeout_seconds: int = 15
     visual_analysis_concurrency: int = 1
+    visual_analysis_frames_per_scene: int = 4
+    visual_analysis_frame_width: int = 960
+    visual_analysis_jpeg_quality: int = 6
     render_worker_dir: str = str(Path(__file__).resolve().parents[2] / "render-worker")
     render_timeout_seconds: int = 240
     run_job_runner: bool | None = None
