@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 import subprocess
+from dataclasses import dataclass
 from pathlib import Path
 
 from app.core.config import get_settings
@@ -8,18 +10,51 @@ from app.core.config import get_settings
 FRAME_WIDTH = 64
 FRAME_HEIGHT = 36
 FRAME_BYTES = FRAME_WIDTH * FRAME_HEIGHT
+FRAME_SEEK_OFFSETS = (0.0, -0.08, -0.2)
+logger = logging.getLogger(__name__)
 
 
-def frame_diff_scores(video_path: Path, timestamps: list[float]) -> list[float]:
-    frames = [grayscale_frame(video_path, timestamp) for timestamp in timestamps]
+@dataclass(frozen=True)
+class FrameDiffResult:
+    scores: list[float]
+    available: bool
+
+
+def frame_diff_scores(video_path: Path, timestamps: list[float]) -> FrameDiffResult:
+    frames: list[bytes] = []
+    for timestamp in timestamps:
+        frame = grayscale_frame(video_path, timestamp)
+        if frame is None:
+            return FrameDiffResult(scores=[], available=False)
+        frames.append(frame)
     if not frames:
-        return []
+        return FrameDiffResult(scores=[], available=False)
     scores = [0.0]
     scores.extend(diff_score(previous, current) for previous, current in zip(frames, frames[1:], strict=True))
-    return [round(score, 3) for score in normalize_scores(scores)]
+    return FrameDiffResult(scores=[round(score, 3) for score in normalize_scores(scores)], available=True)
 
 
-def grayscale_frame(video_path: Path, timestamp: float) -> bytes:
+def grayscale_frame(video_path: Path, timestamp: float) -> bytes | None:
+    failure_details: list[str] = []
+    for seek_offset in FRAME_SEEK_OFFSETS:
+        candidate_timestamp = max(0.0, round(timestamp + seek_offset, 3))
+        result = run_raw_frame_command(video_path, candidate_timestamp)
+        if result is None:
+            failure_details.append(f"{candidate_timestamp:.3f}s: no frame")
+            continue
+        if len(result) == FRAME_BYTES:
+            return result
+        failure_details.append(f"{candidate_timestamp:.3f}s: {len(result)} bytes")
+    logger.warning(
+        "Skipping frame-diff motion evidence for %s at %.3fs (%s)",
+        video_path.name,
+        timestamp,
+        ", ".join(failure_details) or "unknown frame extraction failure",
+    )
+    return None
+
+
+def run_raw_frame_command(video_path: Path, timestamp: float) -> bytes | None:
     command = ffmpeg_raw_frame_command(video_path, timestamp)
     try:
         result = subprocess.run(command, check=True, capture_output=True)
@@ -27,10 +62,9 @@ def grayscale_frame(video_path: Path, timestamp: float) -> bytes:
         raise RuntimeError("FFmpeg is required for frame-diff analysis.") from exc
     except subprocess.CalledProcessError as exc:
         detail = exc.stderr.decode("utf-8", errors="ignore").strip()
-        raise RuntimeError(f"FFmpeg failed while computing frame diff: {detail}") from exc
-    if len(result.stdout) != FRAME_BYTES:
-        raise RuntimeError("FFmpeg did not return the expected raw grayscale frame.")
-    return result.stdout
+        logger.warning("FFmpeg frame-diff extraction failed for %s at %.3fs: %s", video_path.name, timestamp, detail)
+        return None
+    return result.stdout or None
 
 
 def diff_score(previous_frame: bytes, current_frame: bytes) -> float:
@@ -60,6 +94,8 @@ def ffmpeg_raw_frame_command(video_path: Path, timestamp: float) -> list[str]:
         "1",
         "-vf",
         f"scale={FRAME_WIDTH}:{FRAME_HEIGHT},format=gray",
+        "-pix_fmt",
+        "gray",
         "-f",
         "rawvideo",
         "-",

@@ -1,9 +1,23 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from queue import LifoQueue
+from threading import Lock
 from typing import Any, Generator
 
 from app.core.config import get_settings
+
+_POOL_LOCK = Lock()
+_CONNECTION_POOL: LifoQueue[Any] | None = None
+
+
+def _pool() -> LifoQueue[Any]:
+    global _CONNECTION_POOL
+    if _CONNECTION_POOL is None:
+        with _POOL_LOCK:
+            if _CONNECTION_POOL is None:
+                _CONNECTION_POOL = LifoQueue(maxsize=max(get_settings().database_pool_size, 1))
+    return _CONNECTION_POOL
 
 
 def get_connection() -> Any:
@@ -21,17 +35,61 @@ def get_connection() -> Any:
     )
 
 
+def acquire_connection() -> Any:
+    pool = _pool()
+    try:
+        connection = pool.get_nowait()
+    except Exception:
+        return get_connection()
+    if not connection_is_usable(connection):
+        close_connection(connection)
+        return get_connection()
+    return connection
+
+
+def release_connection(connection: Any) -> None:
+    if getattr(connection, "closed", False):
+        return
+    pool = _pool()
+    try:
+        pool.put_nowait(connection)
+    except Exception:
+        close_connection(connection)
+
+
+def connection_is_usable(connection: Any) -> bool:
+    if getattr(connection, "closed", False):
+        return False
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("select 1")
+            cursor.fetchone()
+    except Exception:
+        return False
+    return True
+
+
+def close_connection(connection: Any) -> None:
+    try:
+        connection.close()
+    except Exception:
+        return
+
+
 @contextmanager
 def connection_scope() -> Generator[Any, None, None]:
-    connection = get_connection()
+    connection = acquire_connection()
     try:
         yield connection
         connection.commit()
     except Exception:
-        connection.rollback()
+        try:
+            connection.rollback()
+        except Exception:
+            connection.close()
         raise
     finally:
-        connection.close()
+        release_connection(connection)
 
 
 def ensure_schema() -> None:

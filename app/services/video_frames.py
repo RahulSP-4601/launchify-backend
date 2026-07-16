@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,17 +20,39 @@ def extract_scene_frames(
     scene_ranges: list[tuple[float, float]],
     output_dir: Path,
 ) -> dict[int, list[ExtractedFrame]]:
-    frames_by_scene: dict[int, list[ExtractedFrame]] = {}
-    for scene_number, scene_range in zip(scene_numbers, scene_ranges, strict=True):
-        frame_times = sample_times(*scene_range)
-        frames_by_scene[scene_number] = [
-            ExtractedFrame(
-                timestamp=frame_time,
-                image_path=extract_frame(video_path, output_dir, scene_number, frame_index, frame_time),
-            )
-            for frame_index, frame_time in enumerate(frame_times, start=1)
-        ]
+    planned_frames = [
+        (scene_number, frame_index, frame_time)
+        for scene_number, scene_range in zip(scene_numbers, scene_ranges, strict=True)
+        for frame_index, frame_time in enumerate(sample_times(*scene_range), start=1)
+    ]
+    max_workers = min(max(get_settings().visual_analysis_concurrency, 1) * 2, max(len(planned_frames), 1))
+    frames_by_scene: dict[int, list[ExtractedFrame]] = {scene_number: [] for scene_number in scene_numbers}
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        extracted = executor.map(
+            lambda frame: build_extracted_frame(video_path, output_dir, *frame),
+            planned_frames,
+        )
+        for scene_number, extracted_frame in extracted:
+            frames_by_scene[scene_number].append(extracted_frame)
+    for extracted_frames in frames_by_scene.values():
+        extracted_frames.sort(key=lambda frame: frame.timestamp)
     return frames_by_scene
+
+
+def build_extracted_frame(
+    video_path: Path,
+    output_dir: Path,
+    scene_number: int,
+    frame_index: int,
+    timestamp: float,
+) -> tuple[int, ExtractedFrame]:
+    return (
+        scene_number,
+        ExtractedFrame(
+            timestamp=timestamp,
+            image_path=extract_frame(video_path, output_dir, scene_number, frame_index, timestamp),
+        ),
+    )
 
 
 def sample_times(start: float, end: float) -> list[float]:

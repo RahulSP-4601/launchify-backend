@@ -20,6 +20,7 @@ from app.models.projects import (
 from app.services.auth import get_authenticated_user_id
 from app.services.phase_four import apply_phase_four_update
 from app.services.project_store import project_store
+from app.services.project_summary_store import project_summary_store
 from app.services.storage import download_asset_to_file, upload_video_file
 from app.services.usage_service import total_rendered_seconds
 
@@ -41,27 +42,7 @@ async def health_check() -> dict[str, str]:
 @router.get("/projects", response_model=list[ProjectSummary], tags=["projects"])
 async def list_projects(request: Request) -> list[ProjectSummary]:
     user_id = get_authenticated_user_id(request)
-    projects = project_store.list_projects(user_id)
-    return [
-        ProjectSummary(
-            id=project.id,
-            project_name=project.project_name,
-            product_name=project.product_name,
-            video_goal=project.video_goal,
-            status=project.status,
-            created_at=project.created_at,
-            updated_at=project.updated_at,
-            has_transcript=bool(project.transcript),
-            has_launch_script=project.launch_script is not None,
-            has_edit_plan=project.edit_plan is not None,
-            has_quality_report=project.quality_report is not None,
-            has_benchmark_report=project.benchmark_report is not None,
-            has_voiceover=project.voiceover is not None and bool(project.voiceover.script),
-            has_preview_video=project.preview_video is not None,
-            has_final_video=project.final_video is not None,
-        )
-        for project in projects
-    ]
+    return project_summary_store.list_projects(user_id)
 
 
 @router.get("/usage", response_model=UsageSummary, tags=["projects"])

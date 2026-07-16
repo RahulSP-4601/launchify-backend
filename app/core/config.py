@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     supabase_legacy_jwt_secret: str = ""
     database_url: str = ""
     database_connect_timeout_seconds: int = 10
+    database_pool_size: int = 8
     supabase_storage_bucket: str = "launchify-assets"
     deepgram_api_key: str = ""
     deepgram_tts_model: str = "aura-2-thalia-en"
@@ -27,6 +28,7 @@ class Settings(BaseSettings):
     openai_vision_model: str = "gpt-4.1-mini"
     ffmpeg_binary: str = "ffmpeg"
     tesseract_binary: str = "/opt/homebrew/bin/tesseract"
+    visual_analysis_concurrency: int = 3
     render_worker_dir: str = str(Path(__file__).resolve().parents[2] / "render-worker")
     trial_minutes_limit: int = 10
     posthog_api_key: str = ""

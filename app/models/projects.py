@@ -97,6 +97,7 @@ class VisualSceneAnalysisRecord(BaseModel):
     click_target_box: FocusBox | None = None
     frames: list[FrameSignalRecord] = Field(default_factory=list)
     frame_diff_score: float = Field(ge=0.0, le=1.0, default=0.0)
+    frame_diff_available: bool = True
     cursor_path_confidence: float = Field(ge=0.0, le=1.0, default=0.0)
     ocr_match_score: float = Field(ge=0.0, le=1.0, default=0.0)
     ocr_confidence: float = Field(ge=0.0, le=1.0, default=0.0)

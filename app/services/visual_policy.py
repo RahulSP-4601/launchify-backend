@@ -173,7 +173,7 @@ def gather_evidence(
         visual_confidence=visual_score(visual_analysis),
         click_score=click_score(visual_analysis),
         motion_score=visual_analysis.motion_score if visual_analysis else 0.0,
-        frame_diff_score=visual_analysis.frame_diff_score if visual_analysis else 0.0,
+        frame_diff_score=frame_diff_score(visual_analysis),
         cursor_path_confidence=visual_analysis.cursor_path_confidence if visual_analysis else 0.0,
         ocr_match_score=ocr_match_score(scene_text, visual_analysis),
         ocr_confidence=visual_analysis.ocr_confidence if visual_analysis else 0.0,
@@ -182,8 +182,22 @@ def gather_evidence(
         click_target_box=visual_analysis.click_target_box if visual_analysis else None,
         anchor_box=visual_analysis.anchor_box if visual_analysis else None,
         target_label=best_label(visual_analysis),
-        visual_summary=visual_analysis.summary if visual_analysis else "No frame analysis available for this scene.",
+        visual_summary=scene_visual_summary(visual_analysis),
     )
+
+
+def frame_diff_score(visual_analysis: VisualSceneAnalysisRecord | None) -> float:
+    if not visual_analysis or not visual_analysis.frame_diff_available:
+        return 0.0
+    return visual_analysis.frame_diff_score
+
+
+def scene_visual_summary(visual_analysis: VisualSceneAnalysisRecord | None) -> str:
+    if not visual_analysis:
+        return "No frame analysis available for this scene."
+    if visual_analysis.frame_diff_available:
+        return visual_analysis.summary
+    return f"{visual_analysis.summary} Motion diff evidence was unavailable."
 
 
 def keyword_density(text: str, keywords: tuple[str, ...]) -> float:

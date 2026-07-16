@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from app.core.config import get_settings
 from app.models.projects import FocusBox, FrameSignalRecord, LaunchScriptScene, VisualSceneAnalysisRecord
-from app.services.frame_signal_analyzer import frame_diff_scores
+from app.services.frame_signal_analyzer import FrameDiffResult, frame_diff_scores
 from app.services.ocr_pipeline import OcrFrameResult
 from app.services.script_writer import describe_transport_error, openai_headers
 from app.services.video_frames import ExtractedFrame
@@ -26,16 +26,18 @@ def analyze_scene_frames(
     if not settings.openai_api_key:
         raise RuntimeError("OpenAI is not configured yet. Add OPENAI_API_KEY to enable visual analysis.")
     timestamps = [frame.timestamp for frame in extracted_frames]
+    diff_result = frame_diff_scores(video_path, timestamps)
     payload = request_openai_vision(
         scene,
         scene_range,
         extracted_frames,
-        frame_diff_scores(video_path, timestamps),
+        diff_result,
         ocr_labels_by_timestamp,
     )
     try:
-        return enrich_scene_analysis(
+        return finalize_scene_analysis(
             VisualSceneAnalysisRecord.model_validate(payload),
+            diff_result,
             ocr_labels_by_timestamp,
         )
     except ValidationError as exc:
@@ -46,12 +48,12 @@ def request_openai_vision(
     scene: LaunchScriptScene,
     scene_range: tuple[float, float],
     extracted_frames: list[ExtractedFrame],
-    diff_scores: list[float],
+    diff_result: FrameDiffResult,
     ocr_labels_by_timestamp: dict[float, OcrFrameResult],
 ) -> dict[str, object]:
     settings = get_settings()
     content = [
-        vision_text_message(scene, scene_range, extracted_frames, diff_scores, ocr_labels_by_timestamp),
+        vision_text_message(scene, scene_range, extracted_frames, diff_result, ocr_labels_by_timestamp),
         *vision_image_messages(extracted_frames),
     ]
     request_payload = {
@@ -99,9 +101,14 @@ def vision_text_message(
     scene: LaunchScriptScene,
     scene_range: tuple[float, float],
     extracted_frames: list[ExtractedFrame],
-    diff_scores: list[float],
+    diff_result: FrameDiffResult,
     ocr_labels_by_timestamp: dict[float, OcrFrameResult],
 ) -> dict[str, object]:
+    motion_evidence_text = (
+        frame_context(extracted_frames, diff_result.scores)
+        if diff_result.available
+        else "Unavailable because FFmpeg could not decode one or more sampled grayscale frames."
+    )
     return {
         "type": "text",
         "text": (
@@ -111,11 +118,12 @@ def vision_text_message(
             f"Spoken line: {scene.spoken_line}\n"
             f"On-screen text hint: {scene.on_screen_text}\n"
             f"Transcript excerpt: {scene.source_excerpt}\n\n"
-            f"Frame timestamps and diff scores: {frame_context(extracted_frames, diff_scores)}\n"
+            f"Frame timestamps and diff scores: {motion_evidence_text}\n"
             f"Local OCR hints: {ocr_context(extracted_frames, ocr_labels_by_timestamp)}\n\n"
             "Track the cursor across frames, identify likely click hotspots, read visible UI labels, "
             "and anchor the best UI focus box. Be conservative. If evidence is weak, keep boxes null "
-            "and lower confidence. Favor stable UI elements that match the spoken step."
+            "and lower confidence. Favor stable UI elements that match the spoken step. If frame-diff "
+            "motion evidence is unavailable, rely on the frame images and OCR hints instead of guessing motion."
         ),
     }
 
@@ -152,6 +160,22 @@ def parse_visual_payload(payload: dict[str, object]) -> dict[str, object]:
     return parsed
 
 
+def finalize_scene_analysis(
+    analysis: VisualSceneAnalysisRecord,
+    diff_result: FrameDiffResult,
+    ocr_labels_by_timestamp: dict[float, OcrFrameResult],
+) -> VisualSceneAnalysisRecord:
+    enriched = enrich_scene_analysis(analysis, ocr_labels_by_timestamp)
+    frame_diff_score = enriched.frame_diff_score if diff_result.available else strongest_diff_score(enriched.frames)
+    return enriched.model_copy(
+        update={
+            "frame_diff_available": diff_result.available,
+            "frame_diff_score": frame_diff_score,
+            "summary": summary_with_motion_evidence(enriched.summary, diff_result.available),
+        }
+    )
+
+
 def enrich_scene_analysis(
     analysis: VisualSceneAnalysisRecord,
     ocr_labels_by_timestamp: dict[float, OcrFrameResult],
@@ -170,6 +194,12 @@ def enrich_scene_analysis(
             "frames": frames,
         }
     )
+
+
+def summary_with_motion_evidence(summary: str, available: bool) -> str:
+    if available:
+        return summary
+    return f"{summary} Motion diff evidence was unavailable, so motion confidence relies on image and OCR signals only."
 
 
 def merged_frames(
