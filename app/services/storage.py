@@ -4,16 +4,19 @@ import hashlib
 import http.client
 import mimetypes
 import re
+import socket
+import time
 from tempfile import NamedTemporaryFile
 from pathlib import Path
 from urllib import error, parse, request
 from urllib.parse import urlsplit
-from typing import Literal
+from typing import Callable, Literal
 
 from app.core.config import get_settings
 from app.models.projects import AssetRecord, RenderedVideoRecord
 
 FILENAME_SANITIZE_PATTERN = re.compile(r"[^A-Za-z0-9._-]+")
+UploadHeartbeat = Callable[[], None]
 
 
 def upload_video(user_id: str, project_id: str, filename: str, content_type: str, file_bytes: bytes) -> AssetRecord:
@@ -118,6 +121,7 @@ def upload_rendered_video_file(
     filename: str,
     source_path: Path,
     duration_seconds: float,
+    heartbeat: UploadHeartbeat | None = None,
 ) -> RenderedVideoRecord:
     settings = get_settings()
     bucket = settings.supabase_storage_bucket
@@ -128,6 +132,7 @@ def upload_rendered_video_file(
         content_type="video/mp4",
         content_length=source_path.stat().st_size,
         source_path=source_path,
+        heartbeat=heartbeat,
     )
     return RenderedVideoRecord(
         filename=filename,
@@ -170,6 +175,7 @@ def send_storage_upload(
     content_length: int,
     source_path: Path | None = None,
     file_bytes: bytes | None = None,
+    heartbeat: UploadHeartbeat | None = None,
 ) -> None:
     parsed = urlsplit(endpoint)
     connection = build_connection(parsed)
@@ -178,11 +184,13 @@ def send_storage_upload(
         for header_name, header_value in upload_headers(content_type, content_length).items():
             connection.putheader(header_name, header_value)
         connection.endheaders()
-        stream_request_body(connection, source_path, file_bytes)
-        response = connection.getresponse()
+        stream_request_body(connection, source_path, file_bytes, heartbeat=heartbeat)
+        response = wait_for_upload_response(connection, heartbeat=heartbeat)
         detail = response.read().decode("utf-8", errors="ignore")
         if response.status >= 400:
             raise RuntimeError(f"Supabase Storage upload failed: {detail}")
+        if heartbeat is not None:
+            heartbeat()
     finally:
         connection.close()
 
@@ -222,12 +230,43 @@ def stream_request_body(
     connection: http.client.HTTPConnection,
     source_path: Path | None,
     file_bytes: bytes | None,
+    heartbeat: UploadHeartbeat | None = None,
 ) -> None:
     if file_bytes is not None:
         connection.send(file_bytes)
+        if heartbeat is not None:
+            heartbeat()
         return
     if source_path is None:
         raise RuntimeError("No upload source was provided.")
     with source_path.open("rb") as file_pointer:
         while chunk := file_pointer.read(1024 * 1024):
             connection.send(chunk)
+            if heartbeat is not None:
+                heartbeat()
+
+
+def wait_for_upload_response(
+    connection: http.client.HTTPConnection,
+    *,
+    heartbeat: UploadHeartbeat | None,
+) -> http.client.HTTPResponse:
+    settings = get_settings()
+    deadline = time.monotonic() + settings.effective_job_stale_claim_window_seconds
+    timeout_seconds = max(settings.job_heartbeat_interval_seconds, 1)
+    sock = connection.sock
+    if sock is None:
+        return connection.getresponse()
+    previous_timeout = sock.gettimeout()
+    sock.settimeout(timeout_seconds)
+    try:
+        while True:
+            try:
+                return connection.getresponse()
+            except socket.timeout as exc:
+                if heartbeat is not None:
+                    heartbeat()
+                if time.monotonic() >= deadline:
+                    raise RuntimeError("Supabase Storage upload response timed out.") from exc
+    finally:
+        sock.settimeout(previous_timeout)

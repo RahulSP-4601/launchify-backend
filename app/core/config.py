@@ -45,12 +45,12 @@ class Settings(BaseSettings):
     render_timeout_seconds: int = 420
     render_concurrency: int = 1
     render_offthread_video_threads: int = 1
-    render_media_cache_size_mb: int = 64
-    render_offthread_video_cache_size_mb: int = 64
+    render_media_cache_size_mb: int = 32
+    render_offthread_video_cache_size_mb: int = 32
     render_retry_attempts: int = 1
     run_job_runner: bool | None = None
     job_runner_poll_interval_seconds: int = 3
-    job_stale_claim_window_seconds: int = 900
+    job_stale_claim_window_seconds: int = 120
     job_heartbeat_interval_seconds: int = 10
     transcription_warn_seconds: int = 45
     script_generation_warn_seconds: int = 25
@@ -85,7 +85,8 @@ class Settings(BaseSettings):
 
     @property
     def effective_job_stale_claim_window_seconds(self) -> int:
-        # Never reclaim an active job before a healthy render stage has had time to finish.
+        # Never reclaim an active render job before a healthy long-running stage
+        # has had enough time to finish or emit the next heartbeat.
         return max(
             self.job_stale_claim_window_seconds,
             self.render_timeout_seconds + (self.job_heartbeat_interval_seconds * 3),

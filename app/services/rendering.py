@@ -42,14 +42,14 @@ def render_project_videos(
         temp_dir = Path(temp_dir_name)
         source_video = download_asset_to_file(asset_path)
         voiceover_audio = download_voiceover_audio(project)
-        render_source: Path | None = None
+        preview_render_source: Path | None = None
         try:
-            render_source = prepare_render_source(source_video, temp_dir, heartbeat)
+            preview_render_source = prepare_preview_render_source(source_video, temp_dir, heartbeat)
             return execute_render_pipeline(
                 user_id,
                 project,
                 source_video,
-                render_source,
+                preview_render_source,
                 voiceover_audio,
                 temp_dir,
                 settings,
@@ -60,8 +60,8 @@ def render_project_videos(
             )
         finally:
             source_video.unlink(missing_ok=True)
-            if render_source is not None and render_source != source_video:
-                render_source.unlink(missing_ok=True)
+            if preview_render_source is not None and preview_render_source != source_video:
+                preview_render_source.unlink(missing_ok=True)
             if voiceover_audio is not None:
                 voiceover_audio.unlink(missing_ok=True)
 
@@ -70,7 +70,7 @@ def execute_render_pipeline(
     user_id: str,
     project: ProjectRecord,
     source_video: Path,
-    render_source: Path,
+    preview_render_source: Path,
     voiceover_audio: Path | None,
     temp_dir: Path,
     settings: Settings,
@@ -82,7 +82,7 @@ def execute_render_pipeline(
     preview_video, reviewed_project, quality_report = execute_preview_pipeline(
         user_id,
         project,
-        render_source,
+        preview_render_source,
         voiceover_audio,
         temp_dir,
         settings,
@@ -143,7 +143,7 @@ def execute_preview_pipeline(
     notify_render_stage(stage_update, "preview_upload", reviewed_project.id)
     preview_video = run_with_retry(
         "preview upload",
-        lambda: upload_variant(user_id, reviewed_project, preview_output, "preview"),
+        lambda: upload_variant(user_id, reviewed_project, preview_output, "preview", heartbeat=heartbeat),
     )
     if preview_ready is not None:
         preview_ready(preview_video)
@@ -154,7 +154,7 @@ def execute_preview_pipeline(
 def execute_final_pipeline(
     user_id: str,
     project: ProjectRecord,
-    source_video: Path,
+    render_source: Path,
     voiceover_audio: Path | None,
     temp_dir: Path,
     settings: Settings,
@@ -165,7 +165,7 @@ def execute_final_pipeline(
     final_video = render_final_variant(
         user_id,
         project,
-        source_video,
+        render_source,
         voiceover_audio,
         temp_dir,
         settings,
@@ -200,7 +200,7 @@ def rerender_refined_preview(
 def render_final_variant(
     user_id: str,
     project: ProjectRecord,
-    source_video: Path,
+    render_source: Path,
     voiceover_audio: Path | None,
     temp_dir: Path,
     settings: Settings,
@@ -214,7 +214,7 @@ def render_final_variant(
             lambda: render_and_upload_variant(
                 user_id,
                 project,
-                source_video,
+                render_source,
                 voiceover_audio,
                 temp_dir,
                 "final",
@@ -244,7 +244,7 @@ def render_and_upload_variant(
     render_payload_path = write_render_payload(project, temp_dir, quality, voiceover_audio)
     invoke_render_worker(render_payload_path, source_video, output_path, quality, heartbeat=heartbeat)
     notify_render_stage(stage_update, f"{quality}_upload", project.id)
-    return upload_variant(user_id, project, output_path, quality)
+    return upload_variant(user_id, project, output_path, quality, heartbeat=heartbeat)
 
 
 def render_preview_output(
@@ -347,7 +347,7 @@ def wait_for_process(
             beat(heartbeat)
 
 
-def prepare_render_source(
+def prepare_preview_render_source(
     source_video: Path,
     temp_dir: Path,
     heartbeat: Callable[[], None] | None = None,
@@ -398,6 +398,7 @@ def upload_variant(
     project: ProjectRecord,
     output_path: Path,
     quality: Literal["preview", "final"],
+    heartbeat: Callable[[], None] | None = None,
 ) -> RenderedVideoRecord:
     verify_render_artifact(output_path, quality)
     duration = require_duration(project)
@@ -408,6 +409,7 @@ def upload_variant(
         filename=f"{project.project_name.lower().replace(' ', '-')}-{quality}.mp4",
         source_path=output_path,
         duration_seconds=duration,
+        heartbeat=heartbeat,
     )
     verify_uploaded_variant(uploaded_video, quality)
     return uploaded_video
