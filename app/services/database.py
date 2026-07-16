@@ -32,6 +32,7 @@ def get_connection() -> Any:
     return psycopg.connect(
         settings.database_url,
         connect_timeout=settings.database_connect_timeout_seconds,
+        prepare_threshold=None,
     )
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Sequence
 
@@ -28,6 +29,8 @@ from app.services.transcription import transcribe_media_file
 from app.services.usage_service import usage_lock
 from app.services.visual_analysis import analyze_video_scenes, visual_analysis_available
 
+logger = logging.getLogger(__name__)
+
 
 def process_job(job_id: str) -> None:
     job = job_store.get_job(job_id)
@@ -49,6 +52,15 @@ def process_job(job_id: str) -> None:
         job_store.mark_completed(job.id)
     except RuntimeError as exc:
         handle_job_failure(job.user_id, job.project_id, job.asset_path, job.id, str(exc))
+    except Exception as exc:
+        logger.exception("Unexpected processing failure for job %s", job.id)
+        handle_job_failure(
+            job.user_id,
+            job.project_id,
+            job.asset_path,
+            job.id,
+            f"Unexpected processing failure: {exc}",
+        )
     finally:
         if asset_file is not None:
             asset_file.unlink(missing_ok=True)
@@ -181,7 +193,11 @@ def maybe_analyze_video_scenes(
 ) -> list[VisualSceneAnalysisRecord] | None:
     if not visual_analysis_available():
         return None
-    return analyze_video_scenes(asset_file, launch_script, transcript)
+    try:
+        return analyze_video_scenes(asset_file, launch_script, transcript)
+    except Exception:
+        logger.exception("Visual analysis failed for %s. Falling back to script-led planning.", asset_file.name)
+        return None
 
 
 def handle_job_failure(user_id: str, project_id: str, asset_path: str, job_id: str, error_message: str) -> None:

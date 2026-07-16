@@ -30,9 +30,11 @@ class Settings(BaseSettings):
     ffmpeg_timeout_seconds: int = 30
     tesseract_binary: str = "/opt/homebrew/bin/tesseract"
     tesseract_timeout_seconds: int = 15
-    visual_analysis_concurrency: int = 3
+    visual_analysis_concurrency: int = 1
     render_worker_dir: str = str(Path(__file__).resolve().parents[2] / "render-worker")
     render_timeout_seconds: int = 240
+    run_job_runner: bool = True
+    job_runner_poll_interval_seconds: int = 3
     transcription_warn_seconds: int = 45
     script_generation_warn_seconds: int = 25
     planning_warn_seconds: int = 45

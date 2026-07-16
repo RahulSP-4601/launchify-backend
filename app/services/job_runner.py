@@ -4,11 +4,11 @@ import asyncio
 import logging
 from contextlib import suppress
 
+from app.core.config import get_settings
 from app.services.job_store import job_store
 from app.services.processing import process_job
 
 logger = logging.getLogger(__name__)
-POLL_INTERVAL_SECONDS = 3
 
 
 class JobRunner:
@@ -29,8 +29,11 @@ class JobRunner:
 
     async def _run(self) -> None:
         while True:
-            await self._process_pending_jobs()
-            await asyncio.sleep(POLL_INTERVAL_SECONDS)
+            try:
+                await self._process_pending_jobs()
+            except Exception:
+                logger.exception("Job runner loop failed unexpectedly.")
+            await asyncio.sleep(get_settings().job_runner_poll_interval_seconds)
 
     async def _process_pending_jobs(self) -> None:
         while True:
@@ -39,8 +42,9 @@ class JobRunner:
                 return
             try:
                 await asyncio.to_thread(process_job, job.id)
-            except RuntimeError as exc:
-                logger.warning("Job processing failed for %s: %s", job.id, exc)
+            except Exception as exc:
+                logger.exception("Job processing crashed for %s.", job.id)
+                await asyncio.to_thread(job_store.mark_failed, job.id, f"Unexpected processing failure: {exc}")
 
 
 job_runner = JobRunner()
