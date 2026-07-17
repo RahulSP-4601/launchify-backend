@@ -149,11 +149,11 @@ def execute_preview_pipeline(
     beat(heartbeat)
     notify_render_stage(stage_update, "preview_review", project.id)
     with timed_stage("preview_review", settings.planning_warn_seconds):
-        reviewed_project, quality_report, rerender_preview = reviewed_project(project, preview_output)
+        reviewed_project_record, quality_report, rerender_preview = reviewed_project(project, preview_output)
     beat(heartbeat)
     if rerender_preview and settings.preview_render_mode == "styled":
         rerender_refined_preview(
-            reviewed_project,
+            reviewed_project_record,
             render_source,
             voiceover_audio,
             temp_dir,
@@ -163,15 +163,15 @@ def execute_preview_pipeline(
             preview_output,
         )
     if settings.preview_render_mode == "styled":
-        notify_render_stage(stage_update, "preview_upload", reviewed_project.id)
+        notify_render_stage(stage_update, "preview_upload", reviewed_project_record.id)
         preview_video = run_with_retry(
             "preview upload",
-            lambda: upload_variant(user_id, reviewed_project, preview_output, "preview", heartbeat=heartbeat),
+            lambda: upload_variant(user_id, reviewed_project_record, preview_output, "preview", heartbeat=heartbeat),
         )
         if preview_ready is not None:
             preview_ready(preview_video)
     beat(heartbeat)
-    return preview_video, preview_output, reviewed_project, quality_report
+    return preview_video, preview_output, reviewed_project_record, quality_report
 
 
 def execute_final_pipeline(
