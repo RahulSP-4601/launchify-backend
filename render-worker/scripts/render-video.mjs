@@ -25,6 +25,7 @@ const offthreadVideoCacheSizeInBytes = clampMegabytes(
   isPreviewRender ? 8 : 16,
 ) * 1024 * 1024;
 const renderScale = boundedFloat(process.env.RENDER_SCALE, isPreviewRender ? 0.75 : 1);
+const remotionTimeoutInMilliseconds = positiveInt(process.env.REMOTION_TIMEOUT_MS, isPreviewRender ? 240000 : 420000);
 
 await renderVideo(mode, options);
 
@@ -39,9 +40,17 @@ async function renderVideo(mode, options) {
       `[launchify-render-worker] Starting ${mode} render at ${payload.dimensions.width}x${payload.dimensions.height}` +
         ` with concurrency=${renderConcurrency}, offthreadVideoThreads=${offthreadVideoThreads}.`,
     );
+    console.log("[launchify-render-worker] Resolving bundled Remotion project.");
     const bundled = await getBundledServeUrl(entryPoint);
-    const compositions = await getCompositions(bundled, { inputProps: payload });
+    console.log("[launchify-render-worker] Discovering compositions.");
+    const compositions = await getCompositions(bundled, {
+      inputProps: payload,
+      logLevel: "info",
+      timeoutInMilliseconds: remotionTimeoutInMilliseconds,
+      onBrowserLog: (log) => console.log(`[launchify-render-worker] browser:${log.type} ${log.text}`),
+    });
     const composition = requireComposition(compositions);
+    console.log(`[launchify-render-worker] Rendering composition ${composition.id}.`);
     await renderMedia({
       codec: "h264",
       concurrency: renderConcurrency,
@@ -56,6 +65,16 @@ async function renderVideo(mode, options) {
       jpegQuality: isPreviewRender ? 80 : undefined,
       logLevel: "info",
       mediaCacheSizeInBytes,
+      onBrowserLog: (log) => console.log(`[launchify-render-worker] browser:${log.type} ${log.text}`),
+      onProgress: ({ renderedFrames, encodedFrames, renderedDoneIn }) => {
+        console.log(
+          `[launchify-render-worker] progress rendered=${renderedFrames} encoded=${encodedFrames ?? 0}` +
+            ` elapsedMs=${renderedDoneIn ?? 0}`,
+        );
+      },
+      onStart: () => {
+        console.log("[launchify-render-worker] Browser ready, frame rendering started.");
+      },
       inputProps: payload,
       offthreadVideoCacheSizeInBytes,
       offthreadVideoThreads,
@@ -63,6 +82,7 @@ async function renderVideo(mode, options) {
       pixelFormat: "yuv420p",
       scale: renderScale,
       serveUrl: bundled,
+      timeoutInMilliseconds: remotionTimeoutInMilliseconds,
     });
     console.log(`[launchify-render-worker] Completed ${mode} render: ${options.output}`);
   });
@@ -110,8 +130,10 @@ async function getBundledServeUrl(entryPoint) {
   const cachedBundlePath = path.join(cacheRoot, cacheKey);
   await mkdir(cacheRoot, { recursive: true });
   if (existsSync(cachedBundlePath)) {
+    console.log(`[launchify-render-worker] Using cached bundle ${cacheKey}.`);
     return cachedBundlePath;
   }
+  console.log(`[launchify-render-worker] Building new bundle ${cacheKey}.`);
   return buildBundleAtomically(cacheRoot, cachedBundlePath, entryPoint);
 }
 

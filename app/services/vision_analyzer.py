@@ -68,10 +68,13 @@ def request_openai_vision(
     except error.HTTPError as exc:
         detail = exc.read().decode("utf-8", errors="ignore")
         raise RuntimeError(f"OpenAI visual analysis failed: {detail}") from exc
-    except (error.URLError, TimeoutError) as exc:
+    except (error.URLError, TimeoutError, RuntimeError) as exc:
+        if isinstance(exc, RuntimeError) and not retryable_visual_payload_error(exc):
+            raise
         logger.warning(
-            "OpenAI visual analysis timed out for scene %s. Retrying with a reduced payload.",
+            "OpenAI visual analysis retrying scene %s with a reduced payload after: %s",
             scene.scene_number,
+            exc,
         )
         try:
             return request_openai_vision_once(
@@ -87,10 +90,7 @@ def request_openai_vision(
             detail = retry_exc.read().decode("utf-8", errors="ignore")
             raise RuntimeError(f"OpenAI visual analysis failed after reduced retry: {detail}") from retry_exc
         except (error.URLError, TimeoutError) as retry_exc:
-            raise RuntimeError(
-                f"OpenAI visual analysis failed after reduced retry: {describe_transport_error(retry_exc)}"
-            ) from retry_exc
-
+            raise RuntimeError(f"OpenAI visual analysis failed after reduced retry: {describe_transport_error(retry_exc)}") from retry_exc
 def request_openai_vision_once(
     scene: LaunchScriptScene,
     scene_range: tuple[float, float],
@@ -108,7 +108,7 @@ def request_openai_vision_once(
     request_payload = {
         "model": get_settings().openai_vision_model,
         "temperature": 0.1,
-        "max_tokens": 900 if reduced else 1400,
+        "max_tokens": 1400 if reduced else 2200,
         "response_format": {"type": "json_object"},
         "messages": [
             {"role": "system", "content": vision_system_prompt()},
@@ -124,7 +124,9 @@ def request_openai_vision_once(
     with request.urlopen(api_request, timeout=timeout_seconds) as response:
         payload = json.loads(response.read().decode("utf-8"))
     return parse_visual_payload(payload)
-
+def retryable_visual_payload_error(exc: RuntimeError) -> bool:
+    message = str(exc)
+    return "invalid visual analysis JSON" in message or "invalid visual analysis payload shape" in message or "empty visual analysis response" in message
 def vision_system_prompt() -> str:
     return (
         "You analyze product UI video frames for an AI video editor. "
@@ -138,8 +140,6 @@ def vision_system_prompt() -> str:
         "Every box must be normalized with x, y, width, height between 0 and 1. "
         "Use null when a box cannot be identified confidently."
     )
-
-
 def vision_text_message(
     scene: LaunchScriptScene,
     scene_range: tuple[float, float],
