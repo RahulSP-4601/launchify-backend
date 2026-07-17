@@ -228,6 +228,15 @@ def execute_final_pipeline_with_preview_fallback(
     final_ready: Callable[[RenderedVideoRecord], None] | None,
 ) -> RenderedVideoRecord:
     enforce_final_render_limit(user_id, project)
+    if use_proxy_final_output(settings):
+        return upload_proxy_final_variant(
+            user_id,
+            project,
+            preview_output,
+            heartbeat,
+            stage_update,
+            final_ready,
+        )
     try:
         return execute_final_pipeline(
             user_id,
@@ -251,6 +260,10 @@ def execute_final_pipeline_with_preview_fallback(
                 upload_proxy_preview_variant,
             )
         raise
+
+
+def use_proxy_final_output(settings: Settings) -> bool:
+    return settings.preview_render_mode == "proxy" and settings.low_memory_final_mode == "proxy"
 
 
 def finalize_preview_video(
@@ -379,6 +392,27 @@ def upload_proxy_preview_variant(
         "proxy preview upload",
         lambda: upload_variant(user_id, project, preview_output, "preview", heartbeat=heartbeat),
     )
+
+
+def upload_proxy_final_variant(
+    user_id: str,
+    project: ProjectRecord,
+    preview_output: Path,
+    heartbeat: Callable[[], None] | None,
+    stage_update: RenderStageUpdate | None,
+    final_ready: Callable[[RenderedVideoRecord], None] | None,
+) -> RenderedVideoRecord:
+    logger.info("Publishing reviewed proxy output as final video for project %s to stay within starter memory limits.", project.id)
+    notify_render_stage(stage_update, "final_render", project.id)
+    notify_render_stage(stage_update, "final_upload", project.id)
+    final_video = run_with_retry(
+        "proxy final upload",
+        lambda: upload_variant(user_id, project, preview_output, "final", heartbeat=heartbeat),
+    )
+    if final_ready is not None:
+        final_ready(final_video)
+    beat(heartbeat)
+    return final_video
 
 
 def write_render_payload(
