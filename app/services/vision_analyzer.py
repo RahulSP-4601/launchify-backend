@@ -187,11 +187,23 @@ def normalize_visual_payload(payload: dict[str, object]) -> dict[str, object]:
         "diff_score",
         "importance_score",
     }
+    box_keys = {
+        "primary_focus_box",
+        "cursor_box",
+        "click_target_box",
+        "anchor_box",
+        "dominant_box",
+        "box",
+    }
     for key, value in list(normalized.items()):
         if key in clamp_keys:
             normalized[key] = clamp_unit_interval(value)
+        elif key in box_keys:
+            normalized[key] = normalize_box_value(value, key)
         elif key == "frames" and isinstance(value, list):
             normalized[key] = [normalize_visual_frame(frame, clamp_keys) for frame in value]
+        elif key == "visible_labels":
+            normalized[key] = normalize_string_list(value)
     return normalized
 
 
@@ -199,11 +211,16 @@ def normalize_visual_frame(frame: object, clamp_keys: set[str]) -> object:
     if not isinstance(frame, dict):
         return frame
     normalized = dict(frame)
+    box_keys = {"cursor_box", "click_target_box", "dominant_box"}
     for key, value in list(normalized.items()):
         if key in clamp_keys:
             normalized[key] = clamp_unit_interval(value)
+        elif key in box_keys:
+            normalized[key] = normalize_box_value(value, key)
         elif key == "ui_elements" and isinstance(value, list):
             normalized[key] = [normalize_ui_element(item) for item in value]
+        elif key == "ocr_labels":
+            normalized[key] = normalize_string_list(value)
     return normalized
 
 
@@ -213,15 +230,68 @@ def normalize_ui_element(item: object) -> object:
     normalized = dict(item)
     if "confidence" in normalized:
         normalized["confidence"] = clamp_unit_interval(normalized["confidence"])
+    if "box" in normalized:
+        normalized["box"] = normalize_box_value(normalized["box"], "box")
     return normalized
 
 
 def clamp_unit_interval(value: object) -> object:
-    try:
-        numeric = float(str(value))
-    except (TypeError, ValueError):
+    numeric = normalized_numeric(value)
+    if numeric is None:
         return value
     return max(0.0, min(1.0, numeric))
+
+
+def normalized_numeric(value: object) -> float | None:
+    if isinstance(value, list):
+        candidates = [normalized_numeric(item) for item in value]
+        valid = [item for item in candidates if item is not None]
+        return max(valid) if valid else None
+    try:
+        return float(str(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def normalize_box_value(value: object, field_name: str) -> object:
+    if isinstance(value, dict):
+        return sanitize_box(value)
+    if not isinstance(value, list):
+        return None if value is None else value
+    boxes = [sanitize_box(item) for item in value if isinstance(item, dict)]
+    valid_boxes = [box for box in boxes if box is not None]
+    if not valid_boxes:
+        return None
+    if field_name == "cursor_box":
+        return valid_boxes[-1]
+    return valid_boxes[0]
+
+
+def sanitize_box(value: dict[str, object]) -> dict[str, float] | None:
+    keys = ("x", "y", "width", "height")
+    if any(key not in value for key in keys):
+        return None
+    normalized: dict[str, float] = {}
+    for key in keys:
+        numeric = normalized_numeric(value[key])
+        if numeric is None:
+            return None
+        normalized[key] = max(0.0, min(1.0, numeric))
+    if normalized["width"] <= 0 or normalized["height"] <= 0:
+        return None
+    return normalized
+
+
+def normalize_string_list(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value.strip()] if value.strip() else []
+    if not isinstance(value, list):
+        return []
+    normalized: list[str] = []
+    for item in value:
+        if isinstance(item, str) and item.strip():
+            normalized.append(item.strip())
+    return normalized
 
 
 def finalize_scene_analysis(
