@@ -316,7 +316,7 @@ class ProjectStore:
         self,
         user_id: str,
         project_id: str,
-        preview_video: RenderedVideoRecord,
+        preview_video: RenderedVideoRecord | None,
         final_video: RenderedVideoRecord,
         asset_path: str | None = None,
     ) -> None:
@@ -324,7 +324,7 @@ class ProjectStore:
             user_id,
             project_id,
             (
-                json.dumps(preview_video.model_dump(mode="json")),
+                json.dumps(preview_video.model_dump(mode="json")) if preview_video is not None else None,
                 json.dumps(final_video.model_dump(mode="json")),
                 "ready",
                 datetime.now(UTC),

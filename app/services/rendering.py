@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import subprocess
-import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Callable, Literal
@@ -15,14 +14,27 @@ from app.services.render_hardening import (
     RenderStageUpdate,
     notify_render_stage,
     run_with_retry,
-    verify_render_artifact,
-    verify_uploaded_variant,
 )
 from app.services.render_payloads import build_render_payload, total_render_duration
+from app.services.render_proxy_preview import (
+    persist_proxy_preview_after_final,
+    persist_proxy_preview_on_failure,
+    prepare_proxy_preview,
+)
+from app.services.render_runtime_helpers import (
+    beat,
+    download_voiceover_audio,
+    enforce_final_render_limit,
+    ensure_render_worker_ready,
+    prepare_preview_render_source,
+    require_duration,
+    require_edit_plan,
+    run_process_with_heartbeat,
+    upload_variant,
+)
 from app.services.render_review import refine_from_preview
-from app.services.storage import download_asset_to_file, upload_rendered_video_file
+from app.services.storage import download_asset_to_file
 from app.services.timing import timed_stage
-from app.services.usage_service import projected_rendered_seconds, total_rendered_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +46,7 @@ def render_project_videos(
     stage_update: RenderStageUpdate | None = None,
     preview_ready: Callable[[RenderedVideoRecord], None] | None = None,
     final_ready: Callable[[RenderedVideoRecord], None] | None = None,
-) -> tuple[RenderedVideoRecord, RenderedVideoRecord, EditPlanRecord, QualityReportRecord]:
+) -> tuple[RenderedVideoRecord | None, RenderedVideoRecord, EditPlanRecord, QualityReportRecord]:
     asset_path = require_asset_path(project)
     settings = get_settings()
     ensure_render_worker_ready()
@@ -78,8 +90,8 @@ def execute_render_pipeline(
     stage_update: RenderStageUpdate | None,
     preview_ready: Callable[[RenderedVideoRecord], None] | None,
     final_ready: Callable[[RenderedVideoRecord], None] | None,
-) -> tuple[RenderedVideoRecord, RenderedVideoRecord, EditPlanRecord, QualityReportRecord]:
-    preview_video, reviewed_project, quality_report = execute_preview_pipeline(
+) -> tuple[RenderedVideoRecord | None, RenderedVideoRecord, EditPlanRecord, QualityReportRecord]:
+    preview_video, preview_output, reviewed_project, quality_report = execute_preview_pipeline(
         user_id,
         project,
         preview_render_source,
@@ -90,8 +102,7 @@ def execute_render_pipeline(
         stage_update,
         preview_ready,
     )
-    enforce_final_render_limit(user_id, reviewed_project)
-    final_video = execute_final_pipeline(
+    final_video = execute_final_pipeline_with_preview_fallback(
         user_id,
         reviewed_project,
         source_video,
@@ -100,7 +111,19 @@ def execute_render_pipeline(
         settings,
         heartbeat,
         stage_update,
+        preview_video,
+        preview_output,
+        preview_ready,
         final_ready,
+    )
+    preview_video = finalize_preview_video(
+        user_id,
+        reviewed_project,
+        settings,
+        preview_video,
+        preview_output,
+        heartbeat,
+        preview_ready,
     )
     return preview_video, final_video, require_edit_plan(reviewed_project), quality_report
 
@@ -115,21 +138,19 @@ def execute_preview_pipeline(
     heartbeat: Callable[[], None] | None,
     stage_update: RenderStageUpdate | None,
     preview_ready: Callable[[RenderedVideoRecord], None] | None,
-) -> tuple[RenderedVideoRecord, ProjectRecord, QualityReportRecord]:
+) -> tuple[RenderedVideoRecord | None, Path, ProjectRecord, QualityReportRecord]:
     preview_output = temp_dir / "preview.mp4"
+    preview_video: RenderedVideoRecord | None = None
     beat(heartbeat)
     notify_render_stage(stage_update, "preview_render_initial", project.id)
     with timed_stage("preview_render_initial", settings.preview_render_warn_seconds):
-        run_with_retry(
-            "preview render",
-            lambda: render_preview_output(project, render_source, voiceover_audio, temp_dir, preview_output, heartbeat),
-        )
+        run_with_retry("preview render", lambda: prepare_preview_output(project, render_source, voiceover_audio, temp_dir, preview_output, heartbeat))
     beat(heartbeat)
     notify_render_stage(stage_update, "preview_review", project.id)
     with timed_stage("preview_review", settings.planning_warn_seconds):
         reviewed_project, quality_report, rerender_preview = reviewed_project(project, preview_output)
     beat(heartbeat)
-    if rerender_preview:
+    if rerender_preview and settings.preview_render_mode == "styled":
         rerender_refined_preview(
             reviewed_project,
             render_source,
@@ -140,15 +161,16 @@ def execute_preview_pipeline(
             stage_update,
             preview_output,
         )
-    notify_render_stage(stage_update, "preview_upload", reviewed_project.id)
-    preview_video = run_with_retry(
-        "preview upload",
-        lambda: upload_variant(user_id, reviewed_project, preview_output, "preview", heartbeat=heartbeat),
-    )
-    if preview_ready is not None:
-        preview_ready(preview_video)
+    if settings.preview_render_mode == "styled":
+        notify_render_stage(stage_update, "preview_upload", reviewed_project.id)
+        preview_video = run_with_retry(
+            "preview upload",
+            lambda: upload_variant(user_id, reviewed_project, preview_output, "preview", heartbeat=heartbeat),
+        )
+        if preview_ready is not None:
+            preview_ready(preview_video)
     beat(heartbeat)
-    return preview_video, reviewed_project, quality_report
+    return preview_video, preview_output, reviewed_project, quality_report
 
 
 def execute_final_pipeline(
@@ -176,6 +198,67 @@ def execute_final_pipeline(
         final_ready(final_video)
     beat(heartbeat)
     return final_video
+
+
+def execute_final_pipeline_with_preview_fallback(
+    user_id: str,
+    project: ProjectRecord,
+    render_source: Path,
+    voiceover_audio: Path | None,
+    temp_dir: Path,
+    settings: Settings,
+    heartbeat: Callable[[], None] | None,
+    stage_update: RenderStageUpdate | None,
+    preview_video: RenderedVideoRecord | None,
+    preview_output: Path,
+    preview_ready: Callable[[RenderedVideoRecord], None] | None,
+    final_ready: Callable[[RenderedVideoRecord], None] | None,
+) -> RenderedVideoRecord:
+    enforce_final_render_limit(user_id, project)
+    try:
+        return execute_final_pipeline(
+            user_id,
+            project,
+            render_source,
+            voiceover_audio,
+            temp_dir,
+            settings,
+            heartbeat,
+            stage_update,
+            final_ready,
+        )
+    except Exception:
+        if preview_video is None and settings.preview_render_mode == "proxy":
+            persist_proxy_preview_on_failure(
+                user_id,
+                project,
+                preview_output,
+                heartbeat,
+                preview_ready,
+                upload_proxy_preview_variant,
+            )
+        raise
+
+
+def finalize_preview_video(
+    user_id: str,
+    project: ProjectRecord,
+    settings: Settings,
+    preview_video: RenderedVideoRecord | None,
+    preview_output: Path,
+    heartbeat: Callable[[], None] | None,
+    preview_ready: Callable[[RenderedVideoRecord], None] | None,
+) -> RenderedVideoRecord | None:
+    if preview_video is not None or settings.preview_render_mode != "proxy":
+        return preview_video
+    return persist_proxy_preview_after_final(
+        user_id,
+        project,
+        preview_output,
+        heartbeat,
+        preview_ready,
+        upload_proxy_preview_variant,
+    )
 
 
 def rerender_refined_preview(
@@ -259,6 +342,32 @@ def render_preview_output(
     invoke_render_worker(render_payload_path, source_video, output_path, "preview", heartbeat=heartbeat)
 
 
+def prepare_preview_output(
+    project: ProjectRecord,
+    source_video: Path,
+    voiceover_audio: Path | None,
+    temp_dir: Path,
+    output_path: Path,
+    heartbeat: Callable[[], None] | None = None,
+) -> None:
+    if get_settings().preview_render_mode == "proxy":
+        prepare_proxy_preview(source_video, output_path)
+        return
+    render_preview_output(project, source_video, voiceover_audio, temp_dir, output_path, heartbeat)
+
+
+def upload_proxy_preview_variant(
+    user_id: str,
+    project: ProjectRecord,
+    preview_output: Path,
+    heartbeat: Callable[[], None] | None,
+) -> RenderedVideoRecord:
+    return run_with_retry(
+        "proxy preview upload",
+        lambda: upload_variant(user_id, project, preview_output, "preview", heartbeat=heartbeat),
+    )
+
+
 def write_render_payload(
     project: ProjectRecord,
     temp_dir: Path,
@@ -313,138 +422,6 @@ def invoke_render_worker(
         raise RuntimeError(f"Render worker failed while producing the {quality} video.") from exc
 
 
-def run_process_with_heartbeat(
-    command: list[str],
-    *,
-    timeout_seconds: int,
-    heartbeat: Callable[[], None] | None,
-    cwd: Path | None = None,
-    env: dict[str, str] | None = None,
-) -> None:
-    process = subprocess.Popen(command, cwd=cwd, env=env)
-    wait_for_process(process, timeout_seconds, heartbeat)
-    if process.returncode != 0:
-        raise subprocess.CalledProcessError(process.returncode, command)
-
-
-def wait_for_process(
-    process: subprocess.Popen[bytes],
-    timeout_seconds: int,
-    heartbeat: Callable[[], None] | None,
-) -> None:
-    settings = get_settings()
-    deadline = time.monotonic() + timeout_seconds
-    while True:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            process.kill()
-            process.wait(timeout=5)
-            raise TimeoutError
-        try:
-            process.wait(timeout=min(settings.job_heartbeat_interval_seconds, max(remaining, 0.1)))
-            return
-        except subprocess.TimeoutExpired:
-            beat(heartbeat)
-
-
-def prepare_preview_render_source(
-    source_video: Path,
-    temp_dir: Path,
-    heartbeat: Callable[[], None] | None = None,
-) -> Path:
-    proxy_path = temp_dir / "render-source.mp4"
-    command = [
-        get_settings().ffmpeg_binary,
-        "-y",
-        "-i",
-        str(source_video),
-        "-vf",
-        "fps=20,scale='min(iw,640)':-2",
-        "-threads",
-        "1",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-crf",
-        "23",
-        "-pix_fmt",
-        "yuv420p",
-        "-movflags",
-        "+faststart",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "128k",
-        "-ar",
-        "48000",
-        str(proxy_path),
-    ]
-    try:
-        run_process_with_heartbeat(
-            command,
-            timeout_seconds=get_settings().render_timeout_seconds,
-            heartbeat=heartbeat,
-        )
-    except FileNotFoundError as exc:
-        raise RuntimeError("FFmpeg is required for video rendering. Configure FFMPEG_BINARY in the backend env.") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"Render source preparation timed out after {get_settings().render_timeout_seconds} seconds.") from exc
-    except TimeoutError as exc:
-        raise RuntimeError(f"Render source preparation timed out after {get_settings().render_timeout_seconds} seconds.") from exc
-    except subprocess.CalledProcessError as exc:
-        raise RuntimeError("Render source preparation failed before preview rendering started.") from exc
-    return proxy_path
-
-
-def upload_variant(
-    user_id: str,
-    project: ProjectRecord,
-    output_path: Path,
-    quality: Literal["preview", "final"],
-    heartbeat: Callable[[], None] | None = None,
-) -> RenderedVideoRecord:
-    verify_render_artifact(output_path, quality)
-    duration = require_duration(project)
-    uploaded_video = upload_rendered_video_file(
-        user_id=user_id,
-        project_id=project.id,
-        variant=quality,
-        filename=f"{project.project_name.lower().replace(' ', '-')}-{quality}.mp4",
-        source_path=output_path,
-        duration_seconds=duration,
-        heartbeat=heartbeat,
-    )
-    verify_uploaded_variant(uploaded_video, quality)
-    return uploaded_video
-
-
-def require_duration(project: ProjectRecord) -> float:
-    if project.edit_plan is None:
-        raise RuntimeError("Edit plan duration is required before uploading rendered outputs.")
-    return total_render_duration(project.edit_plan.total_duration_seconds)
-
-
-def enforce_final_render_limit(user_id: str, project: ProjectRecord) -> None:
-    settings = get_settings()
-    duration_seconds = require_duration(project)
-    projected_seconds = projected_rendered_seconds(user_id, project.id, duration_seconds)
-    limit_seconds = float(settings.trial_minutes_limit * 60)
-    if projected_seconds > limit_seconds:
-        remaining_seconds = max(limit_seconds - total_rendered_seconds(user_id), 0.0)
-        remaining_minutes = remaining_seconds / 60
-        raise RuntimeError(
-            "This render would exceed your trial limit. "
-            f"Only {remaining_minutes:.1f} minutes remain before the {settings.trial_minutes_limit} minute cap."
-        )
-
-
-def download_voiceover_audio(project: ProjectRecord) -> Path | None:
-    if project.voiceover is None or not project.voiceover.audio_storage_path:
-        return None
-    return download_asset_to_file(project.voiceover.audio_storage_path)
-
-
 def reviewed_project(
     project: ProjectRecord,
     preview_output: Path,
@@ -455,22 +432,3 @@ def reviewed_project(
         quality_report,
         rerender_preview,
     )
-
-
-def require_edit_plan(project: ProjectRecord) -> EditPlanRecord:
-    if project.edit_plan is None:
-        raise RuntimeError("Edit plan is required before saving reviewed render outputs.")
-    return project.edit_plan
-
-
-def ensure_render_worker_ready() -> None:
-    worker_dir = Path(get_settings().render_worker_dir).resolve()
-    if not worker_dir.exists():
-        raise RuntimeError("Render worker directory is missing. Install the backend render worker.")
-    if not (worker_dir / "package.json").exists():
-        raise RuntimeError("Render worker package.json is missing. Install the backend render worker.")
-
-
-def beat(heartbeat: Callable[[], None] | None) -> None:
-    if heartbeat is not None:
-        heartbeat()
