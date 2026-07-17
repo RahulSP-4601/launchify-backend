@@ -17,11 +17,10 @@ from app.models.projects import (
 )
 from app.services.caption_designer import balanced_break
 from app.services.quality_assessor import build_quality_report
+from app.services.render_payloads import INTRO_DURATION_SECONDS
 from app.services.script_writer import describe_transport_error, openai_headers
 from app.services.video_frames import ExtractedFrame, extract_scene_frames
 from app.services.vision_analyzer import data_url
-
-INTRO_OFFSET_SECONDS = 1.8
 
 
 @dataclass(frozen=True)
@@ -76,7 +75,7 @@ def extracted_scene_frames(
 ) -> dict[int, list[ExtractedFrame]]:
     edit_plan = require_edit_plan(project)
     scene_numbers = [scene.scene_number for scene in edit_plan.scenes]
-    scene_ranges = [(scene.start + INTRO_OFFSET_SECONDS, scene.end + INTRO_OFFSET_SECONDS) for scene in edit_plan.scenes]
+    scene_ranges = [(scene.start + INTRO_DURATION_SECONDS, scene.end + INTRO_DURATION_SECONDS) for scene in edit_plan.scenes]
     output_dir = preview_video_path.parent / "review-frames"
     output_dir.mkdir(exist_ok=True)
     return extract_scene_frames(preview_video_path, scene_numbers, scene_ranges, output_dir)

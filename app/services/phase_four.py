@@ -25,7 +25,7 @@ def apply_phase_four_defaults(
     manual_overrides = project.manual_overrides or ManualOverrideRecord()
     refined_edit_plan, quality_report = refined_plan_and_report(project, edit_plan, manual_overrides)
     benchmark_report = build_benchmark_report(project, refined_edit_plan, quality_report)
-    voiceover = voiceover_for_project(user_id, project, "original")
+    voiceover = voiceover_for_project(user_id, project, "voiceover")
     return refined_edit_plan, quality_report, benchmark_report, voiceover, template_config, manual_overrides
 
 

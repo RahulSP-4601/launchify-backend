@@ -77,6 +77,15 @@ export function spotlightStyle(highlights: RenderHighlight[], localSeconds: numb
   };
 }
 
+export function activeFocusBox(scene: RenderScene, localSeconds: number) {
+  const activeHighlight = scene.highlights.find((item) => item.start <= localSeconds && item.end >= localSeconds);
+  if (activeHighlight?.focus_box) {
+    return activeHighlight.focus_box;
+  }
+  const activeZoom = scene.zooms.find((zoom) => zoom.start <= localSeconds && zoom.end >= localSeconds);
+  return activeZoom?.focus_box ?? null;
+}
+
 export function motionOpacity(frame: number, durationInFrames: number) {
   const safeDuration = Math.max(1, durationInFrames);
   if (safeDuration <= 2) {

@@ -169,7 +169,7 @@ class RenderSpecRecord(BaseModel):
 
 class TemplateConfigRecord(BaseModel):
     theme: ThemeName = "spotlight"
-    caption_profile: CaptionProfile = "cinematic"
+    caption_profile: CaptionProfile = "minimal"
     motion_profile: MotionProfile = "dynamic"
 
 

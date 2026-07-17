@@ -22,14 +22,52 @@ def prepare_preview_render_source(
     heartbeat: Callable[[], None] | None = None,
 ) -> Path:
     settings = get_settings()
-    proxy_path = temp_dir / "render-source.mp4"
+    return prepare_render_source(
+        source_video,
+        temp_dir / "render-source.mp4",
+        fps=settings.preview_proxy_fps,
+        width=settings.preview_proxy_width,
+        crf=23,
+        heartbeat=heartbeat,
+        label="Render source",
+    )
+
+
+def prepare_final_render_source(
+    source_video: Path,
+    temp_dir: Path,
+    heartbeat: Callable[[], None] | None = None,
+) -> Path:
+    settings = get_settings()
+    return prepare_render_source(
+        source_video,
+        temp_dir / "final-render-source.mp4",
+        fps=settings.final_render_fps,
+        width=settings.final_render_width,
+        crf=20,
+        heartbeat=heartbeat,
+        label="Final render source",
+    )
+
+
+def prepare_render_source(
+    source_video: Path,
+    output_path: Path,
+    *,
+    fps: int,
+    width: int,
+    crf: int,
+    heartbeat: Callable[[], None] | None,
+    label: str,
+) -> Path:
+    settings = get_settings()
     command = [
         settings.ffmpeg_binary,
         "-y",
         "-i",
         str(source_video),
         "-vf",
-        f"fps={settings.preview_proxy_fps},scale='min(iw,{settings.preview_proxy_width})':-2",
+        f"fps={fps},scale='min(iw,{width})':-2",
         "-threads",
         "1",
         "-c:v",
@@ -37,7 +75,7 @@ def prepare_preview_render_source(
         "-preset",
         "veryfast",
         "-crf",
-        "23",
+        str(crf),
         "-pix_fmt",
         "yuv420p",
         "-movflags",
@@ -48,23 +86,24 @@ def prepare_preview_render_source(
         "128k",
         "-ar",
         "48000",
-        str(proxy_path),
+        str(output_path),
     ]
+    run_ffmpeg_render_source(command, heartbeat, label)
+    return output_path
+
+
+def run_ffmpeg_render_source(command: list[str], heartbeat: Callable[[], None] | None, label: str) -> None:
+    settings = get_settings()
+    timeout_message = f"{label} preparation timed out after {settings.render_timeout_seconds} seconds."
+    failure_message = f"{label} preparation failed before rendering started."
     try:
-        run_process_with_heartbeat(
-            command,
-            timeout_seconds=settings.render_timeout_seconds,
-            heartbeat=heartbeat,
-        )
+        run_process_with_heartbeat(command, timeout_seconds=settings.render_timeout_seconds, heartbeat=heartbeat)
     except FileNotFoundError as exc:
         raise RuntimeError("FFmpeg is required for video rendering. Configure FFMPEG_BINARY in the backend env.") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"Render source preparation timed out after {settings.render_timeout_seconds} seconds.") from exc
-    except TimeoutError as exc:
-        raise RuntimeError(f"Render source preparation timed out after {settings.render_timeout_seconds} seconds.") from exc
+    except (subprocess.TimeoutExpired, TimeoutError) as exc:
+        raise RuntimeError(timeout_message) from exc
     except subprocess.CalledProcessError as exc:
-        raise RuntimeError("Render source preparation failed before preview rendering started.") from exc
-    return proxy_path
+        raise RuntimeError(failure_message) from exc
 
 
 def upload_variant(

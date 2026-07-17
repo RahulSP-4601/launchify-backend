@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from app.core.config import get_settings
 from app.models.projects import LaunchScriptRecord, ProjectRecord, TranscriptSegment
+from app.services.story_pacing import shape_launch_story
 
 MIN_TRANSCRIPT_CHARACTERS = 40
 MIN_SCENE_COUNT = 3
@@ -82,7 +83,8 @@ def system_prompt() -> str:
         "You rewrite rough product walkthrough transcripts into strong launch-video scripts. "
         "Always respond as valid JSON with keys: hook, summary, title_options, scenes, cta, notes. "
         "Each scene must include scene_number, purpose, spoken_line, on_screen_text, "
-        "source_excerpt, estimated_duration_seconds. Create 3 to 6 scenes only. "
+        "source_excerpt, estimated_duration_seconds. Create 3 to 6 scenes only. Aim for a 30 to 35 second final video. "
+        "Choose only the highest-signal product moments, skip dead time, and make the flow feel like a polished storyboard. "
         "Remove filler words, keep sentences crisp, preserve factual meaning, and make each scene feel like one clean product step. "
         "Write like a polished product marketer or customer educator, not a generic AI assistant. "
         "Hooks should be concrete and benefit-led. CTAs should feel professional, specific, and short. "
@@ -99,6 +101,8 @@ def user_prompt(project: ProjectRecord, transcript_text: str) -> str:
         f"Video goal: {project.video_goal}\n\n"
         "Rewrite the transcript into a sharper launch video script. Keep it concise, clearer, "
         "and more persuasive than the raw narration. Preserve factual meaning. Create 3 to 6 scenes.\n"
+        "Target a final runtime of roughly 30 to 35 seconds. Prioritize the strongest product actions, user wins, "
+        "and visual moments. Remove setup chatter, hesitation, and repeated explanation.\n"
         "Each scene should cover exactly one idea, workflow step, or product benefit. Avoid generic hype.\n\n"
         f"Transcript:\n{transcript_text}"
     )
@@ -204,7 +208,7 @@ def normalize_launch_script_payload(payload: dict[str, object], transcript_text:
         "cta": polished_cta(as_text(payload.get("cta")) or "See how this workflow looks in your product."),
         "notes": as_text_list(payload.get("notes")),
     }
-    normalized["scenes"] = normalize_scenes(payload.get("scenes"), transcript_text)
+    normalized["scenes"] = shape_launch_story(normalize_scenes(payload.get("scenes"), transcript_text))
     return normalized
 
 

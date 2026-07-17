@@ -5,8 +5,8 @@ from app.models.projects import EditPlanRecord, ProjectRecord, TemplateConfigRec
 
 PREVIEW_DIMENSIONS = {"width": 512, "height": 288, "fps": 12}
 FINAL_DIMENSIONS = {"width": 1280, "height": 720, "fps": 30}
-INTRO_DURATION_SECONDS = 1.8
-OUTRO_DURATION_SECONDS = 2.2
+INTRO_DURATION_SECONDS = 1.0
+OUTRO_DURATION_SECONDS = 1.4
 
 
 def build_render_payload(

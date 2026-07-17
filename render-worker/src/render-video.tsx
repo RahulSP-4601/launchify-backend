@@ -10,6 +10,7 @@ import {
 
 import {
   activeCaption,
+  activeFocusBox,
   motionOpacity,
   sceneDurationFrames,
   spotlightStyle,
@@ -98,6 +99,7 @@ const SceneComposition: React.FC<{ fastPreview: boolean; payload: RenderPayload;
   const frame = useCurrentFrame();
   const localSeconds = scene.start + frame / payload.dimensions.fps;
   const caption = activeCaption(scene, localSeconds);
+  const focusBox = activeFocusBox(scene, localSeconds);
   const zoom = zoomTransform(scene.zooms, localSeconds);
   const spotlight = spotlightStyle(scene.highlights, localSeconds);
   const transition = transitionStyle(scene, frame, payload.dimensions.fps);
@@ -113,6 +115,7 @@ const SceneComposition: React.FC<{ fastPreview: boolean; payload: RenderPayload;
           zoom={zoom}
           transitionScale={transition.focusScale}
         />
+        <FocusMatte fastPreview={fastPreview} focusBox={focusBox} viewport={viewportMetrics(payload.dimensions)} />
         <GradientMask fastPreview={fastPreview} />
         <BrowserChrome payload={payload} viewport={viewportMetrics(payload.dimensions)} />
       </ViewportFrame>
@@ -196,6 +199,23 @@ const AudioTrack: React.FC<{ introFrames: number; payload: RenderPayload }> = ({
 const GradientMask: React.FC<{ fastPreview: boolean }> = ({ fastPreview }) => (
   <AbsoluteFill style={gradientMaskStyle(fastPreview)} />
 );
+
+const FocusMatte: React.FC<{
+  fastPreview: boolean;
+  focusBox: { x: number; y: number; width: number; height: number } | null;
+  viewport: {
+    width: number;
+    height: number;
+    canvasWidth: number;
+    canvasHeight: number;
+    chromeOffset: number;
+  };
+}> = ({ fastPreview, focusBox, viewport }) => {
+  if (!focusBox) {
+    return null;
+  }
+  return <div style={focusMatteStyle(fastPreview, focusBox, viewport)} />;
+};
 
 const SceneGlow: React.FC<{ fastPreview: boolean }> = ({ fastPreview }) => (
   <AbsoluteFill style={sceneGlowStyle(fastPreview)} />
@@ -417,17 +437,17 @@ function sceneGlowStyle(fastPreview: boolean): React.CSSProperties {
 function gradientMaskStyle(fastPreview: boolean): React.CSSProperties {
   return {
     background: fastPreview
-      ? "linear-gradient(180deg, rgba(2,6,23,0.04) 0%, rgba(2,6,23,0) 26%, rgba(2,6,23,0.16) 100%)"
-      : "linear-gradient(180deg, rgba(2,6,23,0.06) 0%, rgba(2,6,23,0) 28%, rgba(2,6,23,0.22) 100%)",
+      ? "linear-gradient(180deg, rgba(2,6,23,0.08) 0%, rgba(2,6,23,0.02) 28%, rgba(2,6,23,0.24) 100%)"
+      : "linear-gradient(180deg, rgba(2,6,23,0.1) 0%, rgba(2,6,23,0.03) 28%, rgba(2,6,23,0.28) 100%)",
   };
 }
 
 function sceneMetaStyle(fastPreview: boolean): React.CSSProperties {
   return {
-    left: 74,
-    maxWidth: fastPreview ? 520 : 580,
+    left: 70,
+    maxWidth: fastPreview ? 400 : 460,
     position: "absolute",
-    top: 92,
+    top: 74,
     zIndex: 5,
   };
 }
@@ -452,11 +472,11 @@ function sceneTitleStyle(): React.CSSProperties {
   return {
     color: "#0f172a",
     fontFamily: "\"Avenir Next\", \"Segoe UI\", sans-serif",
-    fontSize: 42,
+    fontSize: 30,
     fontWeight: 700,
     letterSpacing: "-0.03em",
-    lineHeight: 1.08,
-    margin: "18px 0 10px",
+    lineHeight: 1.12,
+    margin: "14px 0 8px",
     textShadow: "0 2px 10px rgba(255,255,255,0.35)",
   };
 }
@@ -465,28 +485,28 @@ function sceneSubtitleStyle(): React.CSSProperties {
   return {
     color: "rgba(15, 23, 42, 0.64)",
     fontFamily: "\"Avenir Next\", \"Segoe UI\", sans-serif",
-    fontSize: 22,
+    fontSize: 17,
     fontWeight: 500,
-    lineHeight: 1.34,
+    lineHeight: 1.28,
     margin: 0,
-    maxWidth: 520,
+    maxWidth: 400,
   };
 }
 
 function captionStyle(payload: RenderPayload): React.CSSProperties {
   const fastPreview = isFastPreview(payload);
   return {
-    backdropFilter: "blur(18px)",
-    background: "rgba(255,255,255,0.84)",
-    border: "1px solid rgba(255,255,255,0.92)",
-    borderRadius: 24,
-    bottom: 36,
+    backdropFilter: "blur(14px)",
+    background: "rgba(9, 14, 28, 0.74)",
+    border: "1px solid rgba(148,163,184,0.26)",
+    borderRadius: 20,
+    bottom: 26,
     boxShadow: fastPreview
-      ? "0 10px 26px rgba(15, 23, 42, 0.1)"
-      : "0 16px 40px rgba(15, 23, 42, 0.12)",
+      ? "0 10px 26px rgba(15, 23, 42, 0.16)"
+      : "0 16px 40px rgba(15, 23, 42, 0.2)",
     left: "50%",
-    maxWidth: "74%",
-    padding: "18px 22px",
+    maxWidth: "58%",
+    padding: "14px 18px",
     position: "absolute",
     transform: "translateX(-50%)",
     zIndex: 6,
@@ -494,11 +514,11 @@ function captionStyle(payload: RenderPayload): React.CSSProperties {
 }
 
 function captionTextStyle(profile: string, variant: string): React.CSSProperties {
-  const fontSize = profile === "cinematic" || variant === "hero" ? 28 : profile === "minimal" ? 22 : 25;
+  const fontSize = profile === "cinematic" || variant === "hero" ? 24 : profile === "minimal" ? 18 : 20;
   const fontFamily = profile === "cinematic" ? "\"Iowan Old Style\", Georgia, serif" : "\"Avenir Next\", \"Segoe UI\", sans-serif";
   const fontWeight = variant === "hero" ? 700 : 600;
   return {
-    color: "#0f172a",
+    color: "rgba(248,250,252,0.98)",
     fontFamily,
     fontSize,
     fontWeight,
@@ -534,8 +554,33 @@ const CaptionText: React.FC<{
 
 function emphasisStyle(profile: string): React.CSSProperties {
   return {
-    color: profile === "cinematic" ? "#0891b2" : "#0ea5e9",
+    color: profile === "cinematic" ? "#67e8f9" : "#7dd3fc",
     fontWeight: 700,
+  };
+}
+
+function focusMatteStyle(
+  fastPreview: boolean,
+  focusBox: { x: number; y: number; width: number; height: number },
+  viewport: { width: number; height: number; canvasWidth: number; canvasHeight: number; chromeOffset: number },
+): React.CSSProperties {
+  const width = viewport.width * viewport.canvasWidth;
+  const height = viewport.height * viewport.canvasHeight;
+  const usableHeight = height - viewport.chromeOffset;
+  const boxLeft = Math.max(0, focusBox.x * width - 10);
+  const boxTop = Math.max(0, viewport.chromeOffset + focusBox.y * usableHeight - 10);
+  const boxWidth = Math.min(width - boxLeft, focusBox.width * width + 20);
+  const boxHeight = Math.min(height - boxTop, focusBox.height * usableHeight + 20);
+  return {
+    border: "1px solid rgba(125,211,252,0.18)",
+    borderRadius: 24,
+    boxShadow: `0 0 0 9999px rgba(2, 6, 23, ${fastPreview ? 0.28 : 0.38})`,
+    height: boxHeight,
+    left: boxLeft,
+    position: "absolute",
+    top: boxTop,
+    width: boxWidth,
+    zIndex: 2,
   };
 }
 
@@ -588,26 +633,27 @@ function highlightRingStyle(
 function highlightLabelStyle(fastPreview: boolean, intensity: number): React.CSSProperties {
   return {
     backdropFilter: "blur(12px)",
-    backgroundColor: "rgba(255, 255, 255, 0.88)",
-    border: "1px solid rgba(125, 211, 252, 0.55)",
+    backgroundColor: "rgba(9, 14, 28, 0.88)",
+    border: "1px solid rgba(125, 211, 252, 0.42)",
     borderRadius: 9999,
-    color: "#0f172a",
+    color: "#f8fafc",
     fontFamily: "\"Avenir Next\", \"Segoe UI\", sans-serif",
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: 700,
-    marginTop: 10,
+    marginTop: 8,
     opacity: 0.84 + intensity * 0.16,
-    padding: "10px 16px",
+    padding: "8px 12px",
     boxShadow: fastPreview ? "0 8px 18px rgba(15,23,42,0.08)" : "0 12px 24px rgba(15,23,42,0.1)",
     whiteSpace: "nowrap",
   };
 }
 
 function sourceVideoVolume(payload: RenderPayload): number {
-  if (payload.voiceover.mode === "voiceover") {
+  const hasReadyVoiceover = Boolean(payload.voiceoverAudioPath) && payload.voiceover.status === "ready";
+  if (payload.voiceover.mode === "voiceover" && hasReadyVoiceover) {
     return 0;
   }
-  if (payload.voiceover.mode === "mixed") {
+  if (payload.voiceover.mode === "mixed" && hasReadyVoiceover) {
     return 0.25;
   }
   return 1;

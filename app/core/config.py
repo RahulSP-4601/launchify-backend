@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     visual_analysis_scene_timeout_seconds: int = 25
     visual_analysis_total_budget_seconds: int = 120
     render_worker_dir: str = str(Path(__file__).resolve().parents[2] / "render-worker")
-    render_timeout_seconds: int = 420
+    render_timeout_seconds: int = 900
     preview_render_mode: Literal["proxy", "styled"] = "proxy"
     low_memory_final_mode: Literal["proxy", "render"] = "render"
     preview_proxy_width: int = 854
@@ -65,8 +65,8 @@ class Settings(BaseSettings):
     script_generation_warn_seconds: int = 25
     planning_warn_seconds: int = 45
     preview_render_warn_seconds: int = 60
-    final_render_warn_seconds: int = 120
-    total_pipeline_warn_seconds: int = 240
+    final_render_warn_seconds: int = 300
+    total_pipeline_warn_seconds: int = 600
     trial_minutes_limit: int = 10
     posthog_api_key: str = ""
     sentry_dsn: str = ""

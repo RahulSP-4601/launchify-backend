@@ -26,6 +26,7 @@ from app.services.render_runtime_helpers import (
     download_voiceover_audio,
     enforce_final_render_limit,
     ensure_render_worker_ready,
+    prepare_final_render_source,
     prepare_preview_render_source,
     require_duration,
     require_edit_plan,
@@ -103,42 +104,60 @@ def execute_render_pipeline(
         stage_update,
         preview_ready,
     )
-    final_render_source = choose_final_render_source(settings, source_video, preview_render_source)
-    final_video = execute_final_pipeline_with_preview_fallback(
+    preview_video, final_video = execute_final_outputs(
         user_id,
         reviewed_project,
-        final_render_source,
+        source_video,
+        preview_render_source,
         voiceover_audio,
         temp_dir,
         settings,
         heartbeat,
         stage_update,
-        preview_video,
-        preview_output,
         preview_ready,
         final_ready,
-    )
-    preview_video = finalize_preview_video(
-        user_id,
-        reviewed_project,
-        settings,
         preview_video,
         preview_output,
-        heartbeat,
-        preview_ready,
     )
     return preview_video, final_video, require_edit_plan(reviewed_project), quality_report
+
+
+def execute_final_outputs(
+    user_id: str,
+    project: ProjectRecord,
+    source_video: Path,
+    preview_render_source: Path,
+    voiceover_audio: Path | None,
+    temp_dir: Path,
+    settings: Settings,
+    heartbeat: Callable[[], None] | None,
+    stage_update: RenderStageUpdate | None,
+    preview_ready: Callable[[RenderedVideoRecord], None] | None,
+    final_ready: Callable[[RenderedVideoRecord], None] | None,
+    preview_video: RenderedVideoRecord | None,
+    preview_output: Path,
+) -> tuple[RenderedVideoRecord | None, RenderedVideoRecord]:
+    final_render_source = choose_final_render_source(settings, source_video, preview_render_source, temp_dir, heartbeat)
+    final_video = execute_final_pipeline_with_preview_fallback(
+        user_id, project, final_render_source, voiceover_audio, temp_dir, settings,
+        heartbeat, stage_update, preview_video, preview_output, preview_ready, final_ready,
+    )
+    preview_video = finalize_preview_video(user_id, project, settings, preview_video, preview_output, heartbeat, preview_ready)
+    return preview_video, final_video
 
 
 def choose_final_render_source(
     settings: Settings,
     source_video: Path,
     preview_render_source: Path,
+    temp_dir: Path,
+    heartbeat: Callable[[], None] | None,
 ) -> Path:
-    if settings.low_memory_final_mode == "render":
-        logger.info("Rendering the final video from the original uploaded source for maximum output quality.")
-        return source_video
-    return source_video
+    if settings.low_memory_final_mode == "proxy":
+        logger.info("Rendering the final video from the preview proxy source.")
+        return preview_render_source
+    logger.info("Preparing a normalized HD source for final rendering.")
+    return prepare_final_render_source(source_video, temp_dir, heartbeat)
 
 
 def execute_preview_pipeline(
@@ -164,22 +183,10 @@ def execute_preview_pipeline(
         reviewed_project_record, quality_report, rerender_preview = reviewed_project(project, preview_output)
     beat(heartbeat)
     if rerender_preview and settings.preview_render_mode == "styled":
-        rerender_refined_preview(
-            reviewed_project_record,
-            render_source,
-            voiceover_audio,
-            temp_dir,
-            settings,
-            heartbeat,
-            stage_update,
-            preview_output,
-        )
+        rerender_refined_preview(reviewed_project_record, render_source, voiceover_audio, temp_dir, settings, heartbeat, stage_update, preview_output)
     if settings.preview_render_mode == "styled":
         notify_render_stage(stage_update, "preview_upload", reviewed_project_record.id)
-        preview_video = run_with_retry(
-            "preview upload",
-            lambda: upload_variant(user_id, reviewed_project_record, preview_output, "preview", heartbeat=heartbeat),
-        )
+        preview_video = run_with_retry("preview upload", lambda: upload_variant(user_id, reviewed_project_record, preview_output, "preview", heartbeat=heartbeat))
         if preview_ready is not None:
             preview_ready(preview_video)
     beat(heartbeat)
@@ -229,36 +236,12 @@ def execute_final_pipeline_with_preview_fallback(
 ) -> RenderedVideoRecord:
     enforce_final_render_limit(user_id, project)
     if use_proxy_final_output(settings):
-        return upload_proxy_final_variant(
-            user_id,
-            project,
-            preview_output,
-            heartbeat,
-            stage_update,
-            final_ready,
-        )
+        return upload_proxy_final_variant(user_id, project, preview_output, heartbeat, stage_update, final_ready)
     try:
-        return execute_final_pipeline(
-            user_id,
-            project,
-            render_source,
-            voiceover_audio,
-            temp_dir,
-            settings,
-            heartbeat,
-            stage_update,
-            final_ready,
-        )
+        return execute_final_pipeline(user_id, project, render_source, voiceover_audio, temp_dir, settings, heartbeat, stage_update, final_ready)
     except Exception:
         if preview_video is None and settings.preview_render_mode == "proxy":
-            persist_proxy_preview_on_failure(
-                user_id,
-                project,
-                preview_output,
-                heartbeat,
-                preview_ready,
-                upload_proxy_preview_variant,
-            )
+            persist_proxy_preview_on_failure(user_id, project, preview_output, heartbeat, preview_ready, upload_proxy_preview_variant)
         raise
 
 
@@ -277,14 +260,7 @@ def finalize_preview_video(
 ) -> RenderedVideoRecord | None:
     if preview_video is not None or settings.preview_render_mode != "proxy":
         return preview_video
-    return persist_proxy_preview_after_final(
-        user_id,
-        project,
-        preview_output,
-        heartbeat,
-        preview_ready,
-        upload_proxy_preview_variant,
-    )
+    return persist_proxy_preview_after_final(user_id, project, preview_output, heartbeat, preview_ready, upload_proxy_preview_variant)
 
 
 def rerender_refined_preview(
@@ -318,19 +294,9 @@ def render_final_variant(
 ) -> RenderedVideoRecord:
     notify_render_stage(stage_update, "final_render", project.id)
     with timed_stage("final_render", settings.final_render_warn_seconds):
-        return run_with_retry(
-            "final render and upload",
-            lambda: render_and_upload_variant(
-                user_id,
-                project,
-                render_source,
-                voiceover_audio,
-                temp_dir,
-                "final",
-                heartbeat,
-                stage_update,
-            ),
-        )
+        return run_with_retry("final render and upload", lambda: render_and_upload_variant(
+            user_id, project, render_source, voiceover_audio, temp_dir, "final", heartbeat, stage_update,
+        ))
 
 
 def require_asset_path(project: ProjectRecord) -> str:
@@ -388,10 +354,7 @@ def upload_proxy_preview_variant(
     preview_output: Path,
     heartbeat: Callable[[], None] | None,
 ) -> RenderedVideoRecord:
-    return run_with_retry(
-        "proxy preview upload",
-        lambda: upload_variant(user_id, project, preview_output, "preview", heartbeat=heartbeat),
-    )
+    return run_with_retry("proxy preview upload", lambda: upload_variant(user_id, project, preview_output, "preview", heartbeat=heartbeat))
 
 
 def upload_proxy_final_variant(
@@ -405,10 +368,7 @@ def upload_proxy_final_variant(
     logger.info("Publishing reviewed preview output as final video for project %s to stay within starter memory limits.", project.id)
     notify_render_stage(stage_update, "final_render", project.id)
     notify_render_stage(stage_update, "final_upload", project.id)
-    final_video = run_with_retry(
-        "proxy final upload",
-        lambda: upload_variant(user_id, project, preview_output, "final", heartbeat=heartbeat),
-    )
+    final_video = run_with_retry("proxy final upload", lambda: upload_variant(user_id, project, preview_output, "final", heartbeat=heartbeat))
     if final_ready is not None:
         final_ready(final_video)
     beat(heartbeat)
