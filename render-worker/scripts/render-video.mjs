@@ -12,11 +12,18 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const mode = process.argv[2] ?? "preview";
 const options = parseArgs(process.argv.slice(3));
+const isPreviewRender = mode === "preview";
 const renderConcurrency = positiveInt(process.env.RENDER_CONCURRENCY, 1);
 const offthreadVideoThreads = positiveInt(process.env.RENDER_OFFTHREAD_VIDEO_THREADS, 1);
-const mediaCacheSizeInBytes = positiveInt(process.env.RENDER_MEDIA_CACHE_SIZE_MB, 64) * 1024 * 1024;
-const offthreadVideoCacheSizeInBytes =
-  positiveInt(process.env.RENDER_OFFTHREAD_VIDEO_CACHE_SIZE_MB, 64) * 1024 * 1024;
+const mediaCacheSizeInBytes = clampMegabytes(
+  positiveInt(process.env.RENDER_MEDIA_CACHE_SIZE_MB, 32),
+  isPreviewRender ? 12 : 24,
+) * 1024 * 1024;
+const offthreadVideoCacheSizeInBytes = clampMegabytes(
+  positiveInt(process.env.RENDER_OFFTHREAD_VIDEO_CACHE_SIZE_MB, 32),
+  isPreviewRender ? 8 : 16,
+) * 1024 * 1024;
+const renderScale = boundedFloat(process.env.RENDER_SCALE, isPreviewRender ? 0.75 : 1);
 
 await renderVideo(mode, options);
 
@@ -37,8 +44,14 @@ async function renderVideo(mode, options) {
     codec: "h264",
     concurrency: renderConcurrency,
     composition,
-    chromiumOptions: { disableWebSecurity: true },
+    chromiumOptions: {
+      disableWebSecurity: true,
+      enableMultiProcessOnLinux: false,
+      gl: "swangle",
+    },
     disallowParallelEncoding: true,
+    imageFormat: isPreviewRender ? "jpeg" : undefined,
+    jpegQuality: isPreviewRender ? 80 : undefined,
     logLevel: "info",
     mediaCacheSizeInBytes,
     inputProps: payload,
@@ -46,6 +59,7 @@ async function renderVideo(mode, options) {
     offthreadVideoThreads,
     outputLocation: options.output,
     pixelFormat: "yuv420p",
+    scale: renderScale,
     serveUrl: bundled,
   });
   console.log(`[launchify-render-worker] Completed ${mode} render: ${options.output}`);
@@ -140,6 +154,18 @@ function positiveInt(value, fallback) {
     return fallback;
   }
   return parsed;
+}
+
+function boundedFloat(value, fallback) {
+  const parsed = Number.parseFloat(value ?? "");
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function clampMegabytes(value, limit) {
+  return Math.max(4, Math.min(value, limit));
 }
 
 async function readPayload(inputPath, sourcePath) {

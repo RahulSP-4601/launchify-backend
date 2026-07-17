@@ -359,7 +359,7 @@ def prepare_preview_render_source(
         "-i",
         str(source_video),
         "-vf",
-        "fps=24,scale='min(iw,854)':-2",
+        "fps=20,scale='min(iw,640)':-2",
         "-threads",
         "1",
         "-c:v",

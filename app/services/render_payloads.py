@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from app.models.projects import EditPlanRecord, ProjectRecord, TemplateConfigRecord, VoiceoverRecord
 
-PREVIEW_DIMENSIONS = {"width": 854, "height": 480, "fps": 24}
+PREVIEW_DIMENSIONS = {"width": 640, "height": 360, "fps": 20}
 FINAL_DIMENSIONS = {"width": 1280, "height": 720, "fps": 30}
 INTRO_DURATION_SECONDS = 1.8
 OUTRO_DURATION_SECONDS = 2.2
