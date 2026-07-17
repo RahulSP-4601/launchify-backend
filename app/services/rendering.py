@@ -359,7 +359,9 @@ def prepare_preview_render_source(
         "-i",
         str(source_video),
         "-vf",
-        "scale='min(iw,1280)':-2",
+        "fps=24,scale='min(iw,854)':-2",
+        "-threads",
+        "1",
         "-c:v",
         "libx264",
         "-preset",
@@ -374,6 +376,8 @@ def prepare_preview_render_source(
         "aac",
         "-b:a",
         "128k",
+        "-ar",
+        "48000",
         str(proxy_path),
     ]
     try:
