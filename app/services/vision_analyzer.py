@@ -39,7 +39,7 @@ def analyze_scene_frames(
     )
     try:
         return finalize_scene_analysis(
-            VisualSceneAnalysisRecord.model_validate(payload),
+            VisualSceneAnalysisRecord.model_validate(normalize_visual_payload(payload)),
             diff_result,
             ocr_labels_by_timestamp,
         )
@@ -172,6 +172,56 @@ def parse_visual_payload(payload: dict[str, object]) -> dict[str, object]:
     if not isinstance(parsed, dict):
         raise RuntimeError("OpenAI returned an invalid visual analysis payload shape.")
     return parsed
+
+
+def normalize_visual_payload(payload: dict[str, object]) -> dict[str, object]:
+    normalized = dict(payload)
+    clamp_keys = {
+        "confidence",
+        "motion_score",
+        "frame_diff_score",
+        "cursor_path_confidence",
+        "ocr_match_score",
+        "ocr_confidence",
+        "click_confidence",
+        "diff_score",
+        "importance_score",
+    }
+    for key, value in list(normalized.items()):
+        if key in clamp_keys:
+            normalized[key] = clamp_unit_interval(value)
+        elif key == "frames" and isinstance(value, list):
+            normalized[key] = [normalize_visual_frame(frame, clamp_keys) for frame in value]
+    return normalized
+
+
+def normalize_visual_frame(frame: object, clamp_keys: set[str]) -> object:
+    if not isinstance(frame, dict):
+        return frame
+    normalized = dict(frame)
+    for key, value in list(normalized.items()):
+        if key in clamp_keys:
+            normalized[key] = clamp_unit_interval(value)
+        elif key == "ui_elements" and isinstance(value, list):
+            normalized[key] = [normalize_ui_element(item) for item in value]
+    return normalized
+
+
+def normalize_ui_element(item: object) -> object:
+    if not isinstance(item, dict):
+        return item
+    normalized = dict(item)
+    if "confidence" in normalized:
+        normalized["confidence"] = clamp_unit_interval(normalized["confidence"])
+    return normalized
+
+
+def clamp_unit_interval(value: object) -> object:
+    try:
+        numeric = float(str(value))
+    except (TypeError, ValueError):
+        return value
+    return max(0.0, min(1.0, numeric))
 
 
 def finalize_scene_analysis(

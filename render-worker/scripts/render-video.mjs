@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readFile, rename, rm } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,38 +32,76 @@ async function renderVideo(mode, options) {
   assertOption(options.input, "--input is required");
   assertOption(options.output, "--output is required");
   assertOption(options.source, "--source is required");
-  const payload = await readPayload(options.input, options.source);
-  const entryPoint = path.join(__dirname, "../src/index.ts");
-  console.log(
-    `[launchify-render-worker] Starting ${mode} render at ${payload.dimensions.width}x${payload.dimensions.height}` +
-      ` with concurrency=${renderConcurrency}, offthreadVideoThreads=${offthreadVideoThreads}.`,
-  );
-  const bundled = await getBundledServeUrl(entryPoint);
-  const compositions = await getCompositions(bundled, { inputProps: payload });
-  const composition = requireComposition(compositions);
-  await renderMedia({
-    codec: "h264",
-    concurrency: renderConcurrency,
-    composition,
-    chromiumOptions: {
-      disableWebSecurity: true,
-      enableMultiProcessOnLinux: false,
-      gl: "swangle",
-    },
-    disallowParallelEncoding: true,
-    imageFormat: isPreviewRender ? "jpeg" : undefined,
-    jpegQuality: isPreviewRender ? 80 : undefined,
-    logLevel: "info",
-    mediaCacheSizeInBytes,
-    inputProps: payload,
-    offthreadVideoCacheSizeInBytes,
-    offthreadVideoThreads,
-    outputLocation: options.output,
-    pixelFormat: "yuv420p",
-    scale: renderScale,
-    serveUrl: bundled,
+  await withServedSource(options.source, async (servedSource) => {
+    const payload = await readPayload(options.input, servedSource);
+    const entryPoint = path.join(__dirname, "../src/index.ts");
+    console.log(
+      `[launchify-render-worker] Starting ${mode} render at ${payload.dimensions.width}x${payload.dimensions.height}` +
+        ` with concurrency=${renderConcurrency}, offthreadVideoThreads=${offthreadVideoThreads}.`,
+    );
+    const bundled = await getBundledServeUrl(entryPoint);
+    const compositions = await getCompositions(bundled, { inputProps: payload });
+    const composition = requireComposition(compositions);
+    await renderMedia({
+      codec: "h264",
+      concurrency: renderConcurrency,
+      composition,
+      chromiumOptions: {
+        disableWebSecurity: true,
+        enableMultiProcessOnLinux: false,
+        gl: "swangle",
+      },
+      disallowParallelEncoding: true,
+      imageFormat: isPreviewRender ? "jpeg" : undefined,
+      jpegQuality: isPreviewRender ? 80 : undefined,
+      logLevel: "info",
+      mediaCacheSizeInBytes,
+      inputProps: payload,
+      offthreadVideoCacheSizeInBytes,
+      offthreadVideoThreads,
+      outputLocation: options.output,
+      pixelFormat: "yuv420p",
+      scale: renderScale,
+      serveUrl: bundled,
+    });
+    console.log(`[launchify-render-worker] Completed ${mode} render: ${options.output}`);
   });
-  console.log(`[launchify-render-worker] Completed ${mode} render: ${options.output}`);
+}
+
+async function withServedSource(sourcePath, callback) {
+  if (sourcePath.startsWith("http://") || sourcePath.startsWith("https://")) {
+    return callback(sourcePath);
+  }
+  const absolutePath = path.resolve(sourcePath);
+  const fileName = encodeURIComponent(path.basename(absolutePath));
+  const server = createServer((req, res) => {
+    if (!req.url || req.url !== `/${fileName}`) {
+      res.writeHead(404);
+      res.end("Not found");
+      return;
+    }
+    res.writeHead(200, {
+      "Access-Control-Allow-Origin": "*",
+      "Content-Length": statSync(absolutePath).size,
+      "Content-Type": "video/mp4",
+    });
+    createReadStream(absolutePath).pipe(res);
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    server.close();
+    throw new Error("Could not start local render source server.");
+  }
+  const servedSource = `http://127.0.0.1:${address.port}/${fileName}`;
+  try {
+    return await callback(servedSource);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 }
 
 async function getBundledServeUrl(entryPoint) {
@@ -186,8 +225,5 @@ function requireComposition(compositions) {
 }
 
 function withFileProtocol(sourcePath) {
-  if (sourcePath.startsWith("http://") || sourcePath.startsWith("https://")) {
-    return sourcePath;
-  }
-  return `file://${sourcePath}`;
+  return sourcePath;
 }

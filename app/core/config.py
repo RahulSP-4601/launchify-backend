@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     render_offthread_video_threads: int = 1
     render_media_cache_size_mb: int = 32
     render_offthread_video_cache_size_mb: int = 32
-    render_retry_attempts: int = 1
+    render_retry_attempts: int = 0
     run_job_runner: bool | None = None
     job_runner_poll_interval_seconds: int = 3
     job_stale_claim_window_seconds: int = 120
