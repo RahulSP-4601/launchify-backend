@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     low_memory_final_mode: Literal["proxy", "render"] = "render"
     low_memory_final_width: int = 854
     low_memory_final_height: int = 480
-    low_memory_final_fps: int = 20
+    low_memory_final_fps: int = 15
     low_memory_final_render_scale: float = 0.5
     render_concurrency: int = 1
     render_offthread_video_threads: int = 1

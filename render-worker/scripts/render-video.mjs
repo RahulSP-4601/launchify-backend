@@ -24,7 +24,7 @@ const offthreadVideoCacheSizeInBytes = clampMegabytes(
   positiveInt(process.env.RENDER_OFFTHREAD_VIDEO_CACHE_SIZE_MB, 32),
   isPreviewRender ? 8 : 16,
 ) * 1024 * 1024;
-const renderScale = boundedFloat(process.env.RENDER_SCALE, isPreviewRender ? 0.75 : 1);
+const renderScale = boundedFloat(process.env.RENDER_SCALE, isPreviewRender ? 0.65 : 1);
 const remotionTimeoutInMilliseconds = positiveInt(process.env.REMOTION_TIMEOUT_MS, isPreviewRender ? 240000 : 420000);
 
 await renderVideo(mode, options);

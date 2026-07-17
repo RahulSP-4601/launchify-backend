@@ -24,26 +24,27 @@ export const LaunchifyRender: React.FC<RenderPayload> = (payload) => {
   const totalDuration = totalFrames(payload);
   const introFrames = Math.round(payload.introDurationSeconds * payload.dimensions.fps);
   const outroFrames = Math.round(payload.outroDurationSeconds * payload.dimensions.fps);
+  const fastPreview = isFastPreview(payload);
 
   return (
     <AbsoluteFill style={shellStyle()}>
       <AudioTrack introFrames={introFrames} payload={payload} />
       <Sequence durationInFrames={introFrames}>
-        <IntroCard payload={payload} />
+        <IntroCard payload={payload} fastPreview={fastPreview} />
       </Sequence>
-      <SceneTrack introFrames={introFrames} payload={payload} />
+      <SceneTrack fastPreview={fastPreview} introFrames={introFrames} payload={payload} />
       <Sequence from={totalDuration - outroFrames} durationInFrames={outroFrames}>
-        <OutroCard payload={payload} />
+        <OutroCard payload={payload} fastPreview={fastPreview} />
       </Sequence>
     </AbsoluteFill>
   );
 };
 
-const IntroCard: React.FC<{ payload: RenderPayload }> = ({ payload }) => {
+const IntroCard: React.FC<{ payload: RenderPayload; fastPreview: boolean }> = ({ payload, fastPreview }) => {
   const frame = useCurrentFrame();
   const { durationInFrames } = useVideoConfig();
   return (
-    <AbsoluteFill style={cardShell(motionOpacity(frame, durationInFrames))}>
+    <AbsoluteFill style={cardShell(motionOpacity(frame, durationInFrames), fastPreview)}>
       <p style={titleStyles.eyebrow}>Launchify</p>
       <h1 style={titleStyles.headline}>{payload.editPlan.render_spec.title_card}</h1>
       <p style={titleStyles.body}>{payload.editPlan.overview}</p>
@@ -51,11 +52,11 @@ const IntroCard: React.FC<{ payload: RenderPayload }> = ({ payload }) => {
   );
 };
 
-const OutroCard: React.FC<{ payload: RenderPayload }> = ({ payload }) => {
+const OutroCard: React.FC<{ payload: RenderPayload; fastPreview: boolean }> = ({ payload, fastPreview }) => {
   const frame = useCurrentFrame();
   const { durationInFrames } = useVideoConfig();
   return (
-    <AbsoluteFill style={cardShell(motionOpacity(frame, durationInFrames))}>
+    <AbsoluteFill style={cardShell(motionOpacity(frame, durationInFrames), fastPreview)}>
       <p style={titleStyles.eyebrow}>Call To Action</p>
       <h2 style={titleStyles.headline}>{payload.editPlan.render_spec.cta}</h2>
       <p style={titleStyles.body}>{payload.productName} is ready to publish with polished captions and motion.</p>
@@ -63,7 +64,7 @@ const OutroCard: React.FC<{ payload: RenderPayload }> = ({ payload }) => {
   );
 };
 
-const SceneTrack: React.FC<{ introFrames: number; payload: RenderPayload }> = ({ introFrames, payload }) => {
+const SceneTrack: React.FC<{ fastPreview: boolean; introFrames: number; payload: RenderPayload }> = ({ fastPreview, introFrames, payload }) => {
   let sceneOffset = introFrames;
   return (
     <>
@@ -71,7 +72,7 @@ const SceneTrack: React.FC<{ introFrames: number; payload: RenderPayload }> = ({
         const durationInFrames = sceneDurationFrames(scene, payload.dimensions.fps);
         const sequence = (
           <Sequence key={scene.scene_number} from={sceneOffset} durationInFrames={durationInFrames}>
-            <SceneComposition payload={payload} scene={scene} />
+            <SceneComposition fastPreview={fastPreview} payload={payload} scene={scene} />
           </Sequence>
         );
         sceneOffset += durationInFrames;
@@ -81,7 +82,7 @@ const SceneTrack: React.FC<{ introFrames: number; payload: RenderPayload }> = ({
   );
 };
 
-const SceneComposition: React.FC<{ payload: RenderPayload; scene: RenderScene }> = ({ payload, scene }) => {
+const SceneComposition: React.FC<{ fastPreview: boolean; payload: RenderPayload; scene: RenderScene }> = ({ fastPreview, payload, scene }) => {
   const frame = useCurrentFrame();
   const localSeconds = scene.start + frame / payload.dimensions.fps;
   const caption = activeCaption(scene, localSeconds);
@@ -91,11 +92,12 @@ const SceneComposition: React.FC<{ payload: RenderPayload; scene: RenderScene }>
   return (
     <AbsoluteFill style={videoShellStyle(transition.opacity, transition.translateY)}>
       <VideoLayer payload={payload} scene={scene} zoom={zoom} transitionScale={transition.focusScale} />
-      <GradientMask />
-      <SceneHeader payload={payload} scene={scene} />
+      <GradientMask fastPreview={fastPreview} />
+      <SceneHeader fastPreview={fastPreview} payload={payload} scene={scene} />
       {caption ? <CaptionPill payload={payload} caption={caption} /> : null}
       {spotlight ? (
         <HighlightBadge
+          fastPreview={fastPreview}
           label={spotlight.label}
           anchor={spotlight.anchor}
           focusBox={spotlight.focusBox}
@@ -139,12 +141,14 @@ const AudioTrack: React.FC<{ introFrames: number; payload: RenderPayload }> = ({
   return <Sequence from={introFrames}><Audio src={payload.voiceoverAudioPath} volume={voiceoverVolume(payload)} /></Sequence>;
 };
 
-const GradientMask = () => <AbsoluteFill style={gradientMaskStyle()} />;
+const GradientMask: React.FC<{ fastPreview: boolean }> = ({ fastPreview }) => (
+  <AbsoluteFill style={gradientMaskStyle(fastPreview)} />
+);
 
-const SceneHeader: React.FC<{ payload: RenderPayload; scene: RenderScene }> = ({ payload, scene }) => {
+const SceneHeader: React.FC<{ fastPreview: boolean; payload: RenderPayload; scene: RenderScene }> = ({ fastPreview, payload, scene }) => {
   const accent = payload.templateConfig.theme === "bold" ? "#f97316" : "#7dd3fc";
   return (
-    <div style={sceneHeaderStyle()}>
+    <div style={sceneHeaderStyle(fastPreview)}>
       <p style={{ ...titleStyles.eyebrow, color: accent }}>Scene {scene.scene_number}</p>
       <h3 style={{ ...titleStyles.body, color: "#f8fafc", fontSize: 34 }}>{scene.purpose}</h3>
       <p style={{ ...titleStyles.body, fontSize: 22 }}>{scene.on_screen_text}</p>
@@ -157,7 +161,7 @@ const CaptionPill: React.FC<{
   caption: RenderScene["captions"][number];
 }> = ({ payload, caption }) => {
   return (
-    <div style={captionStyle(payload.templateConfig.theme, caption.variant)}>
+    <div style={captionStyle(payload)}>
       <CaptionText
         emphasisWords={caption.emphasis_words}
         profile={payload.templateConfig.caption_profile}
@@ -169,19 +173,24 @@ const CaptionPill: React.FC<{
 };
 
 const HighlightBadge: React.FC<{
+  fastPreview: boolean;
   label: string;
   anchor: { left: string; top: string };
   focusBox: { x: number; y: number; width: number; height: number } | null;
   intensity: number;
   dimensions: { width: number; height: number };
-}> = ({ label, anchor, focusBox, intensity, dimensions }) => {
+}> = ({ fastPreview, label, anchor, focusBox, intensity, dimensions }) => {
   return (
     <div style={highlightStyle(anchor)}>
-      <div style={highlightRingStyle(intensity, focusBox, dimensions)} />
-      <div style={highlightLabelStyle(intensity)}>{label}</div>
+      <div style={highlightRingStyle(fastPreview, intensity, focusBox, dimensions)} />
+      <div style={highlightLabelStyle(fastPreview, intensity)}>{label}</div>
     </div>
   );
 };
+
+function isFastPreview(payload: RenderPayload) {
+  return payload.quality === "preview";
+}
 
 function shellStyle(): React.CSSProperties {
   return {
@@ -189,14 +198,14 @@ function shellStyle(): React.CSSProperties {
   };
 }
 
-function cardShell(opacity: number): React.CSSProperties {
+function cardShell(opacity: number, fastPreview: boolean): React.CSSProperties {
   return {
     alignItems: "flex-start",
     display: "flex",
     flexDirection: "column",
     justifyContent: "center",
     opacity,
-    padding: "112px 120px",
+    padding: fastPreview ? "84px 88px" : "112px 120px",
   };
 }
 
@@ -208,18 +217,20 @@ function videoShellStyle(opacity: number, translateY: number): React.CSSProperti
   };
 }
 
-function gradientMaskStyle(): React.CSSProperties {
+function gradientMaskStyle(fastPreview: boolean): React.CSSProperties {
   return {
-    background: "linear-gradient(180deg, rgba(2,6,23,0.22) 0%, rgba(2,6,23,0.04) 28%, rgba(2,6,23,0.62) 100%)",
+    background: fastPreview
+      ? "linear-gradient(180deg, rgba(2,6,23,0.14) 0%, rgba(2,6,23,0.02) 24%, rgba(2,6,23,0.44) 100%)"
+      : "linear-gradient(180deg, rgba(2,6,23,0.22) 0%, rgba(2,6,23,0.04) 28%, rgba(2,6,23,0.62) 100%)",
   };
 }
 
-function sceneHeaderStyle(): React.CSSProperties {
+function sceneHeaderStyle(fastPreview: boolean): React.CSSProperties {
   return {
     background: "linear-gradient(135deg, rgba(15,23,42,0.72), rgba(15,23,42,0.28))",
     border: "1px solid rgba(191, 219, 254, 0.14)",
     borderRadius: 28,
-    boxShadow: "0 18px 50px rgba(2, 6, 23, 0.24)",
+    boxShadow: fastPreview ? "0 10px 24px rgba(2, 6, 23, 0.16)" : "0 18px 50px rgba(2, 6, 23, 0.24)",
     left: 40,
     maxWidth: 760,
     padding: "20px 24px 18px",
@@ -228,16 +239,16 @@ function sceneHeaderStyle(): React.CSSProperties {
   };
 }
 
-function captionStyle(theme: string, variant: string): React.CSSProperties {
-  const backgroundColor = theme === "bold" ? "rgba(127, 29, 29, 0.84)" : "rgba(15, 23, 42, 0.7)";
-  const maxWidth = variant === "hero" ? "90%" : "84%";
+function captionStyle(payload: RenderPayload): React.CSSProperties {
+  const fastPreview = isFastPreview(payload);
+  const backgroundColor = payload.templateConfig.theme === "bold" ? "rgba(127, 29, 29, 0.84)" : "rgba(15, 23, 42, 0.7)";
+  const maxWidth = "84%";
   return {
-    backdropFilter: "blur(10px)",
     backgroundColor,
     border: "1px solid rgba(191, 219, 254, 0.18)",
     borderRadius: 24,
     bottom: 34,
-    boxShadow: "0 14px 34px rgba(2, 6, 23, 0.28)",
+    boxShadow: fastPreview ? "0 8px 18px rgba(2, 6, 23, 0.2)" : "0 14px 34px rgba(2, 6, 23, 0.28)",
     left: 34,
     maxWidth,
     padding: "18px 22px",
@@ -298,6 +309,7 @@ function highlightStyle(anchor: { left: string; top: string }): React.CSSPropert
 }
 
 function highlightRingStyle(
+  fastPreview: boolean,
   intensity: number,
   focusBox: { x: number; y: number; width: number; height: number } | null,
   dimensions: { width: number; height: number },
@@ -308,14 +320,16 @@ function highlightRingStyle(
     background: "rgba(34, 211, 238, 0.05)",
     border: "3px solid rgba(125, 211, 252, 0.92)",
     borderRadius: focusBox ? 28 : 9999,
-    boxShadow: `0 0 0 ${10 + intensity * 10}px rgba(56, 189, 248, ${0.06 + intensity * 0.1}), 0 10px 24px rgba(2, 6, 23, 0.18)`,
+    boxShadow: fastPreview
+      ? `0 0 0 ${6 + intensity * 6}px rgba(56, 189, 248, ${0.04 + intensity * 0.06})`
+      : `0 0 0 ${10 + intensity * 10}px rgba(56, 189, 248, ${0.06 + intensity * 0.1}), 0 10px 24px rgba(2, 6, 23, 0.18)`,
     height,
     opacity: 0.76 + intensity * 0.2,
     width,
   };
 }
 
-function highlightLabelStyle(intensity: number): React.CSSProperties {
+function highlightLabelStyle(fastPreview: boolean, intensity: number): React.CSSProperties {
   return {
     backgroundColor: "rgba(15, 23, 42, 0.88)",
     border: "1px solid rgba(191, 219, 254, 0.28)",
@@ -327,6 +341,7 @@ function highlightLabelStyle(intensity: number): React.CSSProperties {
     marginTop: 12,
     opacity: 0.8 + intensity * 0.2,
     padding: "10px 16px",
+    boxShadow: fastPreview ? "none" : "0 8px 18px rgba(2, 6, 23, 0.16)",
   };
 }
 

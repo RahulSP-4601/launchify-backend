@@ -21,14 +21,15 @@ def prepare_preview_render_source(
     temp_dir: Path,
     heartbeat: Callable[[], None] | None = None,
 ) -> Path:
+    settings = get_settings()
     proxy_path = temp_dir / "render-source.mp4"
     command = [
-        get_settings().ffmpeg_binary,
+        settings.ffmpeg_binary,
         "-y",
         "-i",
         str(source_video),
         "-vf",
-        "fps=20,scale='min(iw,640)':-2",
+        f"fps={settings.low_memory_final_fps},scale='min(iw,{settings.low_memory_final_width})':-2",
         "-threads",
         "1",
         "-c:v",
@@ -52,15 +53,15 @@ def prepare_preview_render_source(
     try:
         run_process_with_heartbeat(
             command,
-            timeout_seconds=get_settings().render_timeout_seconds,
+            timeout_seconds=settings.render_timeout_seconds,
             heartbeat=heartbeat,
         )
     except FileNotFoundError as exc:
         raise RuntimeError("FFmpeg is required for video rendering. Configure FFMPEG_BINARY in the backend env.") from exc
     except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"Render source preparation timed out after {get_settings().render_timeout_seconds} seconds.") from exc
+        raise RuntimeError(f"Render source preparation timed out after {settings.render_timeout_seconds} seconds.") from exc
     except TimeoutError as exc:
-        raise RuntimeError(f"Render source preparation timed out after {get_settings().render_timeout_seconds} seconds.") from exc
+        raise RuntimeError(f"Render source preparation timed out after {settings.render_timeout_seconds} seconds.") from exc
     except subprocess.CalledProcessError as exc:
         raise RuntimeError("Render source preparation failed before preview rendering started.") from exc
     return proxy_path
