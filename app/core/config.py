@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     visual_analysis_total_budget_seconds: int = 120
     render_worker_dir: str = str(Path(__file__).resolve().parents[2] / "render-worker")
     render_timeout_seconds: int = 420
-    preview_render_mode: Literal["proxy", "styled"] = "styled"
+    preview_render_mode: Literal["proxy", "styled"] = "proxy"
     render_concurrency: int = 1
     render_offthread_video_threads: int = 1
     render_media_cache_size_mb: int = 32

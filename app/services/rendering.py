@@ -50,6 +50,7 @@ def render_project_videos(
     asset_path = require_asset_path(project)
     settings = get_settings()
     ensure_render_worker_ready()
+    logger.info("Render pipeline using %s preview mode for project %s.", settings.preview_render_mode, project.id)
     with TemporaryDirectory(prefix="launchify-render-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
         source_video = download_asset_to_file(asset_path)
