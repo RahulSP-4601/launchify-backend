@@ -5,9 +5,9 @@ import re
 from app.models.projects import EditPlanCaption, TemplateConfigRecord, TranscriptSegment
 
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9]+")
-CAPTION_MAX_CHARACTERS = 56
-CAPTION_IDEAL_SECONDS = 2.8
-CAPTION_MAX_SECONDS = 4.8
+CAPTION_MAX_CHARACTERS = 42
+CAPTION_IDEAL_SECONDS = 2.2
+CAPTION_MAX_SECONDS = 3.8
 
 
 def build_caption_track(
@@ -92,7 +92,7 @@ def caption_text(text: str, template_config: TemplateConfigRecord | None) -> str
 
 
 def balanced_break(text: str) -> str:
-    if len(text) <= 32:
+    if len(text) <= 24:
         return text
     midpoint = len(text) // 2
     split_index = nearest_space(text, midpoint)
@@ -100,7 +100,7 @@ def balanced_break(text: str) -> str:
         return text
     first = text[:split_index].strip()
     second = text[split_index + 1 :].strip()
-    if len(first) < 10 or len(second) < 10:
+    if len(first) < 8 or len(second) < 8:
         return text
     return f"{first}\n{second}"
 

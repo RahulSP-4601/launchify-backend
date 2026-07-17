@@ -44,10 +44,12 @@ const IntroCard: React.FC<{ payload: RenderPayload; fastPreview: boolean }> = ({
   const frame = useCurrentFrame();
   const { durationInFrames } = useVideoConfig();
   return (
-    <AbsoluteFill style={cardShell(motionOpacity(frame, durationInFrames), fastPreview)}>
-      <p style={titleStyles.eyebrow}>Launchify</p>
-      <h1 style={titleStyles.headline}>{payload.editPlan.render_spec.title_card}</h1>
-      <p style={titleStyles.body}>{payload.editPlan.overview}</p>
+    <AbsoluteFill style={heroShell(motionOpacity(frame, durationInFrames), fastPreview)}>
+      <div style={heroBadgeStyle()}>AI Product Video</div>
+      <h1 style={heroTitleStyle(fastPreview)}>{payload.editPlan.render_spec.title_card}</h1>
+      <p style={heroBodyStyle(fastPreview)}>
+        {payload.productName} walkthrough, cleaned up with guided focus, captions, and launch-ready framing.
+      </p>
     </AbsoluteFill>
   );
 };
@@ -56,15 +58,21 @@ const OutroCard: React.FC<{ payload: RenderPayload; fastPreview: boolean }> = ({
   const frame = useCurrentFrame();
   const { durationInFrames } = useVideoConfig();
   return (
-    <AbsoluteFill style={cardShell(motionOpacity(frame, durationInFrames), fastPreview)}>
-      <p style={titleStyles.eyebrow}>Call To Action</p>
-      <h2 style={titleStyles.headline}>{payload.editPlan.render_spec.cta}</h2>
-      <p style={titleStyles.body}>{payload.productName} is ready to publish with polished captions and motion.</p>
+    <AbsoluteFill style={heroShell(motionOpacity(frame, durationInFrames), fastPreview)}>
+      <div style={heroBadgeStyle()}>Ready To Share</div>
+      <h2 style={heroTitleStyle(fastPreview)}>{payload.editPlan.render_spec.cta}</h2>
+      <p style={heroBodyStyle(fastPreview)}>
+        {payload.productName} is ready to publish as a polished demo, walkthrough, or launch asset.
+      </p>
     </AbsoluteFill>
   );
 };
 
-const SceneTrack: React.FC<{ fastPreview: boolean; introFrames: number; payload: RenderPayload }> = ({ fastPreview, introFrames, payload }) => {
+const SceneTrack: React.FC<{ fastPreview: boolean; introFrames: number; payload: RenderPayload }> = ({
+  fastPreview,
+  introFrames,
+  payload,
+}) => {
   let sceneOffset = introFrames;
   return (
     <>
@@ -82,18 +90,33 @@ const SceneTrack: React.FC<{ fastPreview: boolean; introFrames: number; payload:
   );
 };
 
-const SceneComposition: React.FC<{ fastPreview: boolean; payload: RenderPayload; scene: RenderScene }> = ({ fastPreview, payload, scene }) => {
+const SceneComposition: React.FC<{ fastPreview: boolean; payload: RenderPayload; scene: RenderScene }> = ({
+  fastPreview,
+  payload,
+  scene,
+}) => {
   const frame = useCurrentFrame();
   const localSeconds = scene.start + frame / payload.dimensions.fps;
   const caption = activeCaption(scene, localSeconds);
   const zoom = zoomTransform(scene.zooms, localSeconds);
   const spotlight = spotlightStyle(scene.highlights, localSeconds);
   const transition = transitionStyle(scene, frame, payload.dimensions.fps);
+
   return (
-    <AbsoluteFill style={videoShellStyle(transition.opacity, transition.translateY)}>
-      <VideoLayer payload={payload} scene={scene} zoom={zoom} transitionScale={transition.focusScale} />
-      <GradientMask fastPreview={fastPreview} />
-      <SceneHeader fastPreview={fastPreview} payload={payload} scene={scene} />
+    <AbsoluteFill style={sceneCanvasStyle(transition.opacity, transition.translateY)}>
+      <SceneGlow fastPreview={fastPreview} />
+      <ViewportFrame fastPreview={fastPreview}>
+        <VideoLayer
+          payload={payload}
+          scene={scene}
+          viewport={viewportMetrics(payload.dimensions)}
+          zoom={zoom}
+          transitionScale={transition.focusScale}
+        />
+        <GradientMask fastPreview={fastPreview} />
+        <BrowserChrome payload={payload} viewport={viewportMetrics(payload.dimensions)} />
+      </ViewportFrame>
+      <SceneMeta payload={payload} scene={scene} fastPreview={fastPreview} />
       {caption ? <CaptionPill payload={payload} caption={caption} /> : null}
       {spotlight ? (
         <HighlightBadge
@@ -102,21 +125,30 @@ const SceneComposition: React.FC<{ fastPreview: boolean; payload: RenderPayload;
           anchor={spotlight.anchor}
           focusBox={spotlight.focusBox}
           intensity={spotlight.intensity}
-          dimensions={payload.dimensions}
+          viewport={viewportMetrics(payload.dimensions)}
         />
       ) : null}
     </AbsoluteFill>
   );
 };
 
+const ViewportFrame: React.FC<{ children: React.ReactNode; fastPreview: boolean }> = ({ children, fastPreview }) => (
+  <div style={viewportFrameStyle(fastPreview)}>
+    <div style={viewportInnerStyle()}>{children}</div>
+  </div>
+);
+
 const VideoLayer: React.FC<{
   payload: RenderPayload;
   scene: RenderScene;
+  viewport: {
+    chromeOffset: number;
+  };
   zoom: { origin: string; scale: number; translateX: number; translateY: number };
   transitionScale: number;
-}> = ({ payload, scene, zoom, transitionScale }) => {
+}> = ({ payload, scene, viewport, zoom, transitionScale }) => {
   return (
-    <AbsoluteFill style={{ overflow: "hidden" }}>
+    <AbsoluteFill style={videoSurfaceStyle(viewport.chromeOffset)}>
       <OffthreadVideo
         src={payload.sourceVideoPath ?? ""}
         startFrom={Math.round(scene.start * payload.dimensions.fps)}
@@ -134,24 +166,52 @@ const VideoLayer: React.FC<{
   );
 };
 
+const BrowserChrome: React.FC<{
+  payload: RenderPayload;
+  viewport: {
+    chromeOffset: number;
+  };
+}> = ({ payload, viewport }) => (
+  <div style={browserChromeStyle(viewport.chromeOffset)}>
+    <div style={browserDotsStyle()}>
+      <span style={{ ...browserDotStyle(), background: "#fb7185" }} />
+      <span style={{ ...browserDotStyle(), background: "#fbbf24" }} />
+      <span style={{ ...browserDotStyle(), background: "#4ade80" }} />
+    </div>
+    <div style={browserTitleStyle()}>{payload.productName} walkthrough</div>
+  </div>
+);
+
 const AudioTrack: React.FC<{ introFrames: number; payload: RenderPayload }> = ({ introFrames, payload }) => {
   if (!payload.voiceoverAudioPath || payload.voiceover.mode === "original") {
     return null;
   }
-  return <Sequence from={introFrames}><Audio src={payload.voiceoverAudioPath} volume={voiceoverVolume(payload)} /></Sequence>;
+  return (
+    <Sequence from={introFrames}>
+      <Audio src={payload.voiceoverAudioPath} volume={voiceoverVolume(payload)} />
+    </Sequence>
+  );
 };
 
 const GradientMask: React.FC<{ fastPreview: boolean }> = ({ fastPreview }) => (
   <AbsoluteFill style={gradientMaskStyle(fastPreview)} />
 );
 
-const SceneHeader: React.FC<{ fastPreview: boolean; payload: RenderPayload; scene: RenderScene }> = ({ fastPreview, payload, scene }) => {
-  const accent = payload.templateConfig.theme === "bold" ? "#f97316" : "#7dd3fc";
+const SceneGlow: React.FC<{ fastPreview: boolean }> = ({ fastPreview }) => (
+  <AbsoluteFill style={sceneGlowStyle(fastPreview)} />
+);
+
+const SceneMeta: React.FC<{ fastPreview: boolean; payload: RenderPayload; scene: RenderScene }> = ({
+  fastPreview,
+  payload,
+  scene,
+}) => {
+  const accent = payload.templateConfig.theme === "bold" ? "#fb7185" : "#67e8f9";
   return (
-    <div style={sceneHeaderStyle(fastPreview)}>
-      <p style={{ ...titleStyles.eyebrow, color: accent }}>Scene {scene.scene_number}</p>
-      <h3 style={{ ...titleStyles.body, color: "#f8fafc", fontSize: 34 }}>{scene.purpose}</h3>
-      <p style={{ ...titleStyles.body, fontSize: 22 }}>{scene.on_screen_text}</p>
+    <div style={sceneMetaStyle(fastPreview)}>
+      <div style={{ ...sceneNumberChipStyle(), color: accent, borderColor: `${accent}55` }}>Scene {scene.scene_number}</div>
+      <h3 style={sceneTitleStyle()}>{scene.purpose}</h3>
+      <p style={sceneSubtitleStyle()}>{scene.on_screen_text || scene.visual_summary}</p>
     </div>
   );
 };
@@ -178,11 +238,17 @@ const HighlightBadge: React.FC<{
   anchor: { left: string; top: string };
   focusBox: { x: number; y: number; width: number; height: number } | null;
   intensity: number;
-  dimensions: { width: number; height: number };
-}> = ({ fastPreview, label, anchor, focusBox, intensity, dimensions }) => {
+  viewport: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    chromeOffset: number;
+  };
+}> = ({ fastPreview, label, anchor, focusBox, intensity, viewport }) => {
   return (
-    <div style={highlightStyle(anchor)}>
-      <div style={highlightRingStyle(fastPreview, intensity, focusBox, dimensions)} />
+    <div style={highlightStyle(anchor, viewport)}>
+      <div style={highlightRingStyle(fastPreview, intensity, focusBox, viewport)} />
       <div style={highlightLabelStyle(fastPreview, intensity)}>{label}</div>
     </div>
   );
@@ -194,79 +260,252 @@ function isFastPreview(payload: RenderPayload) {
 
 function shellStyle(): React.CSSProperties {
   return {
-    background: "radial-gradient(circle at top left, rgba(56, 189, 248, 0.16), transparent 28%), linear-gradient(135deg, #020617 0%, #0f172a 38%, #172554 100%)",
+    background:
+      "radial-gradient(circle at 10% 20%, rgba(103, 232, 249, 0.18), transparent 24%), radial-gradient(circle at 88% 16%, rgba(244, 114, 182, 0.18), transparent 28%), linear-gradient(135deg, #f8fafc 0%, #e2e8f0 38%, #dbeafe 100%)",
   };
 }
 
-function cardShell(opacity: number, fastPreview: boolean): React.CSSProperties {
+function viewportMetrics(dimensions: { width: number; height: number }) {
+  const frameHeight = dimensions.height * 0.82;
+  const chromeOffset = Math.round(frameHeight * (42 / 720));
+  return {
+    left: 0.045,
+    top: 0.09,
+    width: 0.91,
+    height: 0.82,
+    chromeOffset,
+    canvasWidth: dimensions.width,
+    canvasHeight: dimensions.height,
+  };
+}
+
+function heroShell(opacity: number, fastPreview: boolean): React.CSSProperties {
   return {
     alignItems: "flex-start",
     display: "flex",
     flexDirection: "column",
     justifyContent: "center",
     opacity,
-    padding: fastPreview ? "84px 88px" : "112px 120px",
+    padding: fastPreview ? "84px 88px" : "112px 124px",
   };
 }
 
-function videoShellStyle(opacity: number, translateY: number): React.CSSProperties {
+function heroBadgeStyle(): React.CSSProperties {
   return {
-    backgroundColor: "#020617",
+    background: "rgba(15, 23, 42, 0.08)",
+    border: "1px solid rgba(15, 23, 42, 0.1)",
+    borderRadius: 9999,
+    color: "#0f172a",
+    fontFamily: "\"Avenir Next\", \"Segoe UI\", sans-serif",
+    fontSize: 20,
+    fontWeight: 600,
+    letterSpacing: "0.08em",
+    padding: "12px 18px",
+    textTransform: "uppercase",
+  };
+}
+
+function heroTitleStyle(fastPreview: boolean): React.CSSProperties {
+  return {
+    ...titleStyles.headline,
+    color: "#0f172a",
+    fontSize: fastPreview ? 54 : 72,
+    marginTop: 28,
+    maxWidth: 920,
+  };
+}
+
+function heroBodyStyle(fastPreview: boolean): React.CSSProperties {
+  return {
+    ...titleStyles.body,
+    color: "rgba(15, 23, 42, 0.72)",
+    fontSize: fastPreview ? 26 : 30,
+    marginTop: 22,
+    maxWidth: 820,
+  };
+}
+
+function sceneCanvasStyle(opacity: number, translateY: number): React.CSSProperties {
+  return {
     opacity,
     transform: `translateY(${translateY}px)`,
+  };
+}
+
+function viewportFrameStyle(fastPreview: boolean): React.CSSProperties {
+  return {
+    backdropFilter: "blur(18px)",
+    background: "rgba(255,255,255,0.5)",
+    border: "1px solid rgba(255,255,255,0.86)",
+    borderRadius: 34,
+    boxShadow: fastPreview
+      ? "0 18px 40px rgba(15, 23, 42, 0.14)"
+      : "0 26px 60px rgba(15, 23, 42, 0.16), 0 8px 24px rgba(59, 130, 246, 0.08)",
+    height: "82%",
+    left: "4.5%",
+    overflow: "hidden",
+    position: "absolute",
+    top: "9%",
+    width: "91%",
+  };
+}
+
+function viewportInnerStyle(): React.CSSProperties {
+  return {
+    background: "#020617",
+    borderRadius: 28,
+    height: "100%",
+    overflow: "hidden",
+    position: "relative",
+    width: "100%",
+  };
+}
+
+function videoSurfaceStyle(chromeOffset: number): React.CSSProperties {
+  return {
+    bottom: 0,
+    left: 0,
+    overflow: "hidden",
+    position: "absolute",
+    right: 0,
+    top: chromeOffset,
+  };
+}
+
+function browserChromeStyle(chromeOffset: number): React.CSSProperties {
+  return {
+    alignItems: "center",
+    background: "linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.92))",
+    borderBottom: "1px solid rgba(148, 163, 184, 0.22)",
+    display: "flex",
+    gap: 18,
+    height: chromeOffset,
+    left: 0,
+    padding: "0 16px",
+    position: "absolute",
+    right: 0,
+    top: 0,
+    zIndex: 3,
+  };
+}
+
+function browserDotsStyle(): React.CSSProperties {
+  return { display: "flex", gap: 8 };
+}
+
+function browserDotStyle(): React.CSSProperties {
+  return { borderRadius: 9999, display: "block", height: 10, width: 10 };
+}
+
+function browserTitleStyle(): React.CSSProperties {
+  return {
+    color: "rgba(15, 23, 42, 0.72)",
+    fontFamily: "\"Avenir Next\", \"Segoe UI\", sans-serif",
+    fontSize: 15,
+    fontWeight: 600,
+  };
+}
+
+function sceneGlowStyle(fastPreview: boolean): React.CSSProperties {
+  return {
+    background: fastPreview
+      ? "radial-gradient(circle at 20% 15%, rgba(34,211,238,0.08), transparent 20%), radial-gradient(circle at 82% 80%, rgba(59,130,246,0.08), transparent 22%)"
+      : "radial-gradient(circle at 18% 14%, rgba(34,211,238,0.12), transparent 22%), radial-gradient(circle at 84% 78%, rgba(59,130,246,0.12), transparent 26%)",
   };
 }
 
 function gradientMaskStyle(fastPreview: boolean): React.CSSProperties {
   return {
     background: fastPreview
-      ? "linear-gradient(180deg, rgba(2,6,23,0.14) 0%, rgba(2,6,23,0.02) 24%, rgba(2,6,23,0.44) 100%)"
-      : "linear-gradient(180deg, rgba(2,6,23,0.22) 0%, rgba(2,6,23,0.04) 28%, rgba(2,6,23,0.62) 100%)",
+      ? "linear-gradient(180deg, rgba(2,6,23,0.04) 0%, rgba(2,6,23,0) 26%, rgba(2,6,23,0.16) 100%)"
+      : "linear-gradient(180deg, rgba(2,6,23,0.06) 0%, rgba(2,6,23,0) 28%, rgba(2,6,23,0.22) 100%)",
   };
 }
 
-function sceneHeaderStyle(fastPreview: boolean): React.CSSProperties {
+function sceneMetaStyle(fastPreview: boolean): React.CSSProperties {
   return {
-    background: "linear-gradient(135deg, rgba(15,23,42,0.72), rgba(15,23,42,0.28))",
-    border: "1px solid rgba(191, 219, 254, 0.14)",
-    borderRadius: 28,
-    boxShadow: fastPreview ? "0 10px 24px rgba(2, 6, 23, 0.16)" : "0 18px 50px rgba(2, 6, 23, 0.24)",
-    left: 40,
-    maxWidth: 760,
-    padding: "20px 24px 18px",
+    left: 74,
+    maxWidth: fastPreview ? 520 : 580,
     position: "absolute",
-    top: 32,
+    top: 92,
+    zIndex: 5,
+  };
+}
+
+function sceneNumberChipStyle(): React.CSSProperties {
+  return {
+    backdropFilter: "blur(10px)",
+    background: "rgba(255,255,255,0.68)",
+    border: "1px solid rgba(103,232,249,0.3)",
+    borderRadius: 9999,
+    display: "inline-flex",
+    fontFamily: "\"Avenir Next\", \"Segoe UI\", sans-serif",
+    fontSize: 13,
+    fontWeight: 700,
+    letterSpacing: "0.14em",
+    padding: "10px 14px",
+    textTransform: "uppercase",
+  };
+}
+
+function sceneTitleStyle(): React.CSSProperties {
+  return {
+    color: "#0f172a",
+    fontFamily: "\"Avenir Next\", \"Segoe UI\", sans-serif",
+    fontSize: 42,
+    fontWeight: 700,
+    letterSpacing: "-0.03em",
+    lineHeight: 1.08,
+    margin: "18px 0 10px",
+    textShadow: "0 2px 10px rgba(255,255,255,0.35)",
+  };
+}
+
+function sceneSubtitleStyle(): React.CSSProperties {
+  return {
+    color: "rgba(15, 23, 42, 0.64)",
+    fontFamily: "\"Avenir Next\", \"Segoe UI\", sans-serif",
+    fontSize: 22,
+    fontWeight: 500,
+    lineHeight: 1.34,
+    margin: 0,
+    maxWidth: 520,
   };
 }
 
 function captionStyle(payload: RenderPayload): React.CSSProperties {
   const fastPreview = isFastPreview(payload);
-  const backgroundColor = payload.templateConfig.theme === "bold" ? "rgba(127, 29, 29, 0.84)" : "rgba(15, 23, 42, 0.7)";
-  const maxWidth = "84%";
   return {
-    backgroundColor,
-    border: "1px solid rgba(191, 219, 254, 0.18)",
+    backdropFilter: "blur(18px)",
+    background: "rgba(255,255,255,0.84)",
+    border: "1px solid rgba(255,255,255,0.92)",
     borderRadius: 24,
-    bottom: 34,
-    boxShadow: fastPreview ? "0 8px 18px rgba(2, 6, 23, 0.2)" : "0 14px 34px rgba(2, 6, 23, 0.28)",
-    left: 34,
-    maxWidth,
+    bottom: 36,
+    boxShadow: fastPreview
+      ? "0 10px 26px rgba(15, 23, 42, 0.1)"
+      : "0 16px 40px rgba(15, 23, 42, 0.12)",
+    left: "50%",
+    maxWidth: "74%",
     padding: "18px 22px",
     position: "absolute",
+    transform: "translateX(-50%)",
+    zIndex: 6,
   };
 }
 
 function captionTextStyle(profile: string, variant: string): React.CSSProperties {
-  const fontSize = profile === "cinematic" || variant === "hero" ? 34 : profile === "minimal" ? 25 : 29;
+  const fontSize = profile === "cinematic" || variant === "hero" ? 28 : profile === "minimal" ? 22 : 25;
   const fontFamily = profile === "cinematic" ? "\"Iowan Old Style\", Georgia, serif" : "\"Avenir Next\", \"Segoe UI\", sans-serif";
-  const fontWeight = variant === "hero" ? 700 : 500;
+  const fontWeight = variant === "hero" ? 700 : 600;
   return {
-    color: "#f8fafc",
+    color: "#0f172a",
     fontFamily,
     fontSize,
     fontWeight,
-    letterSpacing: "0.01em",
-    lineHeight: 1.3,
+    letterSpacing: "-0.01em",
+    lineHeight: 1.22,
+    margin: 0,
+    textAlign: "center",
   };
 }
 
@@ -295,16 +534,31 @@ const CaptionText: React.FC<{
 
 function emphasisStyle(profile: string): React.CSSProperties {
   return {
-    color: profile === "cinematic" ? "#fcd34d" : "#67e8f9",
+    color: profile === "cinematic" ? "#0891b2" : "#0ea5e9",
     fontWeight: 700,
   };
 }
 
-function highlightStyle(anchor: { left: string; top: string }): React.CSSProperties {
+function highlightStyle(
+  anchor: { left: string; top: string },
+  viewport: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    chromeOffset: number;
+    canvasHeight: number;
+  },
+): React.CSSProperties {
+  const left = Number.parseFloat(anchor.left) / 100;
+  const top = Number.parseFloat(anchor.top) / 100;
+  const chromeOffsetPercent = (viewport.chromeOffset / viewport.canvasHeight) * viewport.height;
   return {
-    left: anchor.left,
+    left: `${((viewport.left + left * viewport.width) * 100).toFixed(2)}%`,
     position: "absolute",
-    top: anchor.top,
+    top: `${((viewport.top + chromeOffsetPercent + top * (viewport.height - chromeOffsetPercent)) * 100).toFixed(2)}%`,
+    transform: "translate(-10%, -10%)",
+    zIndex: 7,
   };
 }
 
@@ -312,36 +566,40 @@ function highlightRingStyle(
   fastPreview: boolean,
   intensity: number,
   focusBox: { x: number; y: number; width: number; height: number } | null,
-  dimensions: { width: number; height: number },
+  viewport: { width: number; height: number; canvasWidth: number; canvasHeight: number },
 ): React.CSSProperties {
-  const width = focusBox ? Math.max(90, Math.round(focusBox.width * dimensions.width)) : 120;
-  const height = focusBox ? Math.max(60, Math.round(focusBox.height * dimensions.height)) : 120;
+  const canvasWidth = viewport.width * viewport.canvasWidth;
+  const canvasHeight = viewport.height * viewport.canvasHeight;
+  const width = focusBox ? Math.max(110, Math.round(focusBox.width * canvasWidth)) : 130;
+  const height = focusBox ? Math.max(72, Math.round(focusBox.height * canvasHeight)) : 130;
   return {
-    background: "rgba(34, 211, 238, 0.05)",
-    border: "3px solid rgba(125, 211, 252, 0.92)",
-    borderRadius: focusBox ? 28 : 9999,
+    background: "rgba(14, 165, 233, 0.08)",
+    border: "3px solid rgba(34, 211, 238, 0.95)",
+    borderRadius: focusBox ? 26 : 9999,
     boxShadow: fastPreview
-      ? `0 0 0 ${6 + intensity * 6}px rgba(56, 189, 248, ${0.04 + intensity * 0.06})`
-      : `0 0 0 ${10 + intensity * 10}px rgba(56, 189, 248, ${0.06 + intensity * 0.1}), 0 10px 24px rgba(2, 6, 23, 0.18)`,
+      ? `0 0 0 ${8 + intensity * 8}px rgba(34, 211, 238, ${0.05 + intensity * 0.06})`
+      : `0 0 0 ${12 + intensity * 12}px rgba(34, 211, 238, ${0.07 + intensity * 0.1}), 0 18px 30px rgba(2, 6, 23, 0.14)`,
     height,
-    opacity: 0.76 + intensity * 0.2,
+    opacity: 0.8 + intensity * 0.16,
     width,
   };
 }
 
 function highlightLabelStyle(fastPreview: boolean, intensity: number): React.CSSProperties {
   return {
-    backgroundColor: "rgba(15, 23, 42, 0.88)",
-    border: "1px solid rgba(191, 219, 254, 0.28)",
+    backdropFilter: "blur(12px)",
+    backgroundColor: "rgba(255, 255, 255, 0.88)",
+    border: "1px solid rgba(125, 211, 252, 0.55)",
     borderRadius: 9999,
-    color: "#f8fafc",
+    color: "#0f172a",
     fontFamily: "\"Avenir Next\", \"Segoe UI\", sans-serif",
-    fontSize: 20,
-    fontWeight: 600,
-    marginTop: 12,
-    opacity: 0.8 + intensity * 0.2,
+    fontSize: 18,
+    fontWeight: 700,
+    marginTop: 10,
+    opacity: 0.84 + intensity * 0.16,
     padding: "10px 16px",
-    boxShadow: fastPreview ? "none" : "0 8px 18px rgba(2, 6, 23, 0.16)",
+    boxShadow: fastPreview ? "0 8px 18px rgba(15,23,42,0.08)" : "0 12px 24px rgba(15,23,42,0.1)",
+    whiteSpace: "nowrap",
   };
 }
 
@@ -350,11 +608,11 @@ function sourceVideoVolume(payload: RenderPayload): number {
     return 0;
   }
   if (payload.voiceover.mode === "mixed") {
-    return 0.35;
+    return 0.25;
   }
   return 1;
 }
 
 function voiceoverVolume(payload: RenderPayload): number {
-  return payload.voiceover.mode === "mixed" ? 0.82 : 1;
+  return payload.voiceover.mode === "mixed" ? 0.92 : 1;
 }

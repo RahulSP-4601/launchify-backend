@@ -168,9 +168,9 @@ class RenderSpecRecord(BaseModel):
 
 
 class TemplateConfigRecord(BaseModel):
-    theme: ThemeName = "clean"
-    caption_profile: CaptionProfile = "product"
-    motion_profile: MotionProfile = "balanced"
+    theme: ThemeName = "spotlight"
+    caption_profile: CaptionProfile = "cinematic"
+    motion_profile: MotionProfile = "dynamic"
 
 
 class SceneOverrideRecord(BaseModel):

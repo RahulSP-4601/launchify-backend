@@ -258,10 +258,16 @@ def infer_focus_region(
 def decide_zoom(evidence: PolicyEvidence, zoom_confidence: float) -> bool:
     if evidence.visual_confidence == 0:
         return (
-            zoom_confidence >= 0.5
-            and evidence.action_score >= 0.33
-            and evidence.specificity_score >= 0.24
+            zoom_confidence >= 0.44
             and evidence.focus_confidence >= 0.5
+            and (
+                (evidence.action_score >= 0.22 and evidence.specificity_score >= 0.2)
+                or (
+                    evidence.alignment_score >= 0.24
+                    and evidence.label_score >= 0.34
+                    and evidence.specificity_score >= 0.18
+                )
+            )
         )
     if evidence.anchor_box is not None and focus_signal_is_trustworthy(evidence):
         return (

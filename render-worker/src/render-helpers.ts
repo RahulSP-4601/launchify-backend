@@ -78,7 +78,16 @@ export function spotlightStyle(highlights: RenderHighlight[], localSeconds: numb
 }
 
 export function motionOpacity(frame: number, durationInFrames: number) {
-  return interpolate(frame, [0, 8, durationInFrames - 8, durationInFrames], [0, 1, 1, 0], {
+  const safeDuration = Math.max(1, durationInFrames);
+  if (safeDuration <= 2) {
+    return interpolate(frame, [0, safeDuration], [0, 1], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    });
+  }
+  const fadeFrames = Math.max(1, Math.min(8, Math.floor(safeDuration / 3)));
+  const plateauEnd = Math.min(safeDuration - 1, Math.max(fadeFrames + 1, safeDuration - fadeFrames));
+  return interpolate(frame, [0, fadeFrames, plateauEnd, safeDuration], [0, 1, 1, 0], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });

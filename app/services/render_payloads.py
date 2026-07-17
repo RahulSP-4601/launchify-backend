@@ -41,9 +41,9 @@ def render_dimensions(quality: str) -> dict[str, int]:
     settings = get_settings()
     if quality == "final":
         return {
-            "width": settings.low_memory_final_width,
-            "height": settings.low_memory_final_height,
-            "fps": settings.low_memory_final_fps,
+            "width": settings.final_render_width,
+            "height": settings.final_render_height,
+            "fps": settings.final_render_fps,
         }
     return PREVIEW_DIMENSIONS
 

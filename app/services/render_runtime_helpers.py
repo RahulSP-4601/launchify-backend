@@ -29,7 +29,7 @@ def prepare_preview_render_source(
         "-i",
         str(source_video),
         "-vf",
-        f"fps={settings.low_memory_final_fps},scale='min(iw,{settings.low_memory_final_width})':-2",
+        f"fps={settings.preview_proxy_fps},scale='min(iw,{settings.preview_proxy_width})':-2",
         "-threads",
         "1",
         "-c:v",

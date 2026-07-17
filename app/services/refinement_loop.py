@@ -62,11 +62,20 @@ def refine_scene(
 
 
 def approved_zooms(zooms: list[EditPlanZoom]) -> list[EditPlanZoom]:
-    return [zoom for zoom in zooms if zoom.confidence >= 0.5 and zoom.focus_box is not None]
+    return [
+        zoom
+        for zoom in zooms
+        if zoom.confidence >= 0.5 and (zoom.focus_box is not None or zoom.focus_region != "center")
+    ]
 
 
 def approved_highlights(highlights: list[EditPlanHighlight]) -> list[EditPlanHighlight]:
-    return [highlight for highlight in highlights if highlight.confidence >= 0.58 and highlight.focus_box is not None]
+    return [
+        highlight
+        for highlight in highlights
+        if highlight.confidence >= 0.58
+        and (highlight.focus_box is not None or highlight.anchor_region != "center")
+    ]
 
 
 def tightened_transition(scene: EditPlanScene, issues: list[QualityIssueRecord]) -> float:
@@ -78,7 +87,7 @@ def tightened_transition(scene: EditPlanScene, issues: list[QualityIssueRecord])
 def should_stabilize_scene(issues: list[QualityIssueRecord]) -> bool:
     return any(
         has_issue(issues, code)
-        for code in ("missing-focus-motion", "weak-visual-decision", "missing-action-timing")
+        for code in ("missing-focus-motion", "weak-visual-decision")
     )
 
 

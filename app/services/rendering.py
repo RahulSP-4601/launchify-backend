@@ -135,12 +135,9 @@ def choose_final_render_source(
     source_video: Path,
     preview_render_source: Path,
 ) -> Path:
-    if settings.preview_render_mode == "proxy":
-        logger.info("Using prepared proxy source for final render to stay within worker memory limits.")
-        return preview_render_source
     if settings.low_memory_final_mode == "render":
-        logger.info("Using prepared shared render source for final render to reduce decode cost on the worker.")
-        return preview_render_source
+        logger.info("Rendering the final video from the original uploaded source for maximum output quality.")
+        return source_video
     return source_video
 
 
@@ -445,7 +442,7 @@ def invoke_render_worker(
     env["RENDER_MEDIA_CACHE_SIZE_MB"] = str(settings.render_media_cache_size_mb)
     env["RENDER_OFFTHREAD_VIDEO_CACHE_SIZE_MB"] = str(settings.render_offthread_video_cache_size_mb)
     if quality == "final":
-        env["RENDER_SCALE"] = str(settings.low_memory_final_render_scale)
+        env["RENDER_SCALE"] = str(settings.final_render_scale)
     command = [
         "npm",
         "run",

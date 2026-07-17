@@ -43,15 +43,17 @@ def motion_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRecord]:
             issues.append(issue("missing-focus-motion", "medium", scene.scene_number, "Scene is marked as focus but has no zoom move.", "Add a zoom or switch the camera mode to static."))
         if any(zoom.confidence < 0.45 for zoom in scene.zooms):
             issues.append(issue("low-confidence-zoom", "medium", scene.scene_number, "Zoom confidence is weak for this scene.", "Review the focus area or disable the zoom."))
-        if any(zoom.focus_box is None for zoom in scene.zooms):
+        if any(zoom.focus_box is None and zoom.focus_region == "center" for zoom in scene.zooms):
             issues.append(issue("unanchored-zoom", "medium", scene.scene_number, "Zoom is not anchored to a detected UI box.", "Anchor the zoom to a real UI region or keep the frame static."))
+        elif any(zoom.focus_box is None for zoom in scene.zooms):
+            issues.append(issue("region-anchored-zoom", "low", scene.scene_number, "Zoom is guided by a transcript-inferred screen region instead of a detected UI box.", "Confirm the framing manually if the scene needs more precise focus."))
     return issues
 
 
 def highlight_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRecord]:
     issues: list[QualityIssueRecord] = []
     for scene in edit_plan.scenes:
-        if scene.highlights and all(highlight.focus_box is None for highlight in scene.highlights):
+        if scene.highlights and all(highlight.focus_box is None and highlight.anchor_region == "center" for highlight in scene.highlights):
             issues.append(issue("unanchored-highlight", "low", scene.scene_number, "Highlight is not anchored to a detected UI target.", "Confirm the highlight manually or improve visual detection."))
     return issues
 
