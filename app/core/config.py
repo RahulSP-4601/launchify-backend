@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     render_worker_dir: str = str(Path(__file__).resolve().parents[2] / "render-worker")
     render_timeout_seconds: int = 420
     preview_render_mode: Literal["proxy", "styled"] = "proxy"
+    low_memory_final_width: int = 960
+    low_memory_final_height: int = 540
+    low_memory_final_fps: int = 24
     render_concurrency: int = 1
     render_offthread_video_threads: int = 1
     render_media_cache_size_mb: int = 32

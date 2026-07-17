@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.core.config import get_settings
 from app.models.projects import EditPlanRecord, ProjectRecord, TemplateConfigRecord, VoiceoverRecord
 
 PREVIEW_DIMENSIONS = {"width": 640, "height": 360, "fps": 20}
@@ -37,7 +38,14 @@ def require_edit_plan(edit_plan: EditPlanRecord | None) -> EditPlanRecord:
 
 
 def render_dimensions(quality: str) -> dict[str, int]:
+    settings = get_settings()
     if quality == "final":
+        if settings.preview_render_mode == "proxy":
+            return {
+                "width": settings.low_memory_final_width,
+                "height": settings.low_memory_final_height,
+                "fps": settings.low_memory_final_fps,
+            }
         return FINAL_DIMENSIONS
     return PREVIEW_DIMENSIONS
 
