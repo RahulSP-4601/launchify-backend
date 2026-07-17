@@ -103,10 +103,11 @@ def execute_render_pipeline(
         stage_update,
         preview_ready,
     )
+    final_render_source = choose_final_render_source(settings, source_video, preview_render_source)
     final_video = execute_final_pipeline_with_preview_fallback(
         user_id,
         reviewed_project,
-        source_video,
+        final_render_source,
         voiceover_audio,
         temp_dir,
         settings,
@@ -127,6 +128,17 @@ def execute_render_pipeline(
         preview_ready,
     )
     return preview_video, final_video, require_edit_plan(reviewed_project), quality_report
+
+
+def choose_final_render_source(
+    settings: Settings,
+    source_video: Path,
+    preview_render_source: Path,
+) -> Path:
+    if settings.preview_render_mode == "proxy":
+        logger.info("Using prepared proxy source for final render to stay within worker memory limits.")
+        return preview_render_source
+    return source_video
 
 
 def execute_preview_pipeline(
