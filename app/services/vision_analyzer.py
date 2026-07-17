@@ -4,6 +4,7 @@ import base64
 import json
 import logging
 from pathlib import Path
+import re
 from urllib import error, request
 
 from pydantic import ValidationError
@@ -199,25 +200,44 @@ def parse_visual_payload(payload: dict[str, object]) -> dict[str, object]:
     if not isinstance(choices, list) or not choices:
         raise RuntimeError("OpenAI did not return any visual analysis choices.")
     message = choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
-    content = message.get("content", "") if isinstance(message, dict) else ""
+    content = visual_message_content(message)
     if not isinstance(content, str) or not content.strip():
         raise RuntimeError("OpenAI returned an empty visual analysis response.")
     try:
         parsed = json.loads(content)
     except json.JSONDecodeError as exc:
-        normalized = content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        start = normalized.find("{")
-        end = normalized.rfind("}")
-        if start >= 0 and end > start:
-            try:
-                parsed = json.loads(normalized[start : end + 1])
-            except json.JSONDecodeError:
-                raise RuntimeError("OpenAI returned invalid visual analysis JSON.") from exc
-        else:
+        normalized = normalized_visual_json(content)
+        try:
+            parsed = json.loads(normalized)
+        except json.JSONDecodeError:
             raise RuntimeError("OpenAI returned invalid visual analysis JSON.") from exc
     if not isinstance(parsed, dict):
         raise RuntimeError("OpenAI returned an invalid visual analysis payload shape.")
     return parsed
+
+
+def visual_message_content(message: object) -> str:
+    if not isinstance(message, dict):
+        return ""
+    content = message.get("content", "")
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    return "".join(
+        str(item.get("text", ""))
+        for item in content
+        if isinstance(item, dict) and str(item.get("text", "")).strip()
+    )
+
+
+def normalized_visual_json(content: str) -> str:
+    normalized = content.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    start = normalized.find("{")
+    end = normalized.rfind("}")
+    if start >= 0 and end > start:
+        normalized = normalized[start : end + 1]
+    return re.sub(r",(\s*[}\]])", r"\1", normalized)
 
 
 def normalize_visual_payload(payload: dict[str, object]) -> dict[str, object]:

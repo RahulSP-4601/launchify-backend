@@ -33,8 +33,10 @@ async function renderVideo(mode, options) {
   assertOption(options.input, "--input is required");
   assertOption(options.output, "--output is required");
   assertOption(options.source, "--source is required");
-  await withServedSource(options.source, async (servedSource) => {
-    const payload = await readPayload(options.input, servedSource);
+  const rawPayload = JSON.parse(await readFile(options.input, "utf-8"));
+  const assetPaths = [options.source, rawPayload.voiceoverAudioPath].filter(Boolean);
+  await withServedAssets(assetPaths, async (assetServer) => {
+    const payload = preparePayload(rawPayload, options.source, assetServer);
     const entryPoint = path.join(__dirname, "../src/index.ts");
     console.log(
       `[launchify-render-worker] Starting ${mode} render at ${payload.dimensions.width}x${payload.dimensions.height}` +
@@ -88,24 +90,29 @@ async function renderVideo(mode, options) {
   });
 }
 
-async function withServedSource(sourcePath, callback) {
-  if (sourcePath.startsWith("http://") || sourcePath.startsWith("https://")) {
-    return callback(sourcePath);
+async function withServedAssets(assetPaths, callback) {
+  if (assetPaths.every(isRemoteAsset)) {
+    return callback({ urlFor: (assetPath) => assetPath });
   }
-  const absolutePath = path.resolve(sourcePath);
-  const fileName = encodeURIComponent(path.basename(absolutePath));
+  const assets = new Map(
+    assetPaths.map((assetPath) => {
+      const absolutePath = path.resolve(assetPath);
+      return [assetPath, { absolutePath, fileName: encodeURIComponent(path.basename(absolutePath)) }];
+    }),
+  );
   const server = createServer((req, res) => {
-    if (!req.url || req.url !== `/${fileName}`) {
+    const asset = [...assets.values()].find((item) => req.url === `/${item.fileName}`);
+    if (!req.url || !asset) {
       res.writeHead(404);
       res.end("Not found");
       return;
     }
     res.writeHead(200, {
       "Access-Control-Allow-Origin": "*",
-      "Content-Length": statSync(absolutePath).size,
-      "Content-Type": "video/mp4",
+      "Content-Length": statSync(asset.absolutePath).size,
+      "Content-Type": asset.absolutePath.endsWith(".mp3") ? "audio/mpeg" : "video/mp4",
     });
-    createReadStream(absolutePath).pipe(res);
+    createReadStream(asset.absolutePath).pipe(res);
   });
   await new Promise((resolve, reject) => {
     server.once("error", reject);
@@ -114,11 +121,18 @@ async function withServedSource(sourcePath, callback) {
   const address = server.address();
   if (!address || typeof address === "string") {
     server.close();
-    throw new Error("Could not start local render source server.");
+    throw new Error("Could not start local render asset server.");
   }
-  const servedSource = `http://127.0.0.1:${address.port}/${fileName}`;
   try {
-    return await callback(servedSource);
+    return await callback({
+      urlFor: (assetPath) => {
+        if (!assetPath || isRemoteAsset(assetPath)) {
+          return assetPath;
+        }
+        const asset = assets.get(assetPath);
+        return asset ? `http://127.0.0.1:${address.port}/${asset.fileName}` : assetPath;
+      },
+    });
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
@@ -229,12 +243,12 @@ function clampMegabytes(value, limit) {
   return Math.max(4, Math.min(value, limit));
 }
 
-async function readPayload(inputPath, sourcePath) {
-  const payload = JSON.parse(await readFile(inputPath, "utf-8"));
+function preparePayload(payload, sourcePath, assetServer) {
   return {
     ...payload,
     quality: payload.quality ?? mode,
-    sourceVideoPath: withFileProtocol(sourcePath),
+    sourceVideoPath: withFileProtocol(assetServer.urlFor(sourcePath)),
+    voiceoverAudioPath: assetServer.urlFor(payload.voiceoverAudioPath),
   };
 }
 
@@ -248,4 +262,8 @@ function requireComposition(compositions) {
 
 function withFileProtocol(sourcePath) {
   return sourcePath;
+}
+
+function isRemoteAsset(assetPath) {
+  return assetPath.startsWith("http://") || assetPath.startsWith("https://");
 }
