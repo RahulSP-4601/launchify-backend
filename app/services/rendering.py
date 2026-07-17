@@ -263,7 +263,7 @@ def execute_final_pipeline_with_preview_fallback(
 
 
 def use_proxy_final_output(settings: Settings) -> bool:
-    return settings.preview_render_mode == "proxy" and settings.low_memory_final_mode == "proxy"
+    return settings.low_memory_final_mode == "proxy"
 
 
 def finalize_preview_video(
@@ -402,7 +402,7 @@ def upload_proxy_final_variant(
     stage_update: RenderStageUpdate | None,
     final_ready: Callable[[RenderedVideoRecord], None] | None,
 ) -> RenderedVideoRecord:
-    logger.info("Publishing reviewed proxy output as final video for project %s to stay within starter memory limits.", project.id)
+    logger.info("Publishing reviewed preview output as final video for project %s to stay within starter memory limits.", project.id)
     notify_render_stage(stage_update, "final_render", project.id)
     notify_render_stage(stage_update, "final_upload", project.id)
     final_video = run_with_retry(
