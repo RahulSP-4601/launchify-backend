@@ -55,13 +55,60 @@ def request_openai_vision(
     ocr_labels_by_timestamp: dict[float, OcrFrameResult],
 ) -> dict[str, object]:
     settings = get_settings()
+    try:
+        return request_openai_vision_once(
+            scene,
+            scene_range,
+            extracted_frames,
+            diff_result,
+            ocr_labels_by_timestamp,
+            reduced=False,
+            timeout_seconds=settings.visual_analysis_scene_timeout_seconds,
+        )
+    except error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(f"OpenAI visual analysis failed: {detail}") from exc
+    except (error.URLError, TimeoutError) as exc:
+        logger.warning(
+            "OpenAI visual analysis timed out for scene %s. Retrying with a reduced payload.",
+            scene.scene_number,
+        )
+        try:
+            return request_openai_vision_once(
+                scene,
+                scene_range,
+                reduced_frames(extracted_frames),
+                diff_result,
+                ocr_labels_by_timestamp,
+                reduced=True,
+                timeout_seconds=reduced_timeout_seconds(settings.visual_analysis_scene_timeout_seconds),
+            )
+        except error.HTTPError as retry_exc:
+            detail = retry_exc.read().decode("utf-8", errors="ignore")
+            raise RuntimeError(f"OpenAI visual analysis failed after reduced retry: {detail}") from retry_exc
+        except (error.URLError, TimeoutError) as retry_exc:
+            raise RuntimeError(
+                f"OpenAI visual analysis failed after reduced retry: {describe_transport_error(retry_exc)}"
+            ) from retry_exc
+
+def request_openai_vision_once(
+    scene: LaunchScriptScene,
+    scene_range: tuple[float, float],
+    extracted_frames: list[ExtractedFrame],
+    diff_result: FrameDiffResult,
+    ocr_labels_by_timestamp: dict[float, OcrFrameResult],
+    *,
+    reduced: bool,
+    timeout_seconds: int,
+) -> dict[str, object]:
     content = [
-        vision_text_message(scene, scene_range, extracted_frames, diff_result, ocr_labels_by_timestamp),
+        vision_text_message(scene, scene_range, extracted_frames, diff_result, ocr_labels_by_timestamp, reduced=reduced),
         *vision_image_messages(extracted_frames),
     ]
     request_payload = {
-        "model": settings.openai_vision_model,
+        "model": get_settings().openai_vision_model,
         "temperature": 0.1,
+        "max_tokens": 900 if reduced else 1400,
         "response_format": {"type": "json_object"},
         "messages": [
             {"role": "system", "content": vision_system_prompt()},
@@ -71,19 +118,12 @@ def request_openai_vision(
     api_request = request.Request(
         "https://api.openai.com/v1/chat/completions",
         data=json.dumps(request_payload).encode("utf-8"),
-        headers=openai_headers(settings.openai_api_key),
+        headers=openai_headers(get_settings().openai_api_key),
         method="POST",
     )
-    try:
-        with request.urlopen(api_request, timeout=get_settings().visual_analysis_scene_timeout_seconds) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="ignore")
-        raise RuntimeError(f"OpenAI visual analysis failed: {detail}") from exc
-    except (error.URLError, TimeoutError) as exc:
-        raise RuntimeError(f"OpenAI visual analysis failed: {describe_transport_error(exc)}") from exc
+    with request.urlopen(api_request, timeout=timeout_seconds) as response:
+        payload = json.loads(response.read().decode("utf-8"))
     return parse_visual_payload(payload)
-
 
 def vision_system_prompt() -> str:
     return (
@@ -106,6 +146,8 @@ def vision_text_message(
     extracted_frames: list[ExtractedFrame],
     diff_result: FrameDiffResult,
     ocr_labels_by_timestamp: dict[float, OcrFrameResult],
+    *,
+    reduced: bool = False,
 ) -> dict[str, object]:
     motion_evidence_text = (
         frame_context(extracted_frames, diff_result.scores)
@@ -121,8 +163,8 @@ def vision_text_message(
             f"Spoken line: {scene.spoken_line}\n"
             f"On-screen text hint: {scene.on_screen_text}\n"
             f"Transcript excerpt: {scene.source_excerpt}\n\n"
-            f"Frame timestamps and diff scores: {motion_evidence_text}\n"
-            f"Local OCR hints: {ocr_context(extracted_frames, ocr_labels_by_timestamp)}\n\n"
+            f"Frame timestamps and diff scores: {motion_evidence_text if not reduced else 'Condensed retry mode.'}\n"
+            f"Local OCR hints: {ocr_context(extracted_frames, ocr_labels_by_timestamp, reduced=reduced)}\n\n"
             "Track the cursor across frames, identify likely click hotspots, read visible UI labels, "
             "and anchor the best UI focus box. Be conservative. If evidence is weak, keep boxes null "
             "and lower confidence. Favor stable UI elements that match the spoken step. If frame-diff "
@@ -155,7 +197,6 @@ def vision_image_messages(extracted_frames: list[ExtractedFrame]) -> list[dict[s
 def data_url(frame_path: Path) -> str:
     encoded = base64.b64encode(frame_path.read_bytes()).decode("utf-8")
     return f"data:image/jpeg;base64,{encoded}"
-
 
 def parse_visual_payload(payload: dict[str, object]) -> dict[str, object]:
     choices = payload.get("choices", [])
@@ -205,7 +246,6 @@ def normalize_visual_payload(payload: dict[str, object]) -> dict[str, object]:
         elif key == "visible_labels":
             normalized[key] = normalize_string_list(value)
     return normalized
-
 
 def normalize_visual_frame(frame: object, clamp_keys: set[str]) -> object:
     if not isinstance(frame, dict):
@@ -292,7 +332,6 @@ def normalize_string_list(value: object) -> list[str]:
         if isinstance(item, str) and item.strip():
             normalized.append(item.strip())
     return normalized
-
 
 def finalize_scene_analysis(
     analysis: VisualSceneAnalysisRecord,
@@ -434,15 +473,27 @@ def frame_context(extracted_frames: list[ExtractedFrame], diff_scores: list[floa
 def ocr_context(
     extracted_frames: list[ExtractedFrame],
     ocr_labels_by_timestamp: dict[float, OcrFrameResult],
+    *,
+    reduced: bool = False,
 ) -> str:
     parts = []
     for frame in extracted_frames:
         result = ocr_labels_by_timestamp.get(frame.timestamp)
         if result and result.labels:
-            parts.append(f"{frame.timestamp:.2f}s(c={result.confidence:.2f}): {' | '.join(result.labels[:4])}")
+            label_limit = 2 if reduced else 4
+            parts.append(f"{frame.timestamp:.2f}s(c={result.confidence:.2f}): {' | '.join(result.labels[:label_limit])}")
     return "; ".join(parts) if parts else "none"
 
+def reduced_frames(extracted_frames: list[ExtractedFrame]) -> list[ExtractedFrame]:
+    if len(extracted_frames) <= 3:
+        return extracted_frames
+    middle_index = len(extracted_frames) // 2
+    selected = [extracted_frames[0], extracted_frames[middle_index], extracted_frames[-1]]
+    unique_by_timestamp: dict[float, ExtractedFrame] = {frame.timestamp: frame for frame in selected}
+    return list(unique_by_timestamp.values())
 
+def reduced_timeout_seconds(timeout_seconds: int) -> int:
+    return max(timeout_seconds, 45)
 def ocr_confidence(frames: list[FrameSignalRecord]) -> float:
     if not frames:
         return 0.0

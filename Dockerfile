@@ -55,6 +55,10 @@ COPY render-worker/package.json render-worker/package-lock.json ./render-worker/
 
 RUN npm ci --prefix ./render-worker
 
+# Warm the Remotion browser into the image so fresh Render instances do not
+# spend job time downloading Chrome Headless Shell before each first render.
+RUN cd ./render-worker && node --input-type=module -e "const {ensureBrowser}=await import('@remotion/renderer'); await ensureBrowser({logLevel:'info'});"
+
 COPY app ./app
 COPY render-worker ./render-worker
 COPY start.sh ./start.sh
