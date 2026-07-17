@@ -407,6 +407,8 @@ def invoke_render_worker(
     env["RENDER_OFFTHREAD_VIDEO_THREADS"] = str(settings.render_offthread_video_threads)
     env["RENDER_MEDIA_CACHE_SIZE_MB"] = str(settings.render_media_cache_size_mb)
     env["RENDER_OFFTHREAD_VIDEO_CACHE_SIZE_MB"] = str(settings.render_offthread_video_cache_size_mb)
+    if quality == "final" and settings.preview_render_mode == "proxy":
+        env["RENDER_SCALE"] = str(settings.low_memory_final_render_scale)
     command = [
         "npm",
         "run",
