@@ -124,7 +124,6 @@ def ensure_projects_schema(cursor: Any) -> None:
             benchmark_report jsonb,
             voiceover jsonb,
             preview_video jsonb,
-            final_video jsonb,
             error_message text not null default '',
             created_at timestamptz not null,
             updated_at timestamptz not null
@@ -141,11 +140,31 @@ def ensure_projects_schema(cursor: Any) -> None:
     cursor.execute("alter table projects add column if not exists benchmark_report jsonb")
     cursor.execute("alter table projects add column if not exists voiceover jsonb")
     cursor.execute("alter table projects add column if not exists preview_video jsonb")
-    cursor.execute("alter table projects add column if not exists final_video jsonb")
+    backfill_legacy_final_video(cursor)
+    cursor.execute("alter table projects drop column if exists final_video")
     cursor.execute(
         """
         create index if not exists idx_projects_user_updated
         on projects (user_id, updated_at desc)
+        """,
+    )
+
+
+def backfill_legacy_final_video(cursor: Any) -> None:
+    cursor.execute(
+        """
+        do $$
+        begin
+            if exists (
+                select 1
+                from information_schema.columns
+                where table_name = 'projects' and column_name = 'final_video'
+            ) then
+                update projects
+                set preview_video = coalesce(preview_video, final_video)
+                where final_video is not null;
+            end if;
+        end $$;
         """,
     )
 

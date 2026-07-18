@@ -28,7 +28,7 @@ def save_render_outputs_payload(
         return (
             """
             update projects
-            set preview_video = %s::jsonb, final_video = %s::jsonb, status = %s, error_message = '', updated_at = %s
+            set preview_video = %s::jsonb, status = %s, error_message = '', updated_at = %s
             where id = %s and user_id = %s
             """,
             payload,
@@ -37,7 +37,7 @@ def save_render_outputs_payload(
     return (
         """
         update projects
-        set preview_video = %s::jsonb, final_video = %s::jsonb, status = %s, error_message = '', updated_at = %s
+        set preview_video = %s::jsonb, status = %s, error_message = '', updated_at = %s
         where id = %s and user_id = %s and asset->>'storage_path' = %s
         """,
         (*payload, asset_path),

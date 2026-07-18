@@ -35,7 +35,7 @@ from app.services.project_store_helpers import (
 )
 from app.services.project_store_runtime import execute_project_update, save_render_outputs_payload
 
-PARTIAL_RENDER_OUTPUT_COLUMNS = frozenset({"preview_video", "final_video"})
+PARTIAL_RENDER_OUTPUT_COLUMNS = frozenset({"preview_video"})
 
 
 class ProjectStore:
@@ -46,8 +46,8 @@ class ProjectStore:
                     """
                     select id, project_name, product_name, product_description, target_audience,
                            video_goal, status, asset, recording_session, transcript, guide, launch_script, edit_plan,
-                           template_config, manual_overrides, quality_report, benchmark_report, voiceover,
-                           preview_video, final_video, error_message, created_at, updated_at
+                           template_config, manual_overrides, quality_report, benchmark_report, voiceover, preview_video,
+                           error_message, created_at, updated_at
                     from projects
                     where user_id = %s
                     order by updated_at desc
@@ -80,10 +80,10 @@ class ProjectStore:
                     insert into projects (
                         id, user_id, project_name, product_name, product_description, target_audience,
                         video_goal, status, asset, recording_session, transcript, guide, launch_script, edit_plan,
-                        template_config, manual_overrides, quality_report, benchmark_report, voiceover,
-                        preview_video, final_video, error_message, created_at, updated_at
+                        template_config, manual_overrides, quality_report, benchmark_report, voiceover, preview_video,
+                        error_message, created_at, updated_at
                     )
-                    values (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s)
+                    values (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s)
                     """,
                     create_project_params(project, user_id),
                 )
@@ -95,8 +95,8 @@ class ProjectStore:
                     """
                     select id, project_name, product_name, product_description, target_audience,
                            video_goal, status, asset, recording_session, transcript, guide, launch_script, edit_plan,
-                           template_config, manual_overrides, quality_report, benchmark_report, voiceover,
-                           preview_video, final_video, error_message, created_at, updated_at
+                           template_config, manual_overrides, quality_report, benchmark_report, voiceover, preview_video,
+                           error_message, created_at, updated_at
                     from projects
                     where id = %s and user_id = %s
                     """,
@@ -386,14 +386,12 @@ class ProjectStore:
         self,
         user_id: str,
         project_id: str,
-        preview_video: RenderedVideoRecord | None,
-        final_video: RenderedVideoRecord,
+        preview_video: RenderedVideoRecord,
         asset_path: str | None = None,
     ) -> None:
         sql, params, stale_error = save_render_outputs_payload(
             (
-                json.dumps(preview_video.model_dump(mode="json")) if preview_video is not None else None,
-                json.dumps(final_video.model_dump(mode="json")),
+                json.dumps(preview_video.model_dump(mode="json")),
                 "ready",
                 datetime.now(UTC),
                 project_id,

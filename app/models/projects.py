@@ -339,7 +339,6 @@ class ProjectRecord(BaseModel):
     benchmark_report: BenchmarkReportRecord | None = None
     voiceover: VoiceoverRecord | None = None
     preview_video: RenderedVideoRecord | None = None
-    final_video: RenderedVideoRecord | None = None
     error_message: str = ""
 
 
@@ -359,7 +358,6 @@ class ProjectSummary(BaseModel):
     has_benchmark_report: bool
     has_voiceover: bool
     has_preview_video: bool
-    has_final_video: bool
 
 
 class ProjectDetail(ProjectSummary):
@@ -376,7 +374,6 @@ class ProjectDetail(ProjectSummary):
     benchmark_report: BenchmarkReportRecord | None = None
     voiceover: VoiceoverRecord | None = None
     preview_video: RenderedVideoRecord | None = None
-    final_video: RenderedVideoRecord | None = None
     error_message: str = ""
 
 

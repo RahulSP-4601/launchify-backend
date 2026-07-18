@@ -12,9 +12,9 @@ def total_rendered_seconds(user_id: str) -> float:
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                select coalesce(sum(coalesce((final_video->>'duration_seconds')::double precision, 0)), 0)
+                select coalesce(sum(coalesce((preview_video->>'duration_seconds')::double precision, 0)), 0)
                 from projects
-                where user_id = %s and final_video is not null
+                where user_id = %s and preview_video is not null
                 """,
                 (user_id,),
             )
@@ -29,9 +29,9 @@ def projected_rendered_seconds(user_id: str, project_id: str, additional_seconds
         with connection.cursor() as cursor:
             cursor.execute(
                 """
-                select coalesce(sum(coalesce((final_video->>'duration_seconds')::double precision, 0)), 0)
+                select coalesce(sum(coalesce((preview_video->>'duration_seconds')::double precision, 0)), 0)
                 from projects
-                where user_id = %s and id <> %s and final_video is not null
+                where user_id = %s and id <> %s and preview_video is not null
                 """,
                 (user_id, project_id),
             )

@@ -182,7 +182,7 @@ def save_render_step(job: ProcessingJobRecord) -> None:
     heartbeat = build_job_heartbeat(job)
     update_render_stage = build_render_stage_updater(job, heartbeat)
     with usage_lock(job.user_id, heartbeat=heartbeat):
-        preview_video, final_video, refined_edit_plan, refined_quality_report = render_project_videos(
+        preview_video, refined_edit_plan, refined_quality_report = render_project_videos(
             job.user_id,
             require_project(job.user_id, job.project_id),
             heartbeat=heartbeat,
@@ -193,14 +193,6 @@ def save_render_step(job: ProcessingJobRecord) -> None:
                 job.user_id,
                 job.project_id,
                 preview,
-                asset_path=job.asset_path,
-            ),
-            final_ready=lambda final: project_store.save_partial_render_output(
-                "final_video",
-                "final output",
-                job.user_id,
-                job.project_id,
-                final,
                 asset_path=job.asset_path,
             ),
         )
@@ -222,7 +214,7 @@ def save_render_step(job: ProcessingJobRecord) -> None:
             require_manual_overrides(current_project),
             asset_path=job.asset_path,
         )
-        project_store.save_render_outputs(job.user_id, job.project_id, preview_video, final_video, asset_path=job.asset_path)
+        project_store.save_render_outputs(job.user_id, job.project_id, preview_video, asset_path=job.asset_path)
     job_store.mark_completed(job.id)
     logger.info("Render pipeline completed for project %s.", job.project_id)
 

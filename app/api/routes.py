@@ -253,7 +253,6 @@ def to_project_detail(user_id: str, project_id: str) -> ProjectDetail:
         has_benchmark_report=project.benchmark_report is not None,
         has_voiceover=project.voiceover is not None and bool(project.voiceover.script),
         has_preview_video=project.preview_video is not None,
-        has_final_video=project.final_video is not None,
         asset=project.asset,
         recording_session=project.recording_session,
         guide=project.guide,
@@ -265,7 +264,6 @@ def to_project_detail(user_id: str, project_id: str) -> ProjectDetail:
         benchmark_report=project.benchmark_report,
         voiceover=project.voiceover,
         preview_video=project.preview_video,
-        final_video=project.final_video,
         error_message=project.error_message,
     )
 
@@ -278,10 +276,8 @@ def must_get_project(user_id: str, project_id: str) -> ProjectRecord:
 
 
 def require_render_output(project: ProjectRecord, variant: str) -> RenderedVideoRecord:
-    if variant == "preview" and project.preview_video is not None:
+    if variant in {"preview", "final"} and project.preview_video is not None:
         return project.preview_video
-    if variant == "final" and project.final_video is not None:
-        return project.final_video
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Rendered video not found.")
 
 

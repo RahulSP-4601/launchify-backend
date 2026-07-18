@@ -51,7 +51,7 @@ def render_project_videos(
     stage_update: RenderStageUpdate | None = None,
     preview_ready: Callable[[RenderedVideoRecord], None] | None = None,
     final_ready: Callable[[RenderedVideoRecord], None] | None = None,
-) -> tuple[RenderedVideoRecord | None, RenderedVideoRecord, EditPlanRecord, QualityReportRecord]:
+) -> tuple[RenderedVideoRecord, EditPlanRecord, QualityReportRecord]:
     settings = announce_render_pipeline(project)
     with TemporaryDirectory(prefix="launchify-render-") as temp_dir_name:
         return render_from_temp_dir(
@@ -92,16 +92,16 @@ def render_from_temp_dir(
     stage_update: RenderStageUpdate | None,
     preview_ready: Callable[[RenderedVideoRecord], None] | None,
     final_ready: Callable[[RenderedVideoRecord], None] | None,
-) -> tuple[RenderedVideoRecord | None, RenderedVideoRecord, EditPlanRecord, QualityReportRecord]:
+) -> tuple[RenderedVideoRecord, EditPlanRecord, QualityReportRecord]:
     source_video = download_asset_to_file(require_asset_path(project))
     voiceover_audio = download_voiceover_audio(project)
     preview_render_source: Path | None = None
     try:
         if use_grounded_single_export(project):
-            final_video = execute_final_pipeline(*grounded_final_pipeline_args(
+            preview_video = execute_final_pipeline(*grounded_final_pipeline_args(
                 user_id, project, source_video, voiceover_audio, temp_dir, settings, heartbeat, stage_update, final_ready,
             ))
-            return grounded_render_result(final_video, project)
+            return grounded_render_result(preview_video.model_copy(update={"variant": "preview"}), project)
         preview_render_source = prepare_preview_source(project, source_video, temp_dir, settings, heartbeat)
         return execute_render_pipeline(
             user_id, project, source_video, preview_render_source, voiceover_audio,
@@ -131,7 +131,7 @@ def execute_render_pipeline(
     stage_update: RenderStageUpdate | None,
     preview_ready: Callable[[RenderedVideoRecord], None] | None,
     final_ready: Callable[[RenderedVideoRecord], None] | None,
-) -> tuple[RenderedVideoRecord | None, RenderedVideoRecord, EditPlanRecord, QualityReportRecord]:
+) -> tuple[RenderedVideoRecord, EditPlanRecord, QualityReportRecord]:
     preview_video, preview_output, reviewed_project, quality_report = execute_preview_pipeline(
         user_id,
         project,
@@ -158,7 +158,8 @@ def execute_render_pipeline(
         preview_video,
         preview_output,
     )
-    return preview_video, final_video, require_edit_plan(reviewed_project), quality_report
+    polished_preview = final_video.model_copy(update={"variant": "preview"})
+    return polished_preview, require_edit_plan(reviewed_project), quality_report
 def execute_final_outputs(
     user_id: str,
     project: ProjectRecord,

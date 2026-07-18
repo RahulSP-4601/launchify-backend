@@ -33,10 +33,10 @@ def current_quality_report(project: ProjectRecord) -> QualityReportRecord:
 
 
 def grounded_render_result(
-    final_video: RenderedVideoRecord,
+    preview_video: RenderedVideoRecord,
     project: ProjectRecord,
-) -> tuple[RenderedVideoRecord | None, RenderedVideoRecord, EditPlanRecord, QualityReportRecord]:
-    return None, final_video, require_edit_plan(project), current_quality_report(project)
+) -> tuple[RenderedVideoRecord, EditPlanRecord, QualityReportRecord]:
+    return preview_video, require_edit_plan(project), current_quality_report(project)
 
 
 def grounded_final_pipeline_args(

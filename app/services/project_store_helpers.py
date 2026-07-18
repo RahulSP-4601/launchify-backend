@@ -47,7 +47,6 @@ def create_project_params(project: ProjectRecord, user_id: str) -> tuple[object,
         None,
         json.dumps(voiceover.model_dump(mode="json")),
         None,
-        None,
         project.error_message,
         project.created_at,
         project.updated_at,
@@ -72,7 +71,7 @@ def reset_project_for_asset_sql() -> str:
         update projects
         set asset = %s::jsonb, recording_session = %s::jsonb, status = %s, transcript = '[]'::jsonb, guide = null, launch_script = null, edit_plan = null,
             manual_overrides = %s::jsonb, quality_report = null, benchmark_report = null, voiceover = %s::jsonb,
-            preview_video = null, final_video = null,
+            preview_video = null,
             error_message = '', updated_at = %s
         where id = %s and user_id = %s
     """
@@ -141,7 +140,6 @@ def project_from_row(row: tuple[object, ...]) -> ProjectRecord:
     benchmark_report = BenchmarkReportRecord.model_validate(row[16]) if row[16] is not None else None
     voiceover = VoiceoverRecord.model_validate(row[17]) if row[17] is not None else None
     preview_video = RenderedVideoRecord.model_validate(row[18]) if row[18] is not None else None
-    final_video = RenderedVideoRecord.model_validate(row[19]) if row[19] is not None else None
     return ProjectRecord(
         id=str(row[0]),
         project_name=str(row[1]),
@@ -162,10 +160,9 @@ def project_from_row(row: tuple[object, ...]) -> ProjectRecord:
         benchmark_report=benchmark_report,
         voiceover=voiceover,
         preview_video=preview_video,
-        final_video=final_video,
-        error_message=str(row[20]),
-        created_at=cast(datetime, row[21]),
-        updated_at=cast(datetime, row[22]),
+        error_message=str(row[19]),
+        created_at=cast(datetime, row[20]),
+        updated_at=cast(datetime, row[21]),
     )
 
 

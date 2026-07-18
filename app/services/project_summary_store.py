@@ -21,8 +21,7 @@ class ProjectSummaryStore:
                            quality_report is not null as has_quality_report,
                            benchmark_report is not null as has_benchmark_report,
                            coalesce(voiceover->>'script', '') <> '' as has_voiceover,
-                           preview_video is not null as has_preview_video,
-                           final_video is not null as has_final_video
+                           preview_video is not null as has_preview_video
                     from projects
                     where user_id = %s
                     order by updated_at desc
@@ -47,7 +46,6 @@ class ProjectSummaryStore:
                 has_benchmark_report=bool(row[12]),
                 has_voiceover=bool(row[13]),
                 has_preview_video=bool(row[14]),
-                has_final_video=bool(row[15]),
             )
             for row in rows
         ]
