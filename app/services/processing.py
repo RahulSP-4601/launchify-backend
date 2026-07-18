@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Sequence
 
 from app.core.config import get_settings
 from app.models.projects import (
@@ -15,16 +15,15 @@ from app.models.projects import (
 )
 from app.services.edit_planner import generate_edit_plan
 from app.services.guide_synthesizer import synthesize_grounded_guide
+from app.services.inference_step_builder import build_inference_script
 from app.services.inferred_recording_session import infer_recording_session
 from app.services.job_store import job_store
 from app.services.phase_four import apply_phase_four_defaults
-from app.services.playback_preview import publish_grounded_preview
 from app.services.project_store import StaleProjectAssetError, project_store
 from app.services.script_writer import combine_transcript, generate_launch_script
 from app.services.storage import download_asset_to_file
 from app.services.timing import timed_stage
 from app.services.transcription import transcribe_media_file
-from app.services.usage_service import projected_rendered_seconds, total_rendered_seconds, usage_lock
 from app.services.visual_analysis import analyze_video_scenes, visual_analysis_available
 
 logger = logging.getLogger(__name__)
@@ -121,12 +120,11 @@ def save_scripting_step(
 ) -> LaunchScriptRecord:
     project_store.save_transcript(job.user_id, job.project_id, transcript, "scripting", asset_path=job.asset_path)
     current_project = require_project(job.user_id, job.project_id)
-    fallback_script: LaunchScriptRecord | None = None
+    fallback_script = inferred_walkthrough_fallback(current_project, transcript)
     try:
         guide = generate_grounded_guide_if_available(current_project, transcript)
         if guide is None:
-            fallback_script = generate_launch_script(current_project)
-            guide = generate_inferred_grounded_guide(current_project, job, asset_file, transcript, fallback_script)
+            guide = generate_inferred_grounded_guide(current_project, job, asset_file, transcript)
     except Exception:
         logger.exception(
             "Grounded guide generation failed for project %s. Falling back to standard script generation.",
@@ -165,15 +163,23 @@ def generate_inferred_grounded_guide(
     job: ProcessingJobRecord,
     asset_file: Path,
     transcript: list[TranscriptSegment],
-    base_script: LaunchScriptRecord,
 ) -> tuple[GuideRecord, LaunchScriptRecord] | None:
-    visual_analyses = maybe_analyze_video_scenes(asset_file, base_script, transcript)
-    recording_session = infer_recording_session(project, asset_file, base_script, transcript, visual_analyses)
+    inference_script, scene_ranges = build_inference_script(project, transcript)
+    visual_analyses = maybe_analyze_video_scenes(asset_file, inference_script, transcript, scene_ranges)
+    recording_session = infer_recording_session(project, asset_file, inference_script, transcript, visual_analyses)
     if recording_session is None or not recording_session.events:
         return None
     project_store.save_recording_session(job.user_id, job.project_id, recording_session, asset_path=job.asset_path)
     grounded_project = require_project(job.user_id, job.project_id)
     return synthesize_grounded_guide(grounded_project, transcript)
+
+
+def inferred_walkthrough_fallback(
+    project: ProjectRecord,
+    transcript: list[TranscriptSegment],
+) -> LaunchScriptRecord:
+    script, _scene_ranges = build_inference_script(project, transcript)
+    return script if script.scenes else generate_launch_script(project)
 
 
 def save_planning_step(
@@ -205,53 +211,11 @@ def save_planning_step(
     logger.info("Planning completed for project %s.", job.project_id)
 
 
-def save_render_step(job: ProcessingJobRecord, asset_file: Path) -> None:
-    logger.info("Preview publish started for project %s.", job.project_id)
-    heartbeat = build_job_heartbeat(job)
-    with usage_lock(job.user_id, heartbeat=heartbeat):
-        publish_preview_video(job, asset_file, heartbeat)
+def save_render_step(job: ProcessingJobRecord, _asset_file: Path) -> None:
+    logger.info("Walkthrough preview ready without proxy rendering for project %s.", job.project_id)
+    project_store.update_status_for_asset(job.user_id, job.project_id, job.asset_path, "ready")
     job_store.mark_completed(job.id)
-    logger.info("Preview publish completed for project %s.", job.project_id)
-
-
-def publish_preview_video(
-    job: ProcessingJobRecord,
-    asset_file: Path,
-    heartbeat: Callable[[], None],
-) -> None:
-    heartbeat()
-    project_store.update_status_for_asset(job.user_id, job.project_id, job.asset_path, "rendering")
-    current_project = require_project(job.user_id, job.project_id)
-    preview_video = publish_grounded_preview(job.user_id, current_project, asset_file, heartbeat)
-    preview_duration = resolved_preview_duration(current_project, preview_video.duration_seconds)
-    preview_video = preview_video.model_copy(update={"duration_seconds": preview_duration})
-    enforce_preview_limit(job.user_id, job.project_id, preview_video.duration_seconds)
-    project_store.save_render_outputs(job.user_id, job.project_id, preview_video, asset_path=job.asset_path)
-
-
-def enforce_preview_limit(user_id: str, project_id: str, duration_seconds: float) -> None:
-    settings = get_settings()
-    projected_seconds = projected_rendered_seconds(user_id, project_id, duration_seconds)
-    limit_seconds = float(settings.trial_minutes_limit * 60)
-    if projected_seconds <= limit_seconds:
-        return
-    remaining_seconds = max(limit_seconds - total_rendered_seconds(user_id), 0.0)
-    remaining_minutes = remaining_seconds / 60
-    raise RuntimeError(
-        "This preview would exceed your trial limit. "
-        f"Only {remaining_minutes:.1f} minutes remain before the {settings.trial_minutes_limit} minute cap."
-    )
-
-
-def preview_duration_seconds(project: ProjectRecord, fallback_duration_seconds: float) -> float:
-    if project.edit_plan is None:
-        return fallback_duration_seconds
-    return max(round(project.edit_plan.total_duration_seconds, 2), 0.0) or fallback_duration_seconds
-
-
-def resolved_preview_duration(project: ProjectRecord, exported_duration_seconds: float) -> float:
-    planned_duration = preview_duration_seconds(project, exported_duration_seconds)
-    return max(round(exported_duration_seconds, 2), planned_duration)
+    logger.info("Walkthrough preview completed for project %s.", job.project_id)
 
 
 def require_project(user_id: str, project_id: str) -> ProjectRecord:
@@ -272,12 +236,13 @@ def maybe_analyze_video_scenes(
     asset_file: Path,
     launch_script: LaunchScriptRecord,
     transcript: list[TranscriptSegment],
+    scene_ranges: list[tuple[float, float]] | None = None,
 ) -> list[VisualSceneAnalysisRecord] | None:
     settings = get_settings()
     if not settings.blocking_visual_analysis_enabled or not visual_analysis_available():
         return None
     try:
-        return analyze_video_scenes(asset_file, launch_script, transcript)
+        return analyze_video_scenes(asset_file, launch_script, transcript, scene_ranges)
     except Exception:
         logger.exception("Visual analysis failed for %s. Falling back to script-led planning.", asset_file.name)
         return None
@@ -289,10 +254,3 @@ def handle_job_failure(user_id: str, project_id: str, asset_path: str, job_id: s
         job_store.mark_failed(job_id, error_message)
     except StaleProjectAssetError:
         job_store.mark_completed(job_id)
-
-
-def build_job_heartbeat(job: ProcessingJobRecord) -> Callable[[], None]:
-    def heartbeat() -> None:
-        job_store.heartbeat(job.id)
-
-    return heartbeat

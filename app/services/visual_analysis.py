@@ -21,14 +21,15 @@ def analyze_video_scenes(
     video_path: Path,
     launch_script: LaunchScriptRecord,
     transcript: list[TranscriptSegment],
+    scene_ranges: list[tuple[float, float]] | None = None,
 ) -> list[VisualSceneAnalysisRecord]:
     settings = get_settings()
-    scene_ranges = align_script_scenes(launch_script.scenes, transcript)
+    ranges = scene_ranges or align_script_scenes(launch_script.scenes, transcript)
     analyses: list[VisualSceneAnalysisRecord] = []
     started_at = monotonic()
     with TemporaryDirectory(prefix="launchify-vision-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
-        for scene, scene_range in zip(launch_script.scenes, scene_ranges, strict=True):
+        for scene, scene_range in zip(launch_script.scenes, ranges, strict=True):
             elapsed = monotonic() - started_at
             if visual_analysis_budget_reached(elapsed, settings.visual_analysis_total_budget_seconds):
                 break

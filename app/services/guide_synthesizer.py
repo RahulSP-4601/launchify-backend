@@ -25,7 +25,7 @@ from app.services.script_writer import describe_transport_error, extract_message
 MEANINGFUL_EVENT_TYPES = frozenset({"click", "input", "navigation", "keypress", "keydown", "focus", "custom"})
 CLUSTER_GAP_SECONDS = 2.5
 MIN_STEP_DURATION_SECONDS = 0.8
-MAX_STEP_COUNT = 8
+MAX_STEP_COUNT = 12
 LEAD_IN_SECONDS = 0.22
 LEAD_OUT_SECONDS = 0.5
 
@@ -148,7 +148,7 @@ def request_grounded_guide(
 ) -> GuideRecord:
     settings = get_settings()
     if not settings.openai_api_key:
-        return fallback_guide(project, clusters)
+        return fallback_guide(project, clusters, session)
     request_payload = {
         "model": settings.openai_script_model,
         "temperature": 0.2,
@@ -183,7 +183,7 @@ def request_grounded_guide(
         guide = GuideRecord.model_validate(parse_openai_guide_payload(payload))
     except ValidationError as exc:
         raise RuntimeError("OpenAI returned an invalid grounded guide structure.") from exc
-    return reconcile_grounded_guide(guide, clusters)
+    return reconcile_grounded_guide(guide, clusters, session)
 
 
 def grounded_system_prompt() -> str:
@@ -227,7 +227,7 @@ def grounded_user_prompt(
         f"Page title: {session.page_title or 'Not provided'}\n"
         f"Page url: {session.page_url or 'Not provided'}\n\n"
         "Create a grounded guide and launch-ready narration from these captured action clusters.\n"
-        "Use 3 to 8 steps. Keep the order faithful to the events.\n"
+        "Use 4 to 12 steps. Keep the order faithful to the events.\n"
         "Every step must keep the supplied start and end timestamps. Do not reorder them.\n"
         "Highlight labels should be short. On-screen text should feel premium and concise.\n\n"
         f"Transcript:\n{transcript_text or 'No speech captured.'}\n\n"
@@ -300,10 +300,15 @@ def article_step_schema() -> dict[str, object]:
     }
 
 
-def fallback_guide(project: ProjectRecord, clusters: Sequence[EventCluster]) -> GuideRecord:
+def fallback_guide(
+    project: ProjectRecord,
+    clusters: Sequence[EventCluster],
+    session: RecordingSessionRecord | None = None,
+) -> GuideRecord:
+    ranges = contextual_cluster_ranges(clusters, session)
     steps: list[GuideStepRecord] = []
     article_steps: list[ArticleStepRecord] = []
-    for cluster in clusters:
+    for cluster, (step_start, step_end) in zip(clusters, ranges, strict=False):
         label = cluster.event.target.label or cluster.event.target.text or readable_selector(cluster.event.target.selector)
         instruction = build_instruction(cluster.event, label)
         narration = cluster.transcript_excerpt or instruction
@@ -315,8 +320,8 @@ def fallback_guide(project: ProjectRecord, clusters: Sequence[EventCluster]) -> 
                 instruction=instruction,
                 narration=narration,
                 on_screen_text=on_screen_text,
-                start=cluster.start,
-                end=cluster.end,
+                start=step_start,
+                end=step_end,
                 event_type=cluster.event.type,
                 focus_selector=cluster.event.target.selector,
                 focus_label=label,
@@ -340,13 +345,18 @@ def fallback_guide(project: ProjectRecord, clusters: Sequence[EventCluster]) -> 
     )
 
 
-def reconcile_grounded_guide(guide: GuideRecord, clusters: Sequence[EventCluster]) -> GuideRecord:
+def reconcile_grounded_guide(
+    guide: GuideRecord,
+    clusters: Sequence[EventCluster],
+    session: RecordingSessionRecord | None = None,
+) -> GuideRecord:
     if not clusters:
         return guide
     matched_steps = {step.step_index: step for step in guide.steps}
+    ranges = contextual_cluster_ranges(clusters, session)
     steps: list[GuideStepRecord] = []
     article_steps: list[ArticleStepRecord] = []
-    for cluster in clusters:
+    for cluster, (step_start, step_end) in zip(clusters, ranges, strict=False):
         model_step = matched_steps.get(cluster.index)
         label = cluster.event.target.label or cluster.event.target.text or readable_selector(cluster.event.target.selector)
         instruction = (model_step.instruction if model_step is not None and model_step.instruction.strip() else build_instruction(cluster.event, label)).strip()
@@ -360,8 +370,8 @@ def reconcile_grounded_guide(guide: GuideRecord, clusters: Sequence[EventCluster
             instruction=instruction,
             narration=narration,
             on_screen_text=on_screen_text,
-            start=cluster.start,
-            end=cluster.end,
+            start=step_start,
+            end=step_end,
             event_type=cluster.event.type,
             focus_selector=cluster.event.target.selector,
             focus_label=label,
@@ -373,8 +383,65 @@ def reconcile_grounded_guide(guide: GuideRecord, clusters: Sequence[EventCluster
             title=title,
             body=instruction,
         ))
-    notes = list(dict.fromkeys([*guide.generation_notes, "Grounded step timing was re-aligned to captured action clusters."]))
+    notes = list(
+        dict.fromkeys(
+            [
+                *guide.generation_notes,
+                "Grounded step timing was expanded into continuous walkthrough ranges anchored to captured actions.",
+            ]
+        )
+    )
     return guide.model_copy(update={"steps": steps, "article_steps": article_steps, "generation_notes": notes})
+
+
+def contextual_cluster_ranges(
+    clusters: Sequence[EventCluster],
+    session: RecordingSessionRecord | None,
+) -> list[tuple[float, float]]:
+    if not clusters:
+        return []
+    source_start, source_end = session_bounds(session, clusters)
+    anchors = [cluster_anchor(cluster) for cluster in clusters]
+    boundaries = [source_start]
+    for index in range(len(anchors) - 1):
+        boundaries.append(round((anchors[index] + anchors[index + 1]) / 2, 2))
+    boundaries.append(source_end)
+    ranges: list[tuple[float, float]] = []
+    previous_end = source_start
+    for index, cluster in enumerate(clusters):
+        step_start = max(previous_end, min(boundaries[index], cluster.start))
+        target_end = max(boundaries[index + 1], step_start + MIN_STEP_DURATION_SECONDS)
+        step_end = min(max(target_end, step_start), source_end)
+        if step_end - step_start < MIN_STEP_DURATION_SECONDS:
+            step_start = max(previous_end, source_start, step_end - MIN_STEP_DURATION_SECONDS)
+        ranges.append((round(step_start, 2), round(step_end, 2)))
+        previous_end = step_end
+    return ranges
+
+
+def session_bounds(
+    session: RecordingSessionRecord | None,
+    clusters: Sequence[EventCluster],
+) -> tuple[float, float]:
+    source_start = parse_session_time(session.started_at) if session is not None else 0.0
+    source_end = parse_session_time(session.ended_at) if session is not None else 0.0
+    fallback_end = max(cluster.end for cluster in clusters)
+    if source_end <= source_start:
+        source_end = fallback_end
+    source_start = min(source_start, min(cluster.start for cluster in clusters))
+    return round(max(source_start, 0.0), 2), round(max(source_end, fallback_end), 2)
+
+
+def cluster_anchor(cluster: EventCluster) -> float:
+    timestamp = normalize_event_timestamp(cluster.event.timestamp)
+    return round(min(max(timestamp, cluster.start), cluster.end), 2)
+
+
+def parse_session_time(value: str) -> float:
+    try:
+        return max(float(value), 0.0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def build_instruction(event: SessionEventRecord, label: str) -> str:

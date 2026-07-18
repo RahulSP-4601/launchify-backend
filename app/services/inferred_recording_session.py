@@ -40,11 +40,21 @@ GENERIC_LABELS = frozenset({
     "learn",
     "free",
 })
-
+LOW_SIGNAL_TOKENS = frozenset({
+    "and",
+    "for",
+    "from",
+    "into",
+    "language",
+    "the",
+    "this",
+    "that",
+    "with",
+    "your",
+})
 CLICK_WORDS = frozenset({"click", "tap", "press", "select", "choose", "continue", "open", "start", "launch", "login", "log in"})
 INPUT_WORDS = frozenset({"type", "enter", "write", "search", "email", "password", "name"})
 NAVIGATION_WORDS = frozenset({"page", "screen", "dashboard", "home", "next", "continue", "course"})
-
 
 @dataclass(frozen=True)
 class InteractionWindow:
@@ -265,6 +275,8 @@ def low_signal_label(label: str) -> bool:
     if normalized in GENERIC_LABELS:
         return True
     tokens = normalized.split()
+    if len(tokens) == 1 and tokens[0] in LOW_SIGNAL_TOKENS:
+        return True
     if len(tokens) == 1 and len(tokens[0]) <= 3:
         return True
     return len(normalized) < 4
