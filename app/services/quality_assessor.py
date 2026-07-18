@@ -41,6 +41,8 @@ def motion_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRecord]:
         duration = max(scene.end - scene.start, 0.0)
         if duration >= 4.0 and not scene.zooms and scene.camera_mode == "focus":
             issues.append(issue("missing-focus-motion", "medium", scene.scene_number, "Scene is marked as focus but has no zoom move.", "Add a zoom or switch the camera mode to static."))
+        if duration >= 3.0 and any(zoom.end - zoom.start >= duration * 0.85 for zoom in scene.zooms):
+            issues.append(issue("scene-wide-zoom", "medium", scene.scene_number, "Zoom spans nearly the full scene, so the motion can feel static.", "Split the zoom into shorter action-led focus moves."))
         if any(zoom.confidence < 0.45 for zoom in scene.zooms):
             issues.append(issue("low-confidence-zoom", "medium", scene.scene_number, "Zoom confidence is weak for this scene.", "Review the focus area or disable the zoom."))
         if any(zoom.focus_box is None and zoom.focus_region == "center" for zoom in scene.zooms):
@@ -53,6 +55,11 @@ def motion_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRecord]:
 def highlight_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRecord]:
     issues: list[QualityIssueRecord] = []
     for scene in edit_plan.scenes:
+        duration = max(scene.end - scene.start, 0.0)
+        if any(highlight.end - highlight.start > 1.8 for highlight in scene.highlights):
+            issues.append(issue("long-highlight", "medium", scene.scene_number, "Highlight lingers too long and stops feeling tied to a real interaction.", "Shorten the highlight to the action moment."))
+        if duration >= 3.0 and any(highlight.end - highlight.start >= duration * 0.85 for highlight in scene.highlights):
+            issues.append(issue("scene-wide-highlight", "medium", scene.scene_number, "Highlight spans nearly the full scene, which weakens its meaning.", "Anchor the highlight to a short action window instead of the whole scene."))
         if scene.highlights and all(highlight.focus_box is None and highlight.anchor_region == "center" for highlight in scene.highlights):
             issues.append(issue("unanchored-highlight", "low", scene.scene_number, "Highlight is not anchored to a detected UI target.", "Confirm the highlight manually or improve visual detection."))
     return issues

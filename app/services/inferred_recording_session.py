@@ -23,9 +23,23 @@ from app.services.visual_analysis import analysis_map
 
 DEFAULT_VIEWPORT = (1280, 720)
 MAX_EVENTS = 12
-MAX_EVENTS_PER_SCENE = 3
-INTERACTION_GAP_SECONDS = 0.9
+MAX_EVENTS_PER_SCENE = 4
+INTERACTION_GAP_SECONDS = 0.55
 EVENT_FOCUS_DISTANCE_PIXELS = 48.0
+MIN_DISTINCT_WINDOW_SECONDS = 1.35
+GENERIC_LABELS = frozenset({
+    "button",
+    "control",
+    "continue",
+    "next",
+    "one",
+    "two",
+    "three",
+    "four",
+    "five",
+    "learn",
+    "free",
+})
 
 CLICK_WORDS = frozenset({"click", "tap", "press", "select", "choose", "continue", "open", "start", "launch", "login", "log in"})
 INPUT_WORDS = frozenset({"type", "enter", "write", "search", "email", "password", "name"})
@@ -41,8 +55,6 @@ class InteractionWindow:
     text: str
     focus_box: FocusBox | None
     transcript_excerpt: str
-
-
 def infer_recording_session(
     project: ProjectRecord,
     video_path: Path,
@@ -64,8 +76,6 @@ def infer_recording_session(
         started_at="0.0",
         ended_at=f"{max((segment.end for segment in transcript), default=0.0):.2f}",
     )
-
-
 def build_inferred_events(
     launch_script: LaunchScriptRecord,
     transcript: list[TranscriptSegment],
@@ -85,8 +95,6 @@ def build_inferred_events(
             for window in windows[:MAX_EVENTS_PER_SCENE]
         )
     return dedupe_events(sorted(inferred_events, key=lambda item: item.timestamp))
-
-
 def infer_scene_windows(
     analysis: VisualSceneAnalysisRecord,
     transcript_excerpt: str,
@@ -98,9 +106,8 @@ def infer_scene_windows(
         if frame_is_candidate(analysis.frames, index, transcript_excerpt, source_excerpt)
     ]
     ranked = sorted((window for window in windows if window is not None), key=lambda item: item.score, reverse=True)
-    return merge_windows(sorted(ranked, key=lambda item: item.timestamp))
-
-
+    merged = merge_windows(sorted(ranked, key=lambda item: item.timestamp))
+    return select_distinct_windows(merged)
 def frame_is_candidate(
     frames: list[FrameSignalRecord],
     index: int,
@@ -113,8 +120,6 @@ def frame_is_candidate(
     intent = transcript_intent_score(transcript_excerpt, source_excerpt, frame)
     evidence = max(frame.click_confidence, frame.diff_score, frame.importance_score, stop_score, label_change, intent)
     return evidence >= 0.28 and inferred_focus_box(frame) is not None
-
-
 def build_window(
     analysis: VisualSceneAnalysisRecord,
     index: int,
@@ -137,8 +142,6 @@ def build_window(
         focus_box=focus_box,
         transcript_excerpt=transcript_excerpt,
     )
-
-
 def interaction_score(
     frames: list[FrameSignalRecord],
     index: int,
@@ -155,8 +158,6 @@ def interaction_score(
         + transcript_intent_score(transcript_excerpt, source_excerpt, frame) * 0.08
     )
     return round(min(max(score, 0.0), 1.0), 3)
-
-
 def cursor_stop_score(frames: list[FrameSignalRecord], index: int) -> float:
     current = frames[index]
     if current.cursor_box is None or index == 0:
@@ -169,8 +170,6 @@ def cursor_stop_score(frames: list[FrameSignalRecord], index: int) -> float:
         return 0.0
     slowdown = max(prev_delta - next_delta, 0.0)
     return min(slowdown * 6.0, 1.0)
-
-
 def label_change_score(frames: list[FrameSignalRecord], index: int) -> float:
     if index == 0:
         return 0.0
@@ -181,14 +180,10 @@ def label_change_score(frames: list[FrameSignalRecord], index: int) -> float:
     overlap = len(current_labels & previous_labels)
     union = len(current_labels | previous_labels)
     return round(1.0 - (overlap / union if union else 0.0), 3)
-
-
 def frame_label_set(frame: FrameSignalRecord) -> set[str]:
     labels = {normalize_label(label) for label in frame.ocr_labels}
     labels.update(normalize_label(element.label) for element in frame.ui_elements)
     return {label for label in labels if label}
-
-
 def transcript_intent_score(
     transcript_excerpt: str,
     source_excerpt: str,
@@ -202,8 +197,6 @@ def transcript_intent_score(
         return 0.0
     overlap = len(transcript_tokens & label_tokens)
     return round(min(overlap / max(len(transcript_tokens), 1), 1.0), 3)
-
-
 def inferred_event_type(
     transcript_excerpt: str,
     source_excerpt: str,
@@ -218,12 +211,8 @@ def inferred_event_type(
     if contains_any(intent_text, NAVIGATION_WORDS):
         return "navigation"
     return "focus"
-
-
 def inferred_focus_box(frame: FrameSignalRecord) -> FocusBox | None:
-    return frame.click_target_box or nearest_ui_box(frame) or frame.dominant_box or frame.cursor_box
-
-
+    return best_matching_ui_box(frame) or frame.click_target_box or nearest_ui_box(frame) or frame.dominant_box or frame.cursor_box
 def nearest_ui_box(frame: FrameSignalRecord) -> FocusBox | None:
     if frame.cursor_box is None or not frame.ui_elements:
         return first_ui_box(frame.ui_elements)
@@ -232,8 +221,6 @@ def nearest_ui_box(frame: FrameSignalRecord) -> FocusBox | None:
         key=lambda element: box_center_delta(frame.cursor_box, element.box),
     )
     return ranked[0].box if ranked else None
-
-
 def first_ui_box(elements: list[UiElementRecord]) -> FocusBox | None:
     for element in elements:
         if element.box is not None:
@@ -248,7 +235,10 @@ def inferred_label(
     source_excerpt: str,
 ) -> str:
     preferred = ranked_candidate_labels(frame, visible_labels, transcript_excerpt, source_excerpt)
-    return preferred[0] if preferred else source_excerpt.strip() or transcript_excerpt.strip() or "Product interaction"
+    if preferred:
+        return preferred[0]
+    fallback = source_excerpt.strip() or transcript_excerpt.strip() or "Product interaction"
+    return sentence_fallback_label(fallback)
 
 
 def ranked_candidate_labels(
@@ -259,13 +249,30 @@ def ranked_candidate_labels(
 ) -> list[str]:
     tokens = intent_tokens(transcript_excerpt, source_excerpt)
     labels = [element.label for element in frame.ui_elements] + frame.ocr_labels + visible_labels
-    unique = [label.strip() for label in labels if label and label.strip()]
+    unique = [label.strip() for label in labels if label and label.strip() and not low_signal_label(label)]
     ranked = sorted(
         dict.fromkeys(unique),
         key=lambda label: (intent_overlap_score(label, tokens), len(label)),
         reverse=True,
     )
     return ranked
+
+
+def low_signal_label(label: str) -> bool:
+    normalized = normalize_label(label)
+    if not normalized:
+        return True
+    if normalized in GENERIC_LABELS:
+        return True
+    tokens = normalized.split()
+    if len(tokens) == 1 and len(tokens[0]) <= 3:
+        return True
+    return len(normalized) < 4
+
+
+def sentence_fallback_label(text: str) -> str:
+    sentence = re.split(r"[.!?]", text, maxsplit=1)[0].strip()
+    return sentence[:72] if sentence else "Product interaction"
 
 
 def intent_overlap_score(label: str, intent_tokens_set: set[str]) -> float:
@@ -300,6 +307,22 @@ def merge_windows(windows: list[InteractionWindow]) -> list[InteractionWindow]:
             continue
         merged.append(window)
     return sorted(merged, key=lambda item: item.score, reverse=True)
+
+
+def select_distinct_windows(windows: list[InteractionWindow]) -> list[InteractionWindow]:
+    selected: list[InteractionWindow] = []
+    for window in windows:
+        if any(window_conflicts(window, existing) for existing in selected):
+            continue
+        selected.append(window)
+    return selected
+
+
+def window_conflicts(left: InteractionWindow, right: InteractionWindow) -> bool:
+    close_in_time = abs(left.timestamp - right.timestamp) < MIN_DISTINCT_WINDOW_SECONDS
+    same_label = normalize_label(left.label) == normalize_label(right.label)
+    same_focus = box_center_delta(left.focus_box, right.focus_box) <= 0.08
+    return close_in_time and (same_label or same_focus)
 
 
 def should_merge(left: InteractionWindow, right: InteractionWindow) -> bool:
@@ -414,6 +437,25 @@ def denormalize_box(
     x = round((focus_box.x + focus_box.width / 2) * viewport_width, 2)
     y = round((focus_box.y + focus_box.height / 2) * viewport_height, 2)
     return x, y, width, height
+
+
+def best_matching_ui_box(frame: FrameSignalRecord) -> FocusBox | None:
+    if not frame.ui_elements:
+        return None
+    ranked = sorted(
+        (element for element in frame.ui_elements if element.box is not None),
+        key=ui_element_rank,
+        reverse=True,
+    )
+    return ranked[0].box if ranked else None
+
+
+def ui_element_rank(element: UiElementRecord) -> tuple[float, float, float]:
+    label = normalize_label(element.label)
+    label_quality = 0.0 if low_signal_label(label) else min(len(label) / 18.0, 1.0)
+    box_area = element.box.width * element.box.height if element.box is not None else 0.0
+    compactness = max(0.0, 0.08 - abs(box_area - 0.08))
+    return (label_quality, element.confidence, compactness)
 
 
 def video_dimensions(video_path: Path) -> tuple[int, int]:

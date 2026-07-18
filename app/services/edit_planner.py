@@ -37,7 +37,7 @@ def generate_edit_plan(
     visual_analyses: list[VisualSceneAnalysisRecord] | None = None,
 ) -> EditPlanRecord:
     if project.guide is not None and project.guide.steps:
-        return generate_grounded_edit_plan(project)
+        return generate_grounded_edit_plan(project, visual_analyses)
     launch_script = require_launch_script(project.launch_script)
     require_scene_plan(launch_script)
     scene_ranges = align_script_scenes(launch_script.scenes, project.transcript)
@@ -73,11 +73,14 @@ def generate_edit_plan(
     return apply_manual_overrides(grounded_edit, normalized_overrides(project.manual_overrides))
 
 
-def generate_grounded_edit_plan(project: ProjectRecord) -> EditPlanRecord:
+def generate_grounded_edit_plan(
+    project: ProjectRecord,
+    visual_analyses: list[VisualSceneAnalysisRecord] | None = None,
+) -> EditPlanRecord:
     guide = require_guide(project.guide)
-    analyses_by_scene = analysis_map([])
+    analyses_by_scene = analysis_map(visual_analyses or [])
     planned_scenes = [
-        build_grounded_scene(step, project, analyses_by_scene.get(step.step_index))
+        build_grounded_scene(step, project, analyses_by_scene)
         for step in guide.steps
     ]
     total_duration = round(max((scene.end for scene in planned_scenes), default=0.0), 2)
@@ -148,12 +151,14 @@ def build_edit_scene(
 def build_grounded_scene(
     step: GuideStepRecord,
     project: ProjectRecord,
-    visual_analysis: VisualSceneAnalysisRecord | None,
+    analyses_by_scene: dict[int, VisualSceneAnalysisRecord],
 ) -> EditPlanScene:
     start = round(step.start, 2)
     end = round(max(step.end, start + 0.8), 2)
     transcript_slice = slice_transcript(project.transcript, start, end)
     primary_event = primary_event_for_window(project.recording_session, start, end, step.focus_label or step.title)
+    scene_number = int(primary_event.metadata.get("scene_number", "0")) if primary_event is not None else step.step_index
+    visual_analysis = analyses_by_scene.get(scene_number) or analyses_by_scene.get(step.step_index)
     synthetic_scene = LaunchScriptScene(
         scene_number=step.step_index,
         purpose=step.instruction,
@@ -220,13 +225,116 @@ def apply_grounded_focus(
     if event_focus_box is None:
         return zooms, highlights
     focus_region = region_for_box(event_focus_box)
-    grounded_zooms = [hydrate_grounded_zoom(zoom, event_focus_box, focus_region) for zoom in zooms]
-    grounded_highlights = [hydrate_grounded_highlight(highlight, step, event_focus_box, focus_region) for highlight in highlights]
-    if not grounded_zooms:
-        grounded_zooms = [seed_grounded_zoom(step, event_focus_box, focus_region)]
-    if not grounded_highlights:
-        grounded_highlights = [seed_grounded_highlight(step, event_focus_box, focus_region)]
+    grounded_zooms = grounded_zoom_track(step, primary_event, event_focus_box, focus_region, zooms)
+    grounded_highlights = grounded_highlight_track(step, primary_event, event_focus_box, focus_region, highlights)
     return grounded_zooms, grounded_highlights
+
+
+def grounded_zoom_track(
+    step: GuideStepRecord,
+    primary_event: SessionEventRecord | None,
+    event_focus_box: FocusBox,
+    focus_region: str,
+    zooms: list[EditPlanZoom],
+) -> list[EditPlanZoom]:
+    hydrated = [hydrate_grounded_zoom(zoom, event_focus_box, focus_region) for zoom in zooms]
+    if primary_event is not None:
+        return segmented_grounded_zooms(step, primary_event, event_focus_box, focus_region)
+    return hydrated or [seed_grounded_zoom(step, event_focus_box, focus_region)]
+
+
+def grounded_highlight_track(
+    step: GuideStepRecord,
+    primary_event: SessionEventRecord | None,
+    event_focus_box: FocusBox,
+    focus_region: str,
+    highlights: list[EditPlanHighlight],
+) -> list[EditPlanHighlight]:
+    hydrated = [hydrate_grounded_highlight(highlight, step, event_focus_box, focus_region) for highlight in highlights]
+    if primary_event is not None:
+        return [segmented_grounded_highlight(step, primary_event, event_focus_box, focus_region)]
+    return hydrated or [seed_grounded_highlight(step, event_focus_box, focus_region)]
+
+
+def segmented_grounded_zooms(
+    step: GuideStepRecord,
+    primary_event: SessionEventRecord | None,
+    event_focus_box: FocusBox,
+    focus_region: str,
+) -> list[EditPlanZoom]:
+    focus_start, focus_peak_end, settle_end = grounded_focus_windows(step, primary_event)
+    lead_end = max(min(focus_start, step.end), min(step.start + 0.34, focus_start))
+    zooms: list[EditPlanZoom] = []
+    if lead_end - step.start >= 0.35:
+        zooms.append(build_zoom_segment(step.start, lead_end, 1.04, "grounded lead-in", 0.74, event_focus_box, focus_region, 0.35, 0.3, 0.08))
+    zooms.append(build_zoom_segment(focus_start, focus_peak_end, 1.24, "grounded action focus", 0.9, event_focus_box, focus_region, 1.0, 0.72, 0.12))
+    if settle_end - focus_peak_end >= 0.35:
+        zooms.append(build_zoom_segment(focus_peak_end, settle_end, 1.12, "grounded settle hold", 0.82, event_focus_box, focus_region, 0.7, 0.58, 0.14))
+    return zooms
+
+
+def build_zoom_segment(
+    start: float,
+    end: float,
+    scale: float,
+    reason: str,
+    confidence: float,
+    focus_box: FocusBox,
+    focus_region: str,
+    offset_multiplier: float,
+    hold_ratio: float,
+    smoothing: float,
+) -> EditPlanZoom:
+    return EditPlanZoom(
+        start=round(start, 2),
+        end=round(end, 2),
+        scale=scale,
+        focus_region=focus_region,
+        reason=reason,
+        confidence=confidence,
+        focus_box=focus_box,
+        x_offset=offset_for_box(focus_box, focus_region, axis="x") * offset_multiplier,
+        y_offset=offset_for_box(focus_box, focus_region, axis="y") * offset_multiplier,
+        hold_ratio=hold_ratio,
+        smoothing=smoothing,
+    )
+
+
+def segmented_grounded_highlight(
+    step: GuideStepRecord,
+    primary_event: SessionEventRecord | None,
+    event_focus_box: FocusBox,
+    focus_region: str,
+) -> EditPlanHighlight:
+    event_time = normalize_event_timestamp(primary_event.timestamp) if primary_event is not None else step.start
+    focus_start = max(step.start, event_time - 0.14)
+    focus_peak_end = min(step.end, focus_start + 1.35)
+    if focus_peak_end - focus_start < 0.8:
+        focus_peak_end = min(step.end, focus_start + 0.8)
+    return EditPlanHighlight(
+        start=round(focus_start, 2),
+        end=round(focus_peak_end, 2),
+        label=step.highlight_label or step.focus_label or step.title,
+        style="spotlight",
+        anchor_region=focus_region,
+        confidence=0.92,
+        focus_box=event_focus_box,
+        ui_label=step.highlight_label or step.focus_label or step.title,
+    )
+
+
+def grounded_focus_windows(
+    step: GuideStepRecord,
+    primary_event: SessionEventRecord | None,
+) -> tuple[float, float, float]:
+    event_time = normalize_event_timestamp(primary_event.timestamp) if primary_event is not None else step.start
+    step_duration = max(step.end - step.start, 0.8)
+    focus_start = max(step.start, event_time - min(0.55, step_duration * 0.22))
+    focus_peak_end = min(step.end, event_time + min(1.2, step_duration * 0.34 + 0.45))
+    settle_end = min(step.end, focus_peak_end + min(0.9, step_duration * 0.22 + 0.18))
+    if focus_peak_end - focus_start < 0.7:
+        focus_peak_end = min(step.end, focus_start + 0.7)
+    return focus_start, focus_peak_end, settle_end
 
 
 def hydrate_grounded_zoom(zoom: EditPlanZoom, event_focus_box: FocusBox, focus_region: str) -> EditPlanZoom:

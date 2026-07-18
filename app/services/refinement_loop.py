@@ -44,8 +44,8 @@ def refine_scene(
     updated = scene.model_copy(
         update={
             "captions": [refine_caption(caption) for caption in scene.captions],
-            "zooms": approved_zooms(scene.zooms),
-            "highlights": approved_highlights(scene.highlights),
+            "zooms": refined_zooms(scene, issues),
+            "highlights": refined_highlights(scene, issues),
             "transition_duration_seconds": tightened_transition(scene, issues),
         }
     )
@@ -69,6 +69,13 @@ def approved_zooms(zooms: list[EditPlanZoom]) -> list[EditPlanZoom]:
     ]
 
 
+def refined_zooms(scene: EditPlanScene, issues: list[QualityIssueRecord]) -> list[EditPlanZoom]:
+    zooms = approved_zooms(scene.zooms)
+    if has_issue(issues, "scene-wide-zoom"):
+        return [shortened_zoom(scene, zoom) for zoom in zooms]
+    return zooms
+
+
 def approved_highlights(highlights: list[EditPlanHighlight]) -> list[EditPlanHighlight]:
     return [
         highlight
@@ -76,6 +83,13 @@ def approved_highlights(highlights: list[EditPlanHighlight]) -> list[EditPlanHig
         if highlight.confidence >= 0.58
         and (highlight.focus_box is not None or highlight.anchor_region != "center")
     ]
+
+
+def refined_highlights(scene: EditPlanScene, issues: list[QualityIssueRecord]) -> list[EditPlanHighlight]:
+    highlights = approved_highlights(scene.highlights)
+    if has_issue(issues, "long-highlight") or has_issue(issues, "scene-wide-highlight"):
+        return [shortened_highlight(scene, highlight) for highlight in highlights]
+    return highlights
 
 
 def tightened_transition(scene: EditPlanScene, issues: list[QualityIssueRecord]) -> float:
@@ -93,6 +107,20 @@ def should_stabilize_scene(issues: list[QualityIssueRecord]) -> bool:
 
 def anchored_highlights(highlights: list[EditPlanHighlight]) -> list[EditPlanHighlight]:
     return [highlight for highlight in highlights if highlight.focus_box is not None]
+
+
+def shortened_zoom(scene: EditPlanScene, zoom: EditPlanZoom) -> EditPlanZoom:
+    scene_duration = max(scene.end - scene.start, 0.8)
+    duration = min(max(scene_duration * 0.42, 0.8), 1.8)
+    start = scene.action_timestamp - 0.28 if scene.action_timestamp is not None else scene.start + 0.12
+    bounded_start = max(scene.start, min(start, scene.end - duration))
+    return zoom.model_copy(update={"start": round(bounded_start, 2), "end": round(min(scene.end, bounded_start + duration), 2)})
+
+
+def shortened_highlight(scene: EditPlanScene, highlight: EditPlanHighlight) -> EditPlanHighlight:
+    start = scene.action_timestamp - 0.08 if scene.action_timestamp is not None else highlight.start
+    bounded_start = max(scene.start, min(start, scene.end - 0.8))
+    return highlight.model_copy(update={"start": round(bounded_start, 2), "end": round(min(scene.end, bounded_start + 1.2), 2)})
 
 
 def has_issue(issues: list[QualityIssueRecord], code: str) -> bool:

@@ -4,7 +4,7 @@ from app.models.projects import FocusBox, RecordingSessionRecord, SessionEventRe
 
 DEFAULT_BOX_SIZE = 0.18
 MIN_BOX_SIZE = 0.08
-MAX_BOX_SIZE = 0.36
+MAX_BOX_SIZE = 0.28
 
 
 def primary_event_for_window(

@@ -1,27 +1,34 @@
 from __future__ import annotations
 
 from pathlib import Path
+from tempfile import TemporaryDirectory
+from typing import Callable, Literal
 
-from app.models.projects import AssetRecord, ProjectRecord, RenderedVideoRecord
-from app.services.render_runtime_helpers import output_duration_seconds
+from app.models.projects import ProjectRecord, RenderedVideoRecord
+from app.services.render_proxy_preview import prepare_proxy_preview
+from app.services.render_runtime_helpers import download_voiceover_audio, output_duration_seconds, upload_variant
 
-
-def publish_grounded_preview(project: ProjectRecord, source_video: Path) -> RenderedVideoRecord:
-    asset = require_source_asset(project)
-    return RenderedVideoRecord(
-        filename=asset.filename,
-        content_type=asset.content_type,
-        size_bytes=asset.size_bytes,
-        storage_path=asset.storage_path,
-        duration_seconds=preview_duration_seconds(project, source_video),
-        variant="preview",
-    )
+Heartbeat = Callable[[], None]
 
 
-def require_source_asset(project: ProjectRecord) -> AssetRecord:
-    if project.asset is None:
-        raise RuntimeError("Source asset is required before publishing the grounded preview.")
-    return project.asset
+def publish_grounded_preview(
+    user_id: str,
+    project: ProjectRecord,
+    source_video: Path,
+    heartbeat: Heartbeat | None = None,
+    variant: Literal["preview", "final"] = "preview",
+) -> RenderedVideoRecord:
+    with TemporaryDirectory(prefix="launchify-playback-") as temp_dir_name:
+        temp_dir = Path(temp_dir_name)
+        output_path = temp_dir / f"{variant}.mp4"
+        voiceover_audio = download_voiceover_audio(project)
+        try:
+            prepare_proxy_preview(project, source_video, output_path, voiceover_audio, heartbeat, quality="final")
+        finally:
+            if voiceover_audio is not None:
+                voiceover_audio.unlink(missing_ok=True)
+        video = upload_variant(user_id, project, output_path, variant, heartbeat=heartbeat)
+        return video.model_copy(update={"duration_seconds": preview_duration_seconds(project, output_path)})
 
 
 def preview_duration_seconds(project: ProjectRecord, source_video: Path) -> float:

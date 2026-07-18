@@ -222,8 +222,8 @@ def publish_preview_video(
     heartbeat()
     project_store.update_status_for_asset(job.user_id, job.project_id, job.asset_path, "rendering")
     current_project = require_project(job.user_id, job.project_id)
-    preview_video = publish_grounded_preview(current_project, asset_file)
-    preview_duration = preview_duration_seconds(current_project, preview_video.duration_seconds)
+    preview_video = publish_grounded_preview(job.user_id, current_project, asset_file, heartbeat)
+    preview_duration = resolved_preview_duration(current_project, preview_video.duration_seconds)
     preview_video = preview_video.model_copy(update={"duration_seconds": preview_duration})
     enforce_preview_limit(job.user_id, job.project_id, preview_video.duration_seconds)
     project_store.save_render_outputs(job.user_id, job.project_id, preview_video, asset_path=job.asset_path)
@@ -247,6 +247,11 @@ def preview_duration_seconds(project: ProjectRecord, fallback_duration_seconds: 
     if project.edit_plan is None:
         return fallback_duration_seconds
     return max(round(project.edit_plan.total_duration_seconds, 2), 0.0) or fallback_duration_seconds
+
+
+def resolved_preview_duration(project: ProjectRecord, exported_duration_seconds: float) -> float:
+    planned_duration = preview_duration_seconds(project, exported_duration_seconds)
+    return max(round(exported_duration_seconds, 2), planned_duration)
 
 
 def require_project(user_id: str, project_id: str) -> ProjectRecord:
