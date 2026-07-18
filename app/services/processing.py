@@ -221,7 +221,8 @@ def maybe_analyze_video_scenes(
     launch_script: LaunchScriptRecord,
     transcript: list[TranscriptSegment],
 ) -> list[VisualSceneAnalysisRecord] | None:
-    if not visual_analysis_available():
+    settings = get_settings()
+    if not settings.blocking_visual_analysis_enabled or not visual_analysis_available():
         return None
     try:
         return analyze_video_scenes(asset_file, launch_script, transcript)

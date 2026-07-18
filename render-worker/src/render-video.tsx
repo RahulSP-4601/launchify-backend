@@ -214,7 +214,15 @@ const FocusMatte: React.FC<{
   if (!focusBox) {
     return null;
   }
-  return <div style={focusMatteStyle(fastPreview, focusBox, viewport)} />;
+  const rects = focusMatteRects(focusBox, viewport, fastPreview);
+  return (
+    <>
+      {rects.map((style, index) => (
+        <div key={index} style={style} />
+      ))}
+      <div style={focusFrameStyle(focusBox, viewport, fastPreview)} />
+    </>
+  );
 };
 
 const SceneGlow: React.FC<{ fastPreview: boolean }> = ({ fastPreview }) => (
@@ -354,13 +362,12 @@ function sceneCanvasStyle(opacity: number, translateY: number): React.CSSPropert
 
 function viewportFrameStyle(fastPreview: boolean): React.CSSProperties {
   return {
-    backdropFilter: "blur(18px)",
     background: "rgba(255,255,255,0.5)",
     border: "1px solid rgba(255,255,255,0.86)",
     borderRadius: 34,
     boxShadow: fastPreview
-      ? "0 18px 40px rgba(15, 23, 42, 0.14)"
-      : "0 26px 60px rgba(15, 23, 42, 0.16), 0 8px 24px rgba(59, 130, 246, 0.08)",
+      ? "0 14px 30px rgba(15, 23, 42, 0.12)"
+      : "0 18px 42px rgba(15, 23, 42, 0.14)",
     height: "82%",
     left: "4.5%",
     overflow: "hidden",
@@ -454,7 +461,6 @@ function sceneMetaStyle(fastPreview: boolean): React.CSSProperties {
 
 function sceneNumberChipStyle(): React.CSSProperties {
   return {
-    backdropFilter: "blur(10px)",
     background: "rgba(255,255,255,0.68)",
     border: "1px solid rgba(103,232,249,0.3)",
     borderRadius: 9999,
@@ -496,7 +502,6 @@ function sceneSubtitleStyle(): React.CSSProperties {
 function captionStyle(payload: RenderPayload): React.CSSProperties {
   const fastPreview = isFastPreview(payload);
   return {
-    backdropFilter: "blur(14px)",
     background: "rgba(9, 14, 28, 0.74)",
     border: "1px solid rgba(148,163,184,0.26)",
     borderRadius: 20,
@@ -560,27 +565,50 @@ function emphasisStyle(profile: string): React.CSSProperties {
 }
 
 function focusMatteStyle(
-  fastPreview: boolean,
   focusBox: { x: number; y: number; width: number; height: number },
   viewport: { width: number; height: number; canvasWidth: number; canvasHeight: number; chromeOffset: number },
-): React.CSSProperties {
+) {
   const width = viewport.width * viewport.canvasWidth;
   const height = viewport.height * viewport.canvasHeight;
   const usableHeight = height - viewport.chromeOffset;
-  const boxLeft = Math.max(0, focusBox.x * width - 10);
-  const boxTop = Math.max(0, viewport.chromeOffset + focusBox.y * usableHeight - 10);
-  const boxWidth = Math.min(width - boxLeft, focusBox.width * width + 20);
-  const boxHeight = Math.min(height - boxTop, focusBox.height * usableHeight + 20);
+  const left = Math.max(0, focusBox.x * width - 10);
+  const top = Math.max(0, viewport.chromeOffset + focusBox.y * usableHeight - 10);
+  const boxWidth = Math.min(width - left, focusBox.width * width + 20);
+  const boxHeight = Math.min(height - top, focusBox.height * usableHeight + 20);
+  return { left, top, boxWidth, boxHeight, width, height };
+}
+
+function focusMatteRects(
+  focusBox: { x: number; y: number; width: number; height: number },
+  viewport: { width: number; height: number; canvasWidth: number; canvasHeight: number; chromeOffset: number },
+  fastPreview: boolean,
+): React.CSSProperties[] {
+  const { left, top, boxWidth, boxHeight, width, height } = focusMatteStyle(focusBox, viewport);
+  const overlay = `rgba(2, 6, 23, ${fastPreview ? 0.24 : 0.34})`;
+  return [
+    { background: overlay, height: top, left: 0, position: "absolute", top: 0, width, zIndex: 2 },
+    { background: overlay, height: height - (top + boxHeight), left: 0, position: "absolute", top: top + boxHeight, width, zIndex: 2 },
+    { background: overlay, height: boxHeight, left: 0, position: "absolute", top, width: left, zIndex: 2 },
+    { background: overlay, height: boxHeight, left: left + boxWidth, position: "absolute", top, width: width - (left + boxWidth), zIndex: 2 },
+  ];
+}
+
+function focusFrameStyle(
+  focusBox: { x: number; y: number; width: number; height: number },
+  viewport: { width: number; height: number; canvasWidth: number; canvasHeight: number; chromeOffset: number },
+  fastPreview: boolean,
+): React.CSSProperties {
+  const { left, top, boxWidth, boxHeight } = focusMatteStyle(focusBox, viewport);
   return {
     border: "1px solid rgba(125,211,252,0.18)",
     borderRadius: 24,
-    boxShadow: `0 0 0 9999px rgba(2, 6, 23, ${fastPreview ? 0.28 : 0.38})`,
+    boxShadow: fastPreview ? "0 0 0 1px rgba(34,211,238,0.08)" : "0 0 0 1px rgba(34,211,238,0.12)",
     height: boxHeight,
-    left: boxLeft,
+    left,
     position: "absolute",
-    top: boxTop,
+    top,
     width: boxWidth,
-    zIndex: 2,
+    zIndex: 3,
   };
 }
 
@@ -622,8 +650,8 @@ function highlightRingStyle(
     border: "3px solid rgba(34, 211, 238, 0.95)",
     borderRadius: focusBox ? 26 : 9999,
     boxShadow: fastPreview
-      ? `0 0 0 ${8 + intensity * 8}px rgba(34, 211, 238, ${0.05 + intensity * 0.06})`
-      : `0 0 0 ${12 + intensity * 12}px rgba(34, 211, 238, ${0.07 + intensity * 0.1}), 0 18px 30px rgba(2, 6, 23, 0.14)`,
+      ? `0 0 0 ${4 + intensity * 4}px rgba(34, 211, 238, ${0.04 + intensity * 0.04})`
+      : `0 0 0 ${6 + intensity * 6}px rgba(34, 211, 238, ${0.05 + intensity * 0.06})`,
     height,
     opacity: 0.8 + intensity * 0.16,
     width,
@@ -632,7 +660,6 @@ function highlightRingStyle(
 
 function highlightLabelStyle(fastPreview: boolean, intensity: number): React.CSSProperties {
   return {
-    backdropFilter: "blur(12px)",
     backgroundColor: "rgba(9, 14, 28, 0.88)",
     border: "1px solid rgba(125, 211, 252, 0.42)",
     borderRadius: 9999,

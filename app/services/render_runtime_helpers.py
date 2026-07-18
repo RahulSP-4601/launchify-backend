@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.models.projects import EditPlanRecord, ProjectRecord, RenderedVideoRecord
 from app.services.render_hardening import verify_render_artifact, verify_uploaded_variant
 from app.services.render_payloads import total_render_duration
+from app.services.render_proxy_clips import proxy_highlight_duration
 from app.services.storage import download_asset_to_file, upload_rendered_video_file
 from app.services.usage_service import projected_rendered_seconds, total_rendered_seconds
 
@@ -114,7 +115,7 @@ def upload_variant(
     heartbeat: Callable[[], None] | None = None,
 ) -> RenderedVideoRecord:
     verify_render_artifact(output_path, quality)
-    duration = require_duration(project)
+    duration = output_duration_seconds(output_path, fallback=require_duration(project))
     uploaded_video = upload_rendered_video_file(
         user_id=user_id,
         project_id=project.id,
@@ -134,9 +135,38 @@ def require_duration(project: ProjectRecord) -> float:
     return total_render_duration(project.edit_plan.total_duration_seconds)
 
 
+def output_duration_seconds(output_path: Path, fallback: float) -> float:
+    settings = get_settings()
+    command = [
+        settings.ffprobe_binary,
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        str(output_path),
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=settings.ffmpeg_timeout_seconds,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired, subprocess.CalledProcessError, ValueError):
+        return fallback
+    try:
+        duration = float(result.stdout.strip())
+    except ValueError:
+        return fallback
+    return round(duration, 2) if duration > 0 else fallback
+
+
 def enforce_final_render_limit(user_id: str, project: ProjectRecord) -> None:
     settings = get_settings()
-    duration_seconds = require_duration(project)
+    duration_seconds = effective_final_duration(project, settings)
     projected_seconds = projected_rendered_seconds(user_id, project.id, duration_seconds)
     limit_seconds = float(settings.trial_minutes_limit * 60)
     if projected_seconds > limit_seconds:
@@ -146,6 +176,12 @@ def enforce_final_render_limit(user_id: str, project: ProjectRecord) -> None:
             "This render would exceed your trial limit. "
             f"Only {remaining_minutes:.1f} minutes remain before the {settings.trial_minutes_limit} minute cap."
         )
+
+
+def effective_final_duration(project: ProjectRecord, settings: object) -> float:
+    if getattr(settings, "low_memory_final_mode", "render") != "proxy":
+        return require_duration(project)
+    return proxy_highlight_duration(project) or require_duration(project)
 
 
 def download_voiceover_audio(project: ProjectRecord) -> Path | None:

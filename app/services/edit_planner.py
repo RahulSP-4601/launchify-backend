@@ -17,6 +17,7 @@ from app.models.projects import (
 from app.services.caption_designer import build_caption_track
 from app.services.motion_director import build_motion_track
 from app.services.override_manager import apply_manual_overrides
+from app.services.session_grounding import apply_session_grounding
 from app.services.scene_alignment import align_script_scenes
 from app.services.timing_sync import sync_edit_plan_timing
 from app.services.visual_analysis import analysis_map
@@ -58,7 +59,8 @@ def generate_edit_plan(
         ),
     )
     synced_edit = sync_edit_plan_timing(planned_edit, visual_analyses)
-    return apply_manual_overrides(synced_edit, normalized_overrides(project.manual_overrides))
+    grounded_edit = apply_session_grounding(synced_edit, project.recording_session)
+    return apply_manual_overrides(grounded_edit, normalized_overrides(project.manual_overrides))
 
 
 def require_launch_script(launch_script: LaunchScriptRecord | None) -> LaunchScriptRecord:

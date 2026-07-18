@@ -7,9 +7,10 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from app.core.config import Settings, get_settings
-from app.models.projects import LaunchScriptRecord, LaunchScriptScene, TranscriptSegment, VisualSceneAnalysisRecord
-from app.services.ocr_pipeline import extract_ocr_labels
+from app.models.projects import FrameSignalRecord, LaunchScriptRecord, LaunchScriptScene, TranscriptSegment, VisualSceneAnalysisRecord
+from app.services.ocr_pipeline import OcrFrameResult, extract_ocr_labels
 from app.services.scene_alignment import align_script_scenes
+from app.services.video_frames import ExtractedFrame
 from app.services.video_frames import extract_frames_for_scene
 from app.services.vision_analyzer import analyze_scene_frames
 
@@ -61,6 +62,8 @@ def analyze_scene(
 ) -> VisualSceneAnalysisRecord | None:
     scene_output_dir = temp_dir / f"scene-{scene.scene_number}"
     scene_output_dir.mkdir(parents=True, exist_ok=True)
+    extracted_frames: list[ExtractedFrame] = []
+    ocr_labels: dict[float, OcrFrameResult] = {}
     logger.info(
         "Visual analysis: scene %s started (elapsed %.2fs, budget %ss).",
         scene.scene_number,
@@ -77,21 +80,23 @@ def analyze_scene(
             frame_width=settings.visual_analysis_frame_width,
             jpeg_quality=settings.visual_analysis_jpeg_quality,
         )
+        ocr_labels = extract_ocr_labels(extracted_frames)
         analysis = analyze_scene_frames(
             scene,
             scene_range,
             extracted_frames,
             video_path,
-            extract_ocr_labels(extracted_frames),
+            ocr_labels,
         )
         logger.info("Visual analysis: scene %s completed.", scene.scene_number)
         return analysis
-    except Exception:
-        logger.exception(
-            "Visual analysis: scene %s failed. Falling back to script-led planning for this scene.",
+    except Exception as exc:
+        logger.warning(
+            "Visual analysis: scene %s fell back to local heuristics after: %s",
             scene.scene_number,
+            exc,
         )
-        return None
+        return local_fallback_analysis(scene, scene_range, extracted_frames, ocr_labels)
 
 
 def visual_analysis_available() -> bool:
@@ -105,3 +110,36 @@ def ffmpeg_available(ffmpeg_binary: str) -> bool:
     if "/" in ffmpeg_binary:
         return Path(ffmpeg_binary).exists()
     return shutil.which(ffmpeg_binary) is not None
+
+
+def local_fallback_analysis(
+    scene: LaunchScriptScene,
+    scene_range: tuple[float, float],
+    extracted_frames: list[ExtractedFrame],
+    ocr_labels: dict[float, OcrFrameResult],
+) -> VisualSceneAnalysisRecord:
+    visible_labels = list(
+        dict.fromkeys(label for frame in extracted_frames for label in ocr_labels.get(frame.timestamp, OcrFrameResult([], 0.0)).labels[:4])
+    )[:8]
+    frames = [
+        FrameSignalRecord(
+            timestamp=frame.timestamp,
+            summary=scene.on_screen_text or scene.purpose,
+            ocr_labels=ocr_labels.get(frame.timestamp, OcrFrameResult([], 0.0)).labels[:6],
+            ocr_confidence=ocr_labels.get(frame.timestamp, OcrFrameResult([], 0.0)).confidence,
+        )
+        for frame in extracted_frames
+    ]
+    return VisualSceneAnalysisRecord(
+        scene_number=scene.scene_number,
+        start=scene_range[0],
+        end=scene_range[1],
+        summary=scene.on_screen_text or scene.purpose,
+        confidence=0.18,
+        motion_score=0.12,
+        visible_labels=visible_labels,
+        frames=frames,
+        frame_diff_available=False,
+        frame_diff_score=0.0,
+        ocr_confidence=max((frame.ocr_confidence for frame in frames), default=0.0),
+    )

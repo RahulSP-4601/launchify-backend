@@ -14,6 +14,7 @@ from app.models.projects import (
     ProjectSummary,
     RenderedVideoRecord,
     TranscriptResponse,
+    UpdateRecordingSessionRequest,
     UpdatePhaseFourRequest,
     UsageSummary,
 )
@@ -91,6 +92,14 @@ async def update_phase_four(project_id: str, payload: UpdatePhaseFourRequest, re
         payload.manual_overrides,
     )
     return to_project_detail(user_id, project.id)
+
+
+@router.put("/projects/{project_id}/session", response_model=ProjectDetail, tags=["projects"])
+async def update_recording_session(project_id: str, payload: UpdateRecordingSessionRequest, request: Request) -> ProjectDetail:
+    user_id = get_authenticated_user_id(request)
+    must_get_project(user_id, project_id)
+    project_store.save_recording_session(user_id, project_id, payload.recording_session)
+    return to_project_detail(user_id, project_id)
 
 
 @router.get("/projects/{project_id}/transcript", response_model=TranscriptResponse, tags=["projects"])
@@ -173,6 +182,7 @@ def to_project_detail(user_id: str, project_id: str) -> ProjectDetail:
         has_preview_video=project.preview_video is not None,
         has_final_video=project.final_video is not None,
         asset=project.asset,
+        recording_session=project.recording_session,
         launch_script=project.launch_script,
         edit_plan=project.edit_plan,
         template_config=project.template_config,

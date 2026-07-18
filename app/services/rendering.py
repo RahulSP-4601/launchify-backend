@@ -50,7 +50,8 @@ def render_project_videos(
 ) -> tuple[RenderedVideoRecord | None, RenderedVideoRecord, EditPlanRecord, QualityReportRecord]:
     asset_path = require_asset_path(project)
     settings = get_settings()
-    ensure_render_worker_ready()
+    if render_worker_required(settings):
+        ensure_render_worker_ready()
     logger.info("Render pipeline using %s preview mode for project %s.", settings.preview_render_mode, project.id)
     with TemporaryDirectory(prefix="launchify-render-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
@@ -58,7 +59,7 @@ def render_project_videos(
         voiceover_audio = download_voiceover_audio(project)
         preview_render_source: Path | None = None
         try:
-            preview_render_source = prepare_preview_render_source(source_video, temp_dir, heartbeat)
+            preview_render_source = prepare_preview_source(project, source_video, temp_dir, settings, heartbeat)
             return execute_render_pipeline(
                 user_id,
                 project,
@@ -78,6 +79,23 @@ def render_project_videos(
                 preview_render_source.unlink(missing_ok=True)
             if voiceover_audio is not None:
                 voiceover_audio.unlink(missing_ok=True)
+
+
+def render_worker_required(settings: Settings) -> bool:
+    return settings.preview_render_mode == "styled" or settings.low_memory_final_mode == "render"
+
+
+def prepare_preview_source(
+    project: ProjectRecord,
+    source_video: Path,
+    temp_dir: Path,
+    settings: Settings,
+    heartbeat: Callable[[], None] | None,
+) -> Path:
+    if settings.fast_pipeline_enabled and not render_worker_required(settings):
+        logger.info("Fast pipeline enabled for project %s; preview highlight reel will be cut directly from the upload.", project.id)
+        return source_video
+    return prepare_preview_render_source(source_video, temp_dir, heartbeat)
 
 
 def execute_render_pipeline(
@@ -182,8 +200,25 @@ def execute_preview_pipeline(
     with timed_stage("preview_review", settings.planning_warn_seconds):
         reviewed_project_record, quality_report, rerender_preview = reviewed_project(project, preview_output)
     beat(heartbeat)
-    if rerender_preview and settings.preview_render_mode == "styled":
-        rerender_refined_preview(reviewed_project_record, render_source, voiceover_audio, temp_dir, settings, heartbeat, stage_update, preview_output)
+    if use_proxy_final_output(settings) and rerender_preview:
+        notify_render_stage(stage_update, "preview_render_refined", reviewed_project_record.id)
+        with timed_stage("preview_render_refined", settings.preview_render_warn_seconds):
+            run_with_retry(
+                "refined proxy preview render",
+                lambda: prepare_preview_output(reviewed_project_record, render_source, voiceover_audio, temp_dir, preview_output, heartbeat),
+            )
+        beat(heartbeat)
+    elif rerender_preview and settings.preview_render_mode == "styled":
+        rerender_refined_preview(
+            reviewed_project_record,
+            render_source,
+            voiceover_audio,
+            temp_dir,
+            settings,
+            heartbeat,
+            stage_update,
+            preview_output,
+        )
     if settings.preview_render_mode == "styled":
         notify_render_stage(stage_update, "preview_upload", reviewed_project_record.id)
         preview_video = run_with_retry("preview upload", lambda: upload_variant(user_id, reviewed_project_record, preview_output, "preview", heartbeat=heartbeat))
@@ -343,7 +378,7 @@ def prepare_preview_output(
     heartbeat: Callable[[], None] | None = None,
 ) -> None:
     if get_settings().preview_render_mode == "proxy":
-        prepare_proxy_preview(source_video, output_path)
+        prepare_proxy_preview(project, source_video, output_path, voiceover_audio, heartbeat)
         return
     render_preview_output(project, source_video, voiceover_audio, temp_dir, output_path, heartbeat)
 

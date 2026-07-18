@@ -9,6 +9,7 @@ ProjectStatus = Literal["draft", "queued", "uploading", "transcribing", "scripti
 JobStatus = Literal["pending", "processing", "completed", "failed"]
 VoiceoverMode = Literal["original", "voiceover", "mixed"]
 VoiceoverStatus = Literal["disabled", "script_only", "ready"]
+SessionEventType = Literal["click", "input", "scroll", "hover", "navigation", "keypress", "focus", "custom"]
 ThemeName = Literal["clean", "spotlight", "bold"]
 CaptionProfile = Literal["product", "minimal", "cinematic"]
 MotionProfile = Literal["balanced", "dynamic", "calm"]
@@ -35,6 +36,37 @@ class TranscriptSegment(BaseModel):
     start: float
     end: float
     text: str
+
+
+class SessionTargetRecord(BaseModel):
+    selector: str = ""
+    label: str = ""
+    role: str = ""
+    text: str = ""
+    href: str = ""
+
+
+class SessionEventRecord(BaseModel):
+    type: SessionEventType
+    timestamp: float = Field(ge=0.0)
+    x: float | None = None
+    y: float | None = None
+    value: str = ""
+    url: str = ""
+    title: str = ""
+    target: SessionTargetRecord = Field(default_factory=SessionTargetRecord)
+    metadata: dict[str, str] = Field(default_factory=dict)
+
+
+class RecordingSessionRecord(BaseModel):
+    source: str = "extension"
+    started_at: str = ""
+    ended_at: str = ""
+    viewport_width: int = 0
+    viewport_height: int = 0
+    page_title: str = ""
+    page_url: str = ""
+    events: list[SessionEventRecord] = Field(default_factory=list)
 
 
 class LaunchScriptScene(BaseModel):
@@ -262,6 +294,7 @@ class ProjectRecord(BaseModel):
     created_at: datetime
     updated_at: datetime
     asset: AssetRecord | None = None
+    recording_session: RecordingSessionRecord | None = None
     transcript: list[TranscriptSegment] = Field(default_factory=list)
     launch_script: LaunchScriptRecord | None = None
     edit_plan: EditPlanRecord | None = None
@@ -297,6 +330,7 @@ class ProjectDetail(ProjectSummary):
     product_description: str
     target_audience: str
     asset: AssetRecord | None = None
+    recording_session: RecordingSessionRecord | None = None
     launch_script: LaunchScriptRecord | None = None
     edit_plan: EditPlanRecord | None = None
     template_config: TemplateConfigRecord | None = None
@@ -313,6 +347,10 @@ class UpdatePhaseFourRequest(BaseModel):
     template_config: TemplateConfigRecord = Field(default_factory=TemplateConfigRecord)
     manual_overrides: ManualOverrideRecord = Field(default_factory=ManualOverrideRecord)
     voiceover_mode: VoiceoverMode = "original"
+
+
+class UpdateRecordingSessionRequest(BaseModel):
+    recording_session: RecordingSessionRecord
 
 
 class TranscriptResponse(BaseModel):

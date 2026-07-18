@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any
 from uuid import uuid4
 
 from app.models.projects import (
@@ -15,6 +15,7 @@ from app.models.projects import (
     ProjectRecord,
     ProjectStatus,
     QualityReportRecord,
+    RecordingSessionRecord,
     RenderedVideoRecord,
     TemplateConfigRecord,
     TranscriptSegment,
@@ -26,6 +27,7 @@ from app.services.project_store_helpers import (
     create_project_params,
     has_active_job,
     insert_processing_job_sql,
+    project_from_row,
     reset_project_for_asset_params,
     reset_project_for_asset_sql,
 )
@@ -45,7 +47,7 @@ class ProjectStore:
                 cursor.execute(
                     """
                     select id, project_name, product_name, product_description, target_audience,
-                           video_goal, status, asset, transcript, launch_script, edit_plan,
+                           video_goal, status, asset, recording_session, transcript, launch_script, edit_plan,
                            template_config, manual_overrides, quality_report, benchmark_report, voiceover,
                            preview_video, final_video, error_message, created_at, updated_at
                     from projects
@@ -55,7 +57,7 @@ class ProjectStore:
                     (user_id,),
                 )
                 rows = cursor.fetchall()
-        return [self._row_to_project(user_id, row) for row in rows]
+        return [project_from_row(row) for row in rows]
 
     def create_project(self, user_id: str, payload: CreateProjectRequest) -> ProjectRecord:
         now = datetime.now(UTC)
@@ -79,7 +81,7 @@ class ProjectStore:
                     """
                     insert into projects (
                         id, user_id, project_name, product_name, product_description, target_audience,
-                        video_goal, status, asset, transcript, launch_script, edit_plan,
+                        video_goal, status, asset, recording_session, transcript, launch_script, edit_plan,
                         template_config, manual_overrides, quality_report, benchmark_report, voiceover,
                         preview_video, final_video, error_message, created_at, updated_at
                     )
@@ -95,7 +97,7 @@ class ProjectStore:
                 cursor.execute(
                     """
                     select id, project_name, product_name, product_description, target_audience,
-                           video_goal, status, asset, transcript, launch_script, edit_plan,
+                           video_goal, status, asset, recording_session, transcript, launch_script, edit_plan,
                            template_config, manual_overrides, quality_report, benchmark_report, voiceover,
                            preview_video, final_video, error_message, created_at, updated_at
                     from projects
@@ -104,7 +106,7 @@ class ProjectStore:
                     (project_id, user_id),
                 )
                 row = cursor.fetchone()
-        return self._row_to_project(user_id, row) if row else None
+        return project_from_row(row) if row else None
 
     def update_status(self, user_id: str, project_id: str, status: ProjectStatus, error_message: str = "") -> None:
         self._execute_update(
@@ -154,6 +156,26 @@ class ProjectStore:
                 if cursor.rowcount != 1:
                     raise RuntimeError("Project not found.")
                 cursor.execute(insert_processing_job_sql(), create_processing_job_params(user_id, project_id, asset, now))
+
+    def save_recording_session(
+        self,
+        user_id: str,
+        project_id: str,
+        recording_session: RecordingSessionRecord,
+    ) -> None:
+        self._execute_update(
+            """
+            update projects
+            set recording_session = %s::jsonb, updated_at = %s
+            where id = %s and user_id = %s
+            """,
+            (
+                json.dumps(recording_session.model_dump(mode="json")),
+                datetime.now(UTC),
+                project_id,
+                user_id,
+            ),
+        )
 
     def save_transcript(
         self,
@@ -455,45 +477,5 @@ class ProjectStore:
                     if stale_error_message is not None:
                         raise StaleProjectAssetError(stale_error_message)
                     raise RuntimeError("Project not found.")
-
-    def _row_to_project(self, user_id: str, row: tuple[object, ...]) -> ProjectRecord:
-        asset = AssetRecord.model_validate(row[7]) if row[7] is not None else None
-        transcript = [TranscriptSegment.model_validate(item) for item in self._as_list(row[8])]
-        launch_script = LaunchScriptRecord.model_validate(row[9]) if row[9] is not None else None
-        edit_plan = EditPlanRecord.model_validate(row[10]) if row[10] is not None else None
-        template_config = TemplateConfigRecord.model_validate(row[11]) if row[11] is not None else None
-        manual_overrides = ManualOverrideRecord.model_validate(row[12]) if row[12] is not None else None
-        quality_report = QualityReportRecord.model_validate(row[13]) if row[13] is not None else None
-        benchmark_report = BenchmarkReportRecord.model_validate(row[14]) if row[14] is not None else None
-        voiceover = VoiceoverRecord.model_validate(row[15]) if row[15] is not None else None
-        preview_video = RenderedVideoRecord.model_validate(row[16]) if row[16] is not None else None
-        final_video = RenderedVideoRecord.model_validate(row[17]) if row[17] is not None else None
-        return ProjectRecord(
-            id=str(row[0]),
-            project_name=str(row[1]),
-            product_name=str(row[2]),
-            product_description=str(row[3]),
-            target_audience=str(row[4]),
-            video_goal=str(row[5]),
-            status=cast(Any, row[6]),
-            asset=asset,
-            transcript=transcript,
-            launch_script=launch_script,
-            edit_plan=edit_plan,
-            template_config=template_config,
-            manual_overrides=manual_overrides,
-            quality_report=quality_report,
-            benchmark_report=benchmark_report,
-            voiceover=voiceover,
-            preview_video=preview_video,
-            final_video=final_video,
-            error_message=str(row[18]),
-            created_at=cast(datetime, row[19]),
-            updated_at=cast(datetime, row[20]),
-        )
-
-    def _as_list(self, value: object) -> list[object]:
-        return value if isinstance(value, list) else []
-
 
 project_store = ProjectStore()

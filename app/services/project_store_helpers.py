@@ -2,10 +2,23 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
-from app.models.projects import AssetRecord, ManualOverrideRecord, ProjectRecord, TemplateConfigRecord, VoiceoverRecord
+from app.models.projects import (
+    AssetRecord,
+    BenchmarkReportRecord,
+    EditPlanRecord,
+    LaunchScriptRecord,
+    ManualOverrideRecord,
+    ProjectRecord,
+    QualityReportRecord,
+    RecordingSessionRecord,
+    RenderedVideoRecord,
+    TemplateConfigRecord,
+    TranscriptSegment,
+    VoiceoverRecord,
+)
 
 
 def create_project_params(project: ProjectRecord, user_id: str) -> tuple[object, ...]:
@@ -21,6 +34,7 @@ def create_project_params(project: ProjectRecord, user_id: str) -> tuple[object,
         project.target_audience,
         project.video_goal,
         project.status,
+        None,
         None,
         json.dumps([]),
         None,
@@ -54,7 +68,7 @@ def has_active_job(cursor: Any, project_id: str, asset_path: str) -> bool:
 def reset_project_for_asset_sql() -> str:
     return """
         update projects
-        set asset = %s::jsonb, status = %s, transcript = '[]'::jsonb, launch_script = null, edit_plan = null,
+        set asset = %s::jsonb, recording_session = null, status = %s, transcript = '[]'::jsonb, launch_script = null, edit_plan = null,
             manual_overrides = %s::jsonb, quality_report = null, benchmark_report = null, voiceover = %s::jsonb,
             preview_video = null, final_video = null,
             error_message = '', updated_at = %s
@@ -108,3 +122,46 @@ def create_processing_job_params(
         now,
         None,
     )
+
+
+def project_from_row(row: tuple[object, ...]) -> ProjectRecord:
+    asset = AssetRecord.model_validate(row[7]) if row[7] is not None else None
+    recording_session = RecordingSessionRecord.model_validate(row[8]) if row[8] is not None else None
+    transcript = [TranscriptSegment.model_validate(item) for item in as_list(row[9])]
+    launch_script = LaunchScriptRecord.model_validate(row[10]) if row[10] is not None else None
+    edit_plan = EditPlanRecord.model_validate(row[11]) if row[11] is not None else None
+    template_config = TemplateConfigRecord.model_validate(row[12]) if row[12] is not None else None
+    manual_overrides = ManualOverrideRecord.model_validate(row[13]) if row[13] is not None else None
+    quality_report = QualityReportRecord.model_validate(row[14]) if row[14] is not None else None
+    benchmark_report = BenchmarkReportRecord.model_validate(row[15]) if row[15] is not None else None
+    voiceover = VoiceoverRecord.model_validate(row[16]) if row[16] is not None else None
+    preview_video = RenderedVideoRecord.model_validate(row[17]) if row[17] is not None else None
+    final_video = RenderedVideoRecord.model_validate(row[18]) if row[18] is not None else None
+    return ProjectRecord(
+        id=str(row[0]),
+        project_name=str(row[1]),
+        product_name=str(row[2]),
+        product_description=str(row[3]),
+        target_audience=str(row[4]),
+        video_goal=str(row[5]),
+        status=cast(Any, row[6]),
+        asset=asset,
+        recording_session=recording_session,
+        transcript=transcript,
+        launch_script=launch_script,
+        edit_plan=edit_plan,
+        template_config=template_config,
+        manual_overrides=manual_overrides,
+        quality_report=quality_report,
+        benchmark_report=benchmark_report,
+        voiceover=voiceover,
+        preview_video=preview_video,
+        final_video=final_video,
+        error_message=str(row[19]),
+        created_at=cast(datetime, row[20]),
+        updated_at=cast(datetime, row[21]),
+    )
+
+
+def as_list(value: object) -> list[object]:
+    return value if isinstance(value, list) else []
