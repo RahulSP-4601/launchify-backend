@@ -22,11 +22,11 @@ from app.models.projects import (
 from app.services.visual_analysis import analysis_map
 
 DEFAULT_VIEWPORT = (1280, 720)
-MAX_EVENTS = 12
-MAX_EVENTS_PER_SCENE = 4
+MAX_EVENTS = 16
+MAX_EVENTS_PER_SCENE = 5
 INTERACTION_GAP_SECONDS = 0.55
 EVENT_FOCUS_DISTANCE_PIXELS = 48.0
-MIN_DISTINCT_WINDOW_SECONDS = 1.35
+MIN_DISTINCT_WINDOW_SECONDS = 0.9
 GENERIC_LABELS = frozenset({
     "button",
     "control",
@@ -119,7 +119,7 @@ def frame_is_candidate(
     label_change = label_change_score(frames, index)
     intent = transcript_intent_score(transcript_excerpt, source_excerpt, frame)
     evidence = max(frame.click_confidence, frame.diff_score, frame.importance_score, stop_score, label_change, intent)
-    return evidence >= 0.28 and inferred_focus_box(frame) is not None
+    return evidence >= 0.22 and inferred_focus_box(frame) is not None
 def build_window(
     analysis: VisualSceneAnalysisRecord,
     index: int,
@@ -212,7 +212,7 @@ def inferred_event_type(
         return "navigation"
     return "focus"
 def inferred_focus_box(frame: FrameSignalRecord) -> FocusBox | None:
-    return best_matching_ui_box(frame) or frame.click_target_box or nearest_ui_box(frame) or frame.dominant_box or frame.cursor_box
+    return frame.click_target_box or nearest_ui_box(frame) or best_matching_ui_box(frame) or frame.dominant_box or frame.cursor_box
 def nearest_ui_box(frame: FrameSignalRecord) -> FocusBox | None:
     if frame.cursor_box is None or not frame.ui_elements:
         return first_ui_box(frame.ui_elements)

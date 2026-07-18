@@ -180,9 +180,10 @@ def request_grounded_guide(
     except (error.URLError, TimeoutError) as exc:
         raise RuntimeError(f"OpenAI grounded guide generation failed: {describe_transport_error(exc)}") from exc
     try:
-        return GuideRecord.model_validate(parse_openai_guide_payload(payload))
+        guide = GuideRecord.model_validate(parse_openai_guide_payload(payload))
     except ValidationError as exc:
         raise RuntimeError("OpenAI returned an invalid grounded guide structure.") from exc
+    return reconcile_grounded_guide(guide, clusters)
 
 
 def grounded_system_prompt() -> str:
@@ -337,6 +338,43 @@ def fallback_guide(project: ProjectRecord, clusters: Sequence[EventCluster]) -> 
         article_steps=article_steps,
         generation_notes=["Fallback guide used because OpenAI grounded synthesis was unavailable."],
     )
+
+
+def reconcile_grounded_guide(guide: GuideRecord, clusters: Sequence[EventCluster]) -> GuideRecord:
+    if not clusters:
+        return guide
+    matched_steps = {step.step_index: step for step in guide.steps}
+    steps: list[GuideStepRecord] = []
+    article_steps: list[ArticleStepRecord] = []
+    for cluster in clusters:
+        model_step = matched_steps.get(cluster.index)
+        label = cluster.event.target.label or cluster.event.target.text or readable_selector(cluster.event.target.selector)
+        instruction = (model_step.instruction if model_step is not None and model_step.instruction.strip() else build_instruction(cluster.event, label)).strip()
+        narration = (model_step.narration if model_step is not None and model_step.narration.strip() else cluster.transcript_excerpt or instruction).strip()
+        on_screen_text = (model_step.on_screen_text if model_step is not None and model_step.on_screen_text.strip() else label or instruction).strip()
+        title = (model_step.title if model_step is not None and model_step.title.strip() else label or f"Step {cluster.index}").strip()
+        highlight = (model_step.highlight_label if model_step is not None and model_step.highlight_label.strip() else label[:48]).strip()
+        steps.append(GuideStepRecord(
+            step_index=cluster.index,
+            title=title,
+            instruction=instruction,
+            narration=narration,
+            on_screen_text=on_screen_text,
+            start=cluster.start,
+            end=cluster.end,
+            event_type=cluster.event.type,
+            focus_selector=cluster.event.target.selector,
+            focus_label=label,
+            highlight_label=highlight,
+            source_excerpt=cluster.transcript_excerpt or label,
+        ))
+        article_steps.append(ArticleStepRecord(
+            step_index=cluster.index,
+            title=title,
+            body=instruction,
+        ))
+    notes = list(dict.fromkeys([*guide.generation_notes, "Grounded step timing was re-aligned to captured action clusters."]))
+    return guide.model_copy(update={"steps": steps, "article_steps": article_steps, "generation_notes": notes})
 
 
 def build_instruction(event: SessionEventRecord, label: str) -> str:

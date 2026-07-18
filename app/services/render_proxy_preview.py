@@ -7,8 +7,8 @@ from pathlib import Path
 from typing import Callable, Literal
 
 from app.core.config import get_settings
-from app.models.projects import EditPlanScene, FocusBox, ProjectRecord, RenderedVideoRecord, VoiceoverMode
-from app.services.render_proxy_clips import highlight_clips
+from app.models.projects import EditPlanHighlight, EditPlanScene, EditPlanZoom, FocusBox, ProjectRecord, RenderedVideoRecord, VoiceoverMode
+from app.services.render_proxy_clips import RenderClip, highlight_clips
 from app.services.render_runtime_helpers import output_duration_seconds, run_process_with_heartbeat
 
 logger = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ def render_highlight_reel(
     project: ProjectRecord,
     source_video: Path,
     output_path: Path,
-    clips: list[tuple[float, float]],
+    clips: list[RenderClip],
     voiceover_audio: Path | None,
     heartbeat: Heartbeat | None,
     quality: ExportQuality,
@@ -104,7 +104,7 @@ def build_highlight_command(
     project: ProjectRecord,
     source_video: Path,
     output_path: Path,
-    clips: list[tuple[float, float]],
+    clips: list[RenderClip],
     has_audio: bool,
     voiceover_audio: Path | None,
     quality: ExportQuality,
@@ -191,7 +191,7 @@ def build_passthrough_command(
 
 def build_highlight_filter(
     project: ProjectRecord,
-    clips: list[tuple[float, float]],
+    clips: list[RenderClip],
     has_audio: bool,
     voiceover_mode: VoiceoverMode,
     quality: ExportQuality,
@@ -201,8 +201,7 @@ def build_highlight_filter(
     concat_inputs: list[str] = []
     concat_audio = has_audio and voiceover_mode != "voiceover"
     for index, clip in enumerate(clips):
-        scene = project.edit_plan.scenes[index] if project.edit_plan is not None and index < len(project.edit_plan.scenes) else None
-        filters.extend(segment_filters(index, clip, scene, concat_audio, quality, working_dir))
+        filters.extend(segment_filters(index, clip, concat_audio, quality, working_dir))
         concat_inputs.append(f"[v{index}]")
         if concat_audio:
             concat_inputs.append(f"[a{index}]")
@@ -217,24 +216,22 @@ def build_highlight_filter(
 
 def segment_filters(
     index: int,
-    clip: tuple[float, float],
-    scene: EditPlanScene | None,
+    clip: RenderClip,
     concat_audio: bool,
     quality: ExportQuality,
     working_dir: Path,
 ) -> list[str]:
-    start, end = clip
+    start, end = clip.start, clip.end
+    scene = clip.scene
     chain = [f"[0:v]trim=start={start}:end={end}", "setpts=PTS-STARTPTS"]
-    crop_filter, crop_box, crop_bounds = scene_crop_filter(scene, quality)
+    crop_filter, crop_box, crop_bounds = scene_crop_filter(scene, start, end, quality)
     if crop_filter:
         chain.append(crop_filter)
     chain.extend(scene_overlay_filters(scene, start, end, crop_box, crop_bounds, quality, working_dir))
     chain.append(f"fps={target_fps(quality)}")
     chain.append(passthrough_scale_filter(quality))
     chain.append(f"[v{index}]")
-    filters = [".".join([])]  # placeholder removed below
-    video_filter = ",".join(chain[:-1]) + chain[-1]
-    filters = [video_filter]
+    filters = [",".join(chain[:-1]) + chain[-1]]
     if concat_audio:
         filters.append(f"[0:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS[a{index}]")
     return filters
@@ -242,12 +239,14 @@ def segment_filters(
 
 def scene_crop_filter(
     scene: EditPlanScene | None,
+    clip_start: float,
+    clip_end: float,
     quality: ExportQuality,
 ) -> tuple[str | None, FocusBox | None, tuple[float, float, float, float] | None]:
     if scene is None:
         return None, None, None
-    focus_box = representative_focus_box(scene)
-    zoom_scale = representative_zoom_scale(scene)
+    focus_box = representative_focus_box(scene, clip_start, clip_end)
+    zoom_scale = representative_zoom_scale(scene, clip_start, clip_end)
     if focus_box is None or zoom_scale <= 1.02:
         return None, focus_box, None
     crop_width = max(min(round(1 / min(zoom_scale, 1.28), 4), 0.98), 0.7)
@@ -264,20 +263,27 @@ def scene_crop_filter(
     )
 
 
-def representative_focus_box(scene: EditPlanScene) -> FocusBox | None:
-    for highlight in scene.highlights:
+def representative_focus_box(scene: EditPlanScene, clip_start: float, clip_end: float) -> FocusBox | None:
+    for highlight in overlapping_highlights(scene, clip_start, clip_end):
         if highlight.focus_box is not None:
             return highlight.focus_box
-    for zoom in scene.zooms:
+    for zoom in overlapping_zooms(scene, clip_start, clip_end):
         if zoom.focus_box is not None:
             return zoom.focus_box
     return None
 
 
-def representative_zoom_scale(scene: EditPlanScene) -> float:
-    if not scene.zooms:
+def representative_zoom_scale(scene: EditPlanScene, clip_start: float, clip_end: float) -> float:
+    active_zooms = overlapping_zooms(scene, clip_start, clip_end)
+    if not active_zooms:
         return 1.0
-    return max(zoom.scale for zoom in scene.zooms)
+    return max(zoom.scale for zoom in active_zooms)
+
+
+def overlapping_zooms(scene: EditPlanScene, clip_start: float, clip_end: float) -> list[EditPlanZoom]:
+    return [zoom for zoom in scene.zooms if zoom.end > clip_start and zoom.start < clip_end]
+def overlapping_highlights(scene: EditPlanScene, clip_start: float, clip_end: float) -> list[EditPlanHighlight]:
+    return [highlight for highlight in scene.highlights if highlight.end > clip_start and highlight.start < clip_end]
 
 
 def rebased_box(box: FocusBox, origin_x: float, origin_y: float, crop_width: float, crop_height: float) -> FocusBox:
@@ -388,16 +394,14 @@ def passthrough_scale_filter(quality: ExportQuality) -> str:
 def target_fps(quality: ExportQuality) -> int:
     settings = get_settings()
     return settings.final_render_fps if quality == "final" else settings.preview_proxy_fps
-
-
 def resolved_voiceover_mode(project: ProjectRecord, voiceover_audio: Path | None) -> VoiceoverMode:
     if voiceover_audio is None or project.voiceover is None or project.voiceover.status != "ready":
         return "original"
     return project.voiceover.mode
 
 
-def audio_mix_filter(clips: list[tuple[float, float]], has_audio: bool, voiceover_mode: VoiceoverMode) -> str:
-    total_duration = round(sum(end - start for start, end in clips), 2)
+def audio_mix_filter(clips: list[RenderClip], has_audio: bool, voiceover_mode: VoiceoverMode) -> str:
+    total_duration = round(sum(clip.end - clip.start for clip in clips), 2)
     if voiceover_mode == "voiceover":
         return f"[1:a]atrim=start=0:end={total_duration},asetpts=PTS-STARTPTS[aout]"
     if voiceover_mode == "mixed" and has_audio:
@@ -443,18 +447,12 @@ def write_caption_text_file(working_dir: Path, scene_number: int, caption_index:
     caption_file.write_text(normalized_caption_text(text), encoding="utf-8")
     return caption_file
 def normalized_caption_text(text: str) -> str:
-    lines = [re.sub(r"\s+", " ", line).strip() for line in text.replace("\r", "").split("\n")]
-    preserved = "\n".join(line for line in lines if line)
+    preserved = "\n".join(line for line in (re.sub(r"\s+", " ", part).strip() for part in text.replace("\r", "").split("\n")) if line)
     return preserved or " "
 def escape_drawtext_path(path: Path) -> str:
-    escaped = str(path).replace("\\", "\\\\")
-    return escaped.replace("'", r"\'")
-
-
+    return str(path).replace("\\", "\\\\").replace("'", r"\'")
 def clamp(value: float, minimum: float, maximum: float) -> float:
     return max(minimum, min(value, maximum))
-
-
 def persist_proxy_preview(
     user_id: str,
     project: ProjectRecord,
