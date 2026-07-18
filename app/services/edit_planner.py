@@ -23,7 +23,7 @@ from app.models.projects import (
 )
 from app.services.caption_designer import build_caption_track
 from app.services.event_grounding import focus_box_for_event, normalize_event_timestamp, primary_event_for_window, region_for_box
-from app.services.motion_director import build_motion_track
+from app.services.motion_director import build_motion_track, offset_for_box
 from app.services.override_manager import apply_manual_overrides
 from app.services.session_grounding import apply_session_grounding
 from app.services.scene_alignment import align_script_scenes
@@ -230,11 +230,14 @@ def apply_grounded_focus(
 
 
 def hydrate_grounded_zoom(zoom: EditPlanZoom, event_focus_box: FocusBox, focus_region: str) -> EditPlanZoom:
+    resolved_focus_box = zoom.focus_box or event_focus_box
     return zoom.model_copy(update={
-        "focus_box": zoom.focus_box or event_focus_box,
+        "focus_box": resolved_focus_box,
         "focus_region": focus_region if zoom.focus_region == "center" else zoom.focus_region,
         "confidence": max(zoom.confidence, 0.82),
-        "scale": max(zoom.scale, 1.16),
+        "scale": max(zoom.scale, 1.2),
+        "x_offset": offset_for_box(resolved_focus_box, focus_region, axis="x"),
+        "y_offset": offset_for_box(resolved_focus_box, focus_region, axis="y"),
     })
 
 
@@ -257,11 +260,13 @@ def seed_grounded_zoom(step: GuideStepRecord, event_focus_box: FocusBox, focus_r
     return EditPlanZoom(
         start=step.start,
         end=step.end,
-        scale=1.18,
+        scale=1.22,
         focus_region=focus_region,
         reason="grounded session focus",
         confidence=0.86,
         focus_box=event_focus_box,
+        x_offset=offset_for_box(event_focus_box, focus_region, axis="x"),
+        y_offset=offset_for_box(event_focus_box, focus_region, axis="y"),
         hold_ratio=0.68,
         smoothing=0.14,
     )
