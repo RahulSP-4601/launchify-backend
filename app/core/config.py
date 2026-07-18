@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     visual_analysis_frame_width: int = 640
     visual_analysis_jpeg_quality: int = 10
     visual_analysis_scene_timeout_seconds: int = 20
-    visual_analysis_total_budget_seconds: int = 75
+    visual_analysis_total_budget_seconds: int = 180
     blocking_visual_analysis_enabled: bool = True
     render_worker_dir: str = str(Path(__file__).resolve().parents[2] / "render-worker")
     render_timeout_seconds: int = 900
@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     job_stale_claim_window_seconds: int = 120
     job_heartbeat_interval_seconds: int = 10
     transcription_warn_seconds: int = 45
-    script_generation_warn_seconds: int = 90
+    script_generation_warn_seconds: int = 180
     planning_warn_seconds: int = 45
     preview_render_warn_seconds: int = 60
     final_render_warn_seconds: int = 300

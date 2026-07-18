@@ -431,9 +431,9 @@ def source_duration_seconds(project: ProjectRecord, source_video: Path) -> float
 
 
 def escape_drawtext(text: str) -> str:
-    escaped = text.replace("\\", "\\\\")
+    escaped = text.replace("\\", "\\\\\\\\")
     for value in (":", "'", "%", "[", "]", ","):
-        escaped = escaped.replace(value, f"\\{value}")
+        escaped = escaped.replace(value, f"\\\\{value}")
     return escaped
 
 
