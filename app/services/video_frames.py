@@ -51,7 +51,8 @@ def extract_frames_for_scene(
     jpeg_quality: int = 2,
 ) -> list[ExtractedFrame]:
     extracted_frames: list[ExtractedFrame] = []
-    for frame_index, frame_time in enumerate(sample_times(*scene_range, frame_budget=frame_budget), start=1):
+    safe_scene_range = normalize_scene_range(video_path, scene_range)
+    for frame_index, frame_time in enumerate(sample_times(*safe_scene_range, frame_budget=frame_budget), start=1):
         try:
             image_path = extract_frame(
                 video_path,
@@ -91,6 +92,18 @@ def sample_times(start: float, end: float, *, frame_budget: int | None = None) -
     return unique_times(
         [min(earliest + (step * index), latest) for index in range(effective_frame_budget - 1)] + [latest]
     )
+
+
+def normalize_scene_range(video_path: Path, scene_range: tuple[float, float]) -> tuple[float, float]:
+    start, end = scene_range
+    video_duration = video_duration_seconds(video_path)
+    if video_duration <= 0.4:
+        return start, end
+    safe_start = max(start, 0.0)
+    safe_end = min(end, video_duration - 0.25)
+    if safe_end <= safe_start:
+        return safe_start, min(end, video_duration)
+    return safe_start, safe_end
 
 
 def extract_frame(
@@ -189,6 +202,31 @@ def build_ffmpeg_command(
         command.extend(["-vf", f"scale='min(iw,{frame_width})':-2"])
     command.append(str(output_path))
     return command
+
+
+def video_duration_seconds(video_path: Path) -> float:
+    settings = get_settings()
+    command = [
+        settings.ffprobe_binary,
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        str(video_path),
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=settings.ffmpeg_timeout_seconds,
+        )
+        return float(result.stdout.strip())
+    except (FileNotFoundError, subprocess.TimeoutExpired, subprocess.CalledProcessError, ValueError):
+        return 0.0
 
 
 def unique_times(timestamps: list[float]) -> list[float]:

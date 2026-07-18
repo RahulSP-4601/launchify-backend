@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import subprocess
 from pathlib import Path
 from typing import Callable, Literal
@@ -110,7 +111,7 @@ def build_highlight_command(
 ) -> list[str]:
     settings = get_settings()
     voiceover_mode = resolved_voiceover_mode(project, voiceover_audio)
-    filter_complex = build_highlight_filter(project, clips, has_audio, voiceover_mode, quality)
+    filter_complex = build_highlight_filter(project, clips, has_audio, voiceover_mode, quality, output_path.parent)
     command = [settings.ffmpeg_binary, "-y", "-i", str(source_video)]
     if voiceover_mode != "original" and voiceover_audio is not None:
         command.extend(["-i", str(voiceover_audio)])
@@ -194,12 +195,13 @@ def build_highlight_filter(
     has_audio: bool,
     voiceover_mode: VoiceoverMode,
     quality: ExportQuality,
+    working_dir: Path,
 ) -> str:
     filters: list[str] = []
     concat_inputs: list[str] = []
     for index, clip in enumerate(clips):
         scene = project.edit_plan.scenes[index] if project.edit_plan is not None and index < len(project.edit_plan.scenes) else None
-        filters.extend(segment_filters(index, clip, scene, has_audio, quality))
+        filters.extend(segment_filters(index, clip, scene, has_audio, quality, working_dir))
         concat_inputs.append(f"[v{index}]")
         if has_audio:
             concat_inputs.append(f"[a{index}]")
@@ -218,13 +220,14 @@ def segment_filters(
     scene: EditPlanScene | None,
     has_audio: bool,
     quality: ExportQuality,
+    working_dir: Path,
 ) -> list[str]:
     start, end = clip
     chain = [f"[0:v]trim=start={start}:end={end}", "setpts=PTS-STARTPTS"]
     crop_filter, crop_box, crop_bounds = scene_crop_filter(scene, quality)
     if crop_filter:
         chain.append(crop_filter)
-    chain.extend(scene_overlay_filters(scene, start, end, crop_box, crop_bounds, quality))
+    chain.extend(scene_overlay_filters(scene, start, end, crop_box, crop_bounds, quality, working_dir))
     chain.append(f"fps={target_fps(quality)}")
     chain.append(f"[v{index}]")
     filters = [".".join([])]  # placeholder removed below
@@ -301,12 +304,13 @@ def scene_overlay_filters(
     focus_box: FocusBox | None,
     crop_bounds: tuple[float, float, float, float] | None,
     quality: ExportQuality,
+    working_dir: Path,
 ) -> list[str]:
     if scene is None:
         return []
     filters: list[str] = []
     filters.extend(highlight_draw_filters(scene, clip_start, clip_end, focus_box, crop_bounds))
-    filters.extend(caption_draw_filters(scene, clip_start, clip_end, quality))
+    filters.extend(caption_draw_filters(scene, clip_start, clip_end, quality, working_dir))
     return filters
 
 
@@ -340,18 +344,20 @@ def caption_draw_filters(
     clip_start: float,
     clip_end: float,
     quality: ExportQuality,
+    working_dir: Path,
 ) -> list[str]:
     filters: list[str] = []
-    for caption in scene.captions:
+    for index, caption in enumerate(scene.captions, start=1):
         start = max(caption.start, clip_start) - clip_start
         end = min(caption.end, clip_end) - clip_start
         if end - start <= 0.05:
             continue
         font_size = 34 if quality == "final" else 24
-        escaped = escape_drawtext(caption.text.replace("\n", " "))
+        caption_file = write_caption_text_file(working_dir, scene.scene_number, index, caption.text)
         filters.append(
             "drawtext="
-            f"text='{escaped}':"
+            f"textfile='{escape_drawtext_path(caption_file)}':"
+            "expansion=none:"
             f"fontsize={font_size}:fontcolor=white:"
             "box=1:boxcolor=black@0.42:boxborderw=18:"
             "x=(w-text_w)/2:y=h-(h*0.15):"
@@ -430,11 +436,19 @@ def source_duration_seconds(project: ProjectRecord, source_video: Path) -> float
     return output_duration_seconds(source_video, fallback=fallback)
 
 
-def escape_drawtext(text: str) -> str:
-    escaped = text.replace("\\", "\\\\\\\\")
-    for value in (":", "'", "%", "[", "]", ","):
-        escaped = escaped.replace(value, f"\\\\{value}")
-    return escaped
+def write_caption_text_file(working_dir: Path, scene_number: int, caption_index: int, text: str) -> Path:
+    caption_file = working_dir / f"scene-{scene_number}-caption-{caption_index}.txt"
+    caption_file.write_text(normalized_caption_text(text), encoding="utf-8")
+    return caption_file
+
+def normalized_caption_text(text: str) -> str:
+    lines = [re.sub(r"\s+", " ", line).strip() for line in text.replace("\r", "").split("\n")]
+    preserved = "\n".join(line for line in lines if line)
+    return preserved or " "
+
+def escape_drawtext_path(path: Path) -> str:
+    escaped = str(path).replace("\\", "\\\\")
+    return escaped.replace("'", r"\'")
 
 
 def clamp(value: float, minimum: float, maximum: float) -> float:
