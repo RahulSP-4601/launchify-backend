@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import http.client
 import json
+import logging
+import subprocess
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from tempfile import TemporaryDirectory
 from urllib.parse import quote, urlsplit
 
 from app.core.config import get_settings
 from app.models.projects import AssetRecord, LaunchScriptRecord, VoiceoverCueRecord, VoiceoverMode, VoiceoverRecord
 from app.services.storage import upload_audio_file
+
+logger = logging.getLogger(__name__)
+MAX_TTS_CHARACTERS = 1800
 
 
 def build_voiceover(
@@ -77,6 +83,34 @@ def synthesize_voiceover(user_id: str, project_id: str, script: str) -> AssetRec
 
 
 def request_tts_audio(script: str, model: str) -> Path | None:
+    chunks = script_chunks(script)
+    if len(chunks) == 1:
+        return request_single_tts_audio(chunks[0], model)
+    audio_files = [audio_file for chunk in chunks if (audio_file := request_single_tts_audio(chunk, model)) is not None]
+    if len(audio_files) != len(chunks):
+        for audio_file in audio_files:
+            audio_file.unlink(missing_ok=True)
+        return None
+    return concatenate_audio_files(audio_files)
+
+
+def script_chunks(script: str) -> list[str]:
+    words = script.split()
+    chunks: list[str] = []
+    current: list[str] = []
+    for word in words:
+        candidate = " ".join([*current, word]).strip()
+        if current and len(candidate) > MAX_TTS_CHARACTERS:
+            chunks.append(" ".join(current).strip())
+            current = [word]
+            continue
+        current.append(word)
+    if current:
+        chunks.append(" ".join(current).strip())
+    return [chunk for chunk in chunks if chunk]
+
+
+def request_single_tts_audio(script: str, model: str) -> Path | None:
     endpoint = f"https://api.deepgram.com/v1/speak?model={quote(model)}&encoding=mp3"
     parsed = urlsplit(endpoint)
     if not parsed.hostname:
@@ -93,8 +127,9 @@ def request_tts_audio(script: str, model: str) -> Path | None:
         connection.send(body.encode("utf-8"))
         response = connection.getresponse()
         if response.status >= 400:
-            response.read()
+            detail = response.read().decode("utf-8", errors="ignore")
             Path(temp_file.name).unlink(missing_ok=True)
+            logger.warning("Deepgram TTS request failed with status %s: %s", response.status, detail)
             return None
         while chunk := response.read(1024 * 1024):
             temp_file.write(chunk)
@@ -103,6 +138,40 @@ def request_tts_audio(script: str, model: str) -> Path | None:
         connection.close()
     saved_file = Path(temp_file.name)
     return saved_file if saved_file.stat().st_size > 0 else None
+
+
+def concatenate_audio_files(audio_files: list[Path]) -> Path | None:
+    settings = get_settings()
+    with TemporaryDirectory(prefix="launchify-voiceover-") as temp_dir_name:
+        temp_dir = Path(temp_dir_name)
+        concat_list = temp_dir / "concat.txt"
+        output_file = temp_dir / "voiceover.mp3"
+        concat_list.write_text("".join(f"file '{audio_file.as_posix()}'\n" for audio_file in audio_files), encoding="utf-8")
+        command = [
+            settings.ffmpeg_binary,
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_list),
+            "-c:a",
+            "libmp3lame",
+            str(output_file),
+        ]
+        try:
+            subprocess.run(command, check=True, capture_output=True, timeout=settings.ffmpeg_timeout_seconds)
+            final_file = NamedTemporaryFile(delete=False, suffix=".mp3")
+            final_file.close()
+            Path(final_file.name).write_bytes(output_file.read_bytes())
+            return Path(final_file.name)
+        except (FileNotFoundError, subprocess.TimeoutExpired, subprocess.CalledProcessError) as exc:
+            logger.warning("Voiceover audio concat failed: %s", exc)
+            return None
+        finally:
+            for audio_file in audio_files:
+                audio_file.unlink(missing_ok=True)
 
 
 def normalized_voice_line(value: str) -> str:
