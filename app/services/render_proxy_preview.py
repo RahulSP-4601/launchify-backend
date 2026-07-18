@@ -333,7 +333,7 @@ def highlight_draw_filters(
             continue
         filters.append(
             "drawbox="
-            f"x=w*{box.x}:y=h*{box.y}:w=w*{box.width}:h=h*{box.height}:"
+            f"x=iw*{box.x}:y=ih*{box.y}:w=iw*{box.width}:h=ih*{box.height}:"
             "color=0xF59E0B@0.95:t=4:"
             f"enable='between(t,{round(start, 2)},{round(end, 2)})'"
         )
