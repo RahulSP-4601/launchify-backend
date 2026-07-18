@@ -21,7 +21,11 @@ from app.services.render_hardening import (
     notify_render_stage,
     run_with_retry,
 )
+from app.services.render_fast_path import execute_single_preview_pipeline
 from app.services.render_payloads import build_render_payload, total_render_duration
+from app.services.render_preview_stage import (
+    execute_preview_pipeline,
+)
 from app.services.render_proxy_preview import (
     persist_proxy_preview_after_final,
     persist_proxy_preview_on_failure,
@@ -66,6 +70,10 @@ def render_project_videos(
         )
 def render_worker_required(settings: Settings) -> bool:
     return settings.preview_render_mode == "styled" or settings.low_memory_final_mode == "render"
+
+
+def fast_single_preview_enabled(settings: Settings) -> bool:
+    return settings.fast_pipeline_enabled and settings.preview_render_mode == "styled"
 def prepare_preview_source(
     project: ProjectRecord,
     source_video: Path,
@@ -103,6 +111,26 @@ def render_from_temp_dir(
             ))
             return grounded_render_result(preview_video.model_copy(update={"variant": "preview"}), project)
         preview_render_source = prepare_preview_source(project, source_video, temp_dir, settings, heartbeat)
+        if fast_single_preview_enabled(settings):
+            return execute_single_preview_pipeline(
+                user_id,
+                project,
+                preview_render_source,
+                voiceover_audio,
+                temp_dir,
+                settings,
+                heartbeat,
+                stage_update,
+                preview_ready,
+                execute_preview_pipeline,
+                finalize_preview_video,
+                require_edit_plan,
+                beat,
+                prepare_preview_output,
+                rerender_refined_preview,
+                reviewed_project,
+                upload_variant,
+            )
         return execute_render_pipeline(
             user_id, project, source_video, preview_render_source, voiceover_audio,
             temp_dir, settings, heartbeat, stage_update, preview_ready, final_ready,
@@ -142,6 +170,11 @@ def execute_render_pipeline(
         heartbeat,
         stage_update,
         preview_ready,
+        beat,
+        prepare_preview_output,
+        rerender_refined_preview,
+        reviewed_project,
+        upload_variant,
     )
     preview_video, final_video = execute_final_outputs(
         user_id,
@@ -160,6 +193,7 @@ def execute_render_pipeline(
     )
     polished_preview = final_video.model_copy(update={"variant": "preview"})
     return polished_preview, require_edit_plan(reviewed_project), quality_report
+
 def execute_final_outputs(
     user_id: str,
     project: ProjectRecord,
@@ -194,54 +228,6 @@ def choose_final_render_source(
         return preview_render_source
     logger.info("Preparing a normalized HD source for final rendering.")
     return prepare_final_render_source(source_video, temp_dir, heartbeat)
-def execute_preview_pipeline(
-    user_id: str,
-    project: ProjectRecord,
-    render_source: Path,
-    voiceover_audio: Path | None,
-    temp_dir: Path,
-    settings: Settings,
-    heartbeat: Callable[[], None] | None,
-    stage_update: RenderStageUpdate | None,
-    preview_ready: Callable[[RenderedVideoRecord], None] | None,
-) -> tuple[RenderedVideoRecord | None, Path, ProjectRecord, QualityReportRecord]:
-    preview_output = temp_dir / "preview.mp4"
-    preview_video: RenderedVideoRecord | None = None
-    beat(heartbeat)
-    notify_render_stage(stage_update, "preview_render_initial", project.id)
-    with timed_stage("preview_render_initial", settings.preview_render_warn_seconds):
-        run_with_retry("preview render", lambda: prepare_preview_output(project, render_source, voiceover_audio, temp_dir, preview_output, heartbeat))
-    beat(heartbeat)
-    notify_render_stage(stage_update, "preview_review", project.id)
-    with timed_stage("preview_review", settings.planning_warn_seconds):
-        reviewed_project_record, quality_report, rerender_preview = reviewed_project(project, preview_output)
-    beat(heartbeat)
-    if use_proxy_final_output(settings) and rerender_preview:
-        notify_render_stage(stage_update, "preview_render_refined", reviewed_project_record.id)
-        with timed_stage("preview_render_refined", settings.preview_render_warn_seconds):
-            run_with_retry(
-                "refined proxy preview render",
-                lambda: prepare_preview_output(reviewed_project_record, render_source, voiceover_audio, temp_dir, preview_output, heartbeat),
-            )
-        beat(heartbeat)
-    elif rerender_preview and settings.preview_render_mode == "styled":
-        rerender_refined_preview(
-            reviewed_project_record,
-            render_source,
-            voiceover_audio,
-            temp_dir,
-            settings,
-            heartbeat,
-            stage_update,
-            preview_output,
-        )
-    if settings.preview_render_mode == "styled":
-        notify_render_stage(stage_update, "preview_upload", reviewed_project_record.id)
-        preview_video = run_with_retry("preview upload", lambda: upload_variant(user_id, reviewed_project_record, preview_output, "preview", heartbeat=heartbeat))
-        if preview_ready is not None:
-            preview_ready(preview_video)
-    beat(heartbeat)
-    return preview_video, preview_output, reviewed_project_record, quality_report
 def execute_final_pipeline(
     user_id: str,
     project: ProjectRecord,
@@ -313,12 +299,13 @@ def rerender_refined_preview(
     heartbeat: Callable[[], None] | None,
     stage_update: RenderStageUpdate | None,
     preview_output: Path,
+    preview_quality: Literal["preview", "final"],
 ) -> None:
     notify_render_stage(stage_update, "preview_render_refined", project.id)
     with timed_stage("preview_render_refined", settings.preview_render_warn_seconds):
         run_with_retry(
             "refined preview render",
-            lambda: render_preview_output(project, render_source, voiceover_audio, temp_dir, preview_output, heartbeat),
+            lambda: render_preview_output(project, render_source, voiceover_audio, temp_dir, preview_output, preview_quality, heartbeat),
         )
     beat(heartbeat)
 def render_final_variant(
@@ -361,22 +348,24 @@ def render_preview_output(
     voiceover_audio: Path | None,
     temp_dir: Path,
     output_path: Path,
+    quality: Literal["preview", "final"],
     heartbeat: Callable[[], None] | None = None,
 ) -> None:
-    render_payload_path = write_render_payload(project, temp_dir, "preview", voiceover_audio)
-    invoke_render_worker(render_payload_path, source_video, output_path, "preview", heartbeat=heartbeat)
+    render_payload_path = write_render_payload(project, temp_dir, quality, voiceover_audio)
+    invoke_render_worker(render_payload_path, source_video, output_path, quality, heartbeat=heartbeat)
 def prepare_preview_output(
     project: ProjectRecord,
     source_video: Path,
     voiceover_audio: Path | None,
     temp_dir: Path,
     output_path: Path,
+    quality: Literal["preview", "final"],
     heartbeat: Callable[[], None] | None = None,
 ) -> None:
     if get_settings().preview_render_mode == "proxy":
         prepare_proxy_preview(project, source_video, output_path, voiceover_audio, heartbeat)
         return
-    render_preview_output(project, source_video, voiceover_audio, temp_dir, output_path, heartbeat)
+    render_preview_output(project, source_video, voiceover_audio, temp_dir, output_path, quality, heartbeat)
 def upload_proxy_preview_variant(
     user_id: str,
     project: ProjectRecord,

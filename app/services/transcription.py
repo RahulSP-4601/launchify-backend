@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import http.client
 import json
+import subprocess
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
 from urllib import error, request
 from urllib.parse import urlsplit
@@ -42,18 +44,19 @@ def transcribe_media_file(source_path: Path, content_type: str) -> list[Transcri
     settings = get_settings()
     if not settings.deepgram_api_key:
         raise RuntimeError("Deepgram is not configured yet. Add DEEPGRAM_API_KEY to enable transcription.")
+    transcription_source, transcription_type, should_cleanup = transcription_source_file(source_path, content_type)
     endpoint = f"https://api.deepgram.com/v1/listen?{DEEPGRAM_QUERY}"
     parsed = urlsplit(endpoint)
     if not parsed.hostname:
         raise RuntimeError("Deepgram URL is missing a hostname.")
-    connection = http.client.HTTPSConnection(parsed.hostname, parsed.port, timeout=300)
+    connection = http.client.HTTPSConnection(parsed.hostname, parsed.port, timeout=180)
     try:
         connection.putrequest("POST", parsed.path + ("?" + parsed.query if parsed.query else ""))
         connection.putheader("Authorization", f"Token {settings.deepgram_api_key}")
-        connection.putheader("Content-Type", content_type)
-        connection.putheader("Content-Length", str(source_path.stat().st_size))
+        connection.putheader("Content-Type", transcription_type)
+        connection.putheader("Content-Length", str(transcription_source.stat().st_size))
         connection.endheaders()
-        with source_path.open("rb") as file_pointer:
+        with transcription_source.open("rb") as file_pointer:
             while chunk := file_pointer.read(1024 * 1024):
                 connection.send(chunk)
         response = connection.getresponse()
@@ -62,7 +65,53 @@ def transcribe_media_file(source_path: Path, content_type: str) -> list[Transcri
             raise RuntimeError(f"Deepgram transcription failed: {payload}")
         return parse_segments(json.loads(payload))
     finally:
+        if should_cleanup:
+            transcription_source.unlink(missing_ok=True)
         connection.close()
+
+
+def transcription_source_file(source_path: Path, content_type: str) -> tuple[Path, str, bool]:
+    if content_type.startswith("audio/"):
+        return source_path, content_type, False
+    return extracted_audio_track(source_path), "audio/mpeg", True
+
+
+def extracted_audio_track(source_path: Path) -> Path:
+    settings = get_settings()
+    temp_file = NamedTemporaryFile(delete=False, suffix=".mp3")
+    temp_file.close()
+    output_path = Path(temp_file.name)
+    command = [
+        settings.ffmpeg_binary,
+        "-y",
+        "-i",
+        str(source_path),
+        "-vn",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-b:a",
+        "48k",
+        str(output_path),
+    ]
+    try:
+        subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            timeout=max(settings.ffmpeg_timeout_seconds, 120),
+        )
+    except FileNotFoundError as exc:
+        output_path.unlink(missing_ok=True)
+        raise RuntimeError("FFmpeg is required to prepare audio for transcription.") from exc
+    except subprocess.TimeoutExpired as exc:
+        output_path.unlink(missing_ok=True)
+        raise RuntimeError("Audio preparation for transcription timed out.") from exc
+    except subprocess.CalledProcessError as exc:
+        output_path.unlink(missing_ok=True)
+        raise RuntimeError("Audio preparation for transcription failed.") from exc
+    return output_path
 
 
 def parse_segments(payload: dict[str, object]) -> list[TranscriptSegment]:
