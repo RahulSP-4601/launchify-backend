@@ -8,17 +8,19 @@ from app.core.config import get_settings
 from app.models.projects import (
     GuideRecord,
     LaunchScriptRecord,
+    ManualOverrideRecord,
     ProcessingJobRecord,
     ProjectRecord,
+    TemplateConfigRecord,
     TranscriptSegment,
     VisualSceneAnalysisRecord,
 )
 from app.services.edit_planner import generate_edit_plan
 from app.services.guide_synthesizer import synthesize_grounded_guide
 from app.services.job_store import job_store
-from app.services.playback_preview import publish_grounded_preview
 from app.services.phase_four import apply_phase_four_defaults
 from app.services.project_store import StaleProjectAssetError, project_store
+from app.services.rendering import render_project_videos
 from app.services.script_writer import combine_transcript, generate_launch_script
 from app.services.storage import download_asset_to_file
 from app.services.timing import timed_stage
@@ -176,26 +178,30 @@ def save_render_step(job: ProcessingJobRecord, asset_file: Path) -> None:
     logger.info("Render pipeline started for project %s.", job.project_id)
     heartbeat = build_job_heartbeat(job)
     with usage_lock(job.user_id, heartbeat=heartbeat):
-        publish_renderless_preview(job, asset_file)
+        publish_preview_video(job, heartbeat)
     job_store.mark_completed(job.id)
     logger.info("Render pipeline completed for project %s.", job.project_id)
 
 
-def publish_renderless_preview(job: ProcessingJobRecord, asset_file: Path) -> None:
-    heartbeat = build_job_heartbeat(job)
+def publish_preview_video(job: ProcessingJobRecord, heartbeat: Callable[[], None]) -> None:
     heartbeat()
     project_store.update_status_for_asset(job.user_id, job.project_id, job.asset_path, "rendering")
     current_project = require_project(job.user_id, job.project_id)
-    preview_video = publish_grounded_preview(current_project, asset_file)
-    enforce_preview_limit(job.user_id, current_project.id, preview_video.duration_seconds)
-    project_store.save_partial_render_output(
-        "preview_video",
-        "grounded preview",
-        job.user_id,
-        job.project_id,
-        preview_video,
-        asset_path=job.asset_path,
-    )
+    preview_video, refined_edit_plan, quality_report = render_project_videos(job.user_id, current_project, heartbeat=heartbeat)
+    project_store.save_refined_edit_plan(job.user_id, job.project_id, refined_edit_plan, asset_path=job.asset_path)
+    if current_project.benchmark_report is not None and current_project.voiceover is not None:
+        template_config = current_project.template_config or TemplateConfigRecord()
+        manual_overrides = current_project.manual_overrides or ManualOverrideRecord()
+        project_store.save_phase_four_state(
+            job.user_id,
+            job.project_id,
+            quality_report,
+            current_project.benchmark_report,
+            current_project.voiceover,
+            template_config,
+            manual_overrides,
+            asset_path=job.asset_path,
+        )
     project_store.save_render_outputs(job.user_id, job.project_id, preview_video, asset_path=job.asset_path)
 
 

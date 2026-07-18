@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     visual_analysis_jpeg_quality: int = 10
     visual_analysis_scene_timeout_seconds: int = 12
     visual_analysis_total_budget_seconds: int = 45
-    blocking_visual_analysis_enabled: bool = False
+    blocking_visual_analysis_enabled: bool = True
     render_worker_dir: str = str(Path(__file__).resolve().parents[2] / "render-worker")
     render_timeout_seconds: int = 900
     preview_render_mode: Literal["proxy", "styled"] = "styled"
