@@ -6,29 +6,24 @@ from typing import Callable, Sequence
 
 from app.core.config import get_settings
 from app.models.projects import (
-    BenchmarkReportRecord,
     GuideRecord,
     LaunchScriptRecord,
-    ManualOverrideRecord,
     ProcessingJobRecord,
     ProjectRecord,
-    TemplateConfigRecord,
     TranscriptSegment,
     VisualSceneAnalysisRecord,
-    VoiceoverRecord,
 )
-from app.services.benchmarking import build_benchmark_report
 from app.services.edit_planner import generate_edit_plan
 from app.services.guide_synthesizer import synthesize_grounded_guide
 from app.services.job_store import job_store
+from app.services.playback_preview import publish_grounded_preview
 from app.services.phase_four import apply_phase_four_defaults
 from app.services.project_store import StaleProjectAssetError, project_store
-from app.services.rendering import render_project_videos
 from app.services.script_writer import combine_transcript, generate_launch_script
 from app.services.storage import download_asset_to_file
 from app.services.timing import timed_stage
 from app.services.transcription import transcribe_media_file
-from app.services.usage_service import usage_lock
+from app.services.usage_service import projected_rendered_seconds, total_rendered_seconds, usage_lock
 from app.services.visual_analysis import analyze_video_scenes, visual_analysis_available
 
 logger = logging.getLogger(__name__)
@@ -103,7 +98,7 @@ def run_processing_pipeline(job: ProcessingJobRecord, asset_file: Path) -> None:
         return
     job_store.heartbeat(job.id)
     with timed_stage("render_pipeline", settings.total_pipeline_warn_seconds):
-        save_render_step(job)
+        save_render_step(job, asset_file)
 
 
 def mark_transcript_failure(job: ProcessingJobRecord, transcript: Sequence[TranscriptSegment]) -> None:
@@ -177,46 +172,45 @@ def save_planning_step(
     logger.info("Planning completed for project %s.", job.project_id)
 
 
-def save_render_step(job: ProcessingJobRecord) -> None:
+def save_render_step(job: ProcessingJobRecord, asset_file: Path) -> None:
     logger.info("Render pipeline started for project %s.", job.project_id)
     heartbeat = build_job_heartbeat(job)
-    update_render_stage = build_render_stage_updater(job, heartbeat)
     with usage_lock(job.user_id, heartbeat=heartbeat):
-        preview_video, refined_edit_plan, refined_quality_report = render_project_videos(
-            job.user_id,
-            require_project(job.user_id, job.project_id),
-            heartbeat=heartbeat,
-            stage_update=update_render_stage,
-            preview_ready=lambda preview: project_store.save_partial_render_output(
-                "preview_video",
-                "preview output",
-                job.user_id,
-                job.project_id,
-                preview,
-                asset_path=job.asset_path,
-            ),
-        )
-        project_store.save_refined_edit_plan(
-            job.user_id,
-            job.project_id,
-            refined_edit_plan,
-            asset_path=job.asset_path,
-        )
-        current_project = require_project(job.user_id, job.project_id)
-        benchmark_report = build_benchmark_report(current_project, refined_edit_plan, refined_quality_report)
-        project_store.save_phase_four_state(
-            job.user_id,
-            job.project_id,
-            refined_quality_report,
-            benchmark_report,
-            require_voiceover(current_project),
-            require_template_config(current_project),
-            require_manual_overrides(current_project),
-            asset_path=job.asset_path,
-        )
-        project_store.save_render_outputs(job.user_id, job.project_id, preview_video, asset_path=job.asset_path)
+        publish_renderless_preview(job, asset_file)
     job_store.mark_completed(job.id)
     logger.info("Render pipeline completed for project %s.", job.project_id)
+
+
+def publish_renderless_preview(job: ProcessingJobRecord, asset_file: Path) -> None:
+    heartbeat = build_job_heartbeat(job)
+    heartbeat()
+    project_store.update_status_for_asset(job.user_id, job.project_id, job.asset_path, "rendering")
+    current_project = require_project(job.user_id, job.project_id)
+    preview_video = publish_grounded_preview(current_project, asset_file)
+    enforce_preview_limit(job.user_id, current_project.id, preview_video.duration_seconds)
+    project_store.save_partial_render_output(
+        "preview_video",
+        "grounded preview",
+        job.user_id,
+        job.project_id,
+        preview_video,
+        asset_path=job.asset_path,
+    )
+    project_store.save_render_outputs(job.user_id, job.project_id, preview_video, asset_path=job.asset_path)
+
+
+def enforce_preview_limit(user_id: str, project_id: str, duration_seconds: float) -> None:
+    settings = get_settings()
+    projected_seconds = projected_rendered_seconds(user_id, project_id, duration_seconds)
+    limit_seconds = float(settings.trial_minutes_limit * 60)
+    if projected_seconds <= limit_seconds:
+        return
+    remaining_seconds = max(limit_seconds - total_rendered_seconds(user_id), 0.0)
+    remaining_minutes = remaining_seconds / 60
+    raise RuntimeError(
+        "This preview would exceed your trial limit. "
+        f"Only {remaining_minutes:.1f} minutes remain before the {settings.trial_minutes_limit} minute cap."
+    )
 
 
 def require_project(user_id: str, project_id: str) -> ProjectRecord:
@@ -261,42 +255,3 @@ def build_job_heartbeat(job: ProcessingJobRecord) -> Callable[[], None]:
         job_store.heartbeat(job.id)
 
     return heartbeat
-
-
-def build_render_stage_updater(job: ProcessingJobRecord, heartbeat: Callable[[], None]) -> Callable[[str], None]:
-    def update_render_stage(stage_name: str) -> None:
-        heartbeat()
-        logger.info("Render progress for project %s: %s", job.project_id, render_stage_message(stage_name))
-        project_store.update_status_for_asset(job.user_id, job.project_id, job.asset_path, "rendering")
-
-    return update_render_stage
-
-
-def render_stage_message(stage_name: str) -> str:
-    messages = {
-        "preview_render_initial": "Rendering initial preview output.",
-        "preview_review": "Reviewing the preview and refining the edit plan.",
-        "preview_render_refined": "Rerendering the refined preview output.",
-        "preview_upload": "Uploading the preview video.",
-        "final_render": "Rendering the final video output.",
-        "final_upload": "Uploading the final video output.",
-    }
-    return messages.get(stage_name, "Rendering video outputs.")
-
-
-def require_voiceover(project: ProjectRecord) -> VoiceoverRecord:
-    if project.voiceover is None:
-        raise RuntimeError("Voiceover state is missing before render review update.")
-    return project.voiceover
-
-
-def require_template_config(project: ProjectRecord) -> TemplateConfigRecord:
-    if project.template_config is None:
-        raise RuntimeError("Template config is missing before render review update.")
-    return project.template_config
-
-
-def require_manual_overrides(project: ProjectRecord) -> ManualOverrideRecord:
-    if project.manual_overrides is None:
-        raise RuntimeError("Manual overrides are missing before render review update.")
-    return project.manual_overrides
