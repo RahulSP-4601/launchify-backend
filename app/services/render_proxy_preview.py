@@ -199,14 +199,15 @@ def build_highlight_filter(
 ) -> str:
     filters: list[str] = []
     concat_inputs: list[str] = []
+    concat_audio = has_audio and voiceover_mode != "voiceover"
     for index, clip in enumerate(clips):
         scene = project.edit_plan.scenes[index] if project.edit_plan is not None and index < len(project.edit_plan.scenes) else None
         filters.extend(segment_filters(index, clip, scene, has_audio, quality, working_dir))
         concat_inputs.append(f"[v{index}]")
-        if has_audio:
+        if concat_audio:
             concat_inputs.append(f"[a{index}]")
-    concat_labels = "[joinedv][aorig]" if has_audio else "[joinedv]"
-    filters.append(f"{''.join(concat_inputs)}concat=n={len(clips)}:v=1:a={1 if has_audio else 0}{concat_labels}")
+    concat_labels = "[joinedv][aorig]" if concat_audio else "[joinedv]"
+    filters.append(f"{''.join(concat_inputs)}concat=n={len(clips)}:v=1:a={1 if concat_audio else 0}{concat_labels}")
     filters.append(output_scale_filter(quality))
     audio_output = audio_mix_filter(clips, has_audio, voiceover_mode)
     if audio_output:
@@ -440,7 +441,6 @@ def write_caption_text_file(working_dir: Path, scene_number: int, caption_index:
     caption_file = working_dir / f"scene-{scene_number}-caption-{caption_index}.txt"
     caption_file.write_text(normalized_caption_text(text), encoding="utf-8")
     return caption_file
-
 def normalized_caption_text(text: str) -> str:
     lines = [re.sub(r"\s+", " ", line).strip() for line in text.replace("\r", "").split("\n")]
     preserved = "\n".join(line for line in lines if line)
