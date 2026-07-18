@@ -202,7 +202,7 @@ def build_highlight_filter(
     concat_audio = has_audio and voiceover_mode != "voiceover"
     for index, clip in enumerate(clips):
         scene = project.edit_plan.scenes[index] if project.edit_plan is not None and index < len(project.edit_plan.scenes) else None
-        filters.extend(segment_filters(index, clip, scene, has_audio, quality, working_dir))
+        filters.extend(segment_filters(index, clip, scene, concat_audio, quality, working_dir))
         concat_inputs.append(f"[v{index}]")
         if concat_audio:
             concat_inputs.append(f"[a{index}]")
@@ -219,7 +219,7 @@ def segment_filters(
     index: int,
     clip: tuple[float, float],
     scene: EditPlanScene | None,
-    has_audio: bool,
+    concat_audio: bool,
     quality: ExportQuality,
     working_dir: Path,
 ) -> list[str]:
@@ -234,7 +234,7 @@ def segment_filters(
     filters = [".".join([])]  # placeholder removed below
     video_filter = ",".join(chain[:-1]) + chain[-1]
     filters = [video_filter]
-    if has_audio:
+    if concat_audio:
         filters.append(f"[0:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS[a{index}]")
     return filters
 
