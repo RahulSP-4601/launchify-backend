@@ -10,6 +10,7 @@ from app.models.projects import (
     BenchmarkReportRecord,
     CreateProjectRequest,
     EditPlanRecord,
+    GuideRecord,
     LaunchScriptRecord,
     ManualOverrideRecord,
     ProjectRecord,
@@ -22,6 +23,7 @@ from app.models.projects import (
     VoiceoverRecord,
 )
 from app.services.database import connection_scope
+from app.services.project_store_errors import StaleProjectAssetError
 from app.services.project_store_helpers import (
     create_processing_job_params,
     create_project_params,
@@ -31,11 +33,7 @@ from app.services.project_store_helpers import (
     reset_project_for_asset_params,
     reset_project_for_asset_sql,
 )
-
-
-class StaleProjectAssetError(RuntimeError):
-    pass
-
+from app.services.project_store_runtime import execute_project_update, save_render_outputs_payload
 
 PARTIAL_RENDER_OUTPUT_COLUMNS = frozenset({"preview_video", "final_video"})
 
@@ -47,7 +45,7 @@ class ProjectStore:
                 cursor.execute(
                     """
                     select id, project_name, product_name, product_description, target_audience,
-                           video_goal, status, asset, recording_session, transcript, launch_script, edit_plan,
+                           video_goal, status, asset, recording_session, transcript, guide, launch_script, edit_plan,
                            template_config, manual_overrides, quality_report, benchmark_report, voiceover,
                            preview_video, final_video, error_message, created_at, updated_at
                     from projects
@@ -81,23 +79,22 @@ class ProjectStore:
                     """
                     insert into projects (
                         id, user_id, project_name, product_name, product_description, target_audience,
-                        video_goal, status, asset, recording_session, transcript, launch_script, edit_plan,
+                        video_goal, status, asset, recording_session, transcript, guide, launch_script, edit_plan,
                         template_config, manual_overrides, quality_report, benchmark_report, voiceover,
                         preview_video, final_video, error_message, created_at, updated_at
                     )
-                    values (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s)
+                    values (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s)
                     """,
                     create_project_params(project, user_id),
                 )
         return project
-
     def get_project(self, user_id: str, project_id: str) -> ProjectRecord | None:
         with connection_scope() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
                     select id, project_name, product_name, product_description, target_audience,
-                           video_goal, status, asset, recording_session, transcript, launch_script, edit_plan,
+                           video_goal, status, asset, recording_session, transcript, guide, launch_script, edit_plan,
                            template_config, manual_overrides, quality_report, benchmark_report, voiceover,
                            preview_video, final_video, error_message, created_at, updated_at
                     from projects
@@ -107,7 +104,6 @@ class ProjectStore:
                 )
                 row = cursor.fetchone()
         return project_from_row(row) if row else None
-
     def update_status(self, user_id: str, project_id: str, status: ProjectStatus, error_message: str = "") -> None:
         self._execute_update(
             """
@@ -147,12 +143,24 @@ class ProjectStore:
         )
 
     def attach_asset_and_queue_job(self, user_id: str, project_id: str, asset: AssetRecord) -> None:
+        self.attach_session_asset_and_queue_job(user_id, project_id, asset, None)
+
+    def attach_session_asset_and_queue_job(
+        self,
+        user_id: str,
+        project_id: str,
+        asset: AssetRecord,
+        recording_session: RecordingSessionRecord | None,
+    ) -> None:
         now = datetime.now(UTC)
         with connection_scope() as connection:
             with connection.cursor() as cursor:
                 if has_active_job(cursor, project_id, asset.storage_path):
                     return
-                cursor.execute(reset_project_for_asset_sql(), reset_project_for_asset_params(asset, now, project_id, user_id))
+                cursor.execute(
+                    reset_project_for_asset_sql(),
+                    reset_project_for_asset_params(asset, recording_session, now, project_id, user_id),
+                )
                 if cursor.rowcount != 1:
                     raise RuntimeError("Project not found.")
                 cursor.execute(insert_processing_job_sql(), create_processing_job_params(user_id, project_id, asset, now))
@@ -219,6 +227,46 @@ class ProjectStore:
                 asset_path,
             ),
             stale_error_message="Project asset was replaced before transcript could be saved.",
+        )
+
+    def save_guide(
+        self,
+        user_id: str,
+        project_id: str,
+        guide: GuideRecord,
+        status: ProjectStatus = "planning",
+        asset_path: str | None = None,
+    ) -> None:
+        query = """
+            update projects
+            set guide = %s::jsonb, status = %s, error_message = '', updated_at = %s
+            where id = %s and user_id = %s
+        """
+        params: tuple[object, ...] = (
+            json.dumps(guide.model_dump(mode="json")),
+            status,
+            datetime.now(UTC),
+            project_id,
+            user_id,
+        )
+        if asset_path is None:
+            self._execute_update(query, params)
+            return
+        self._execute_update(
+            """
+            update projects
+            set guide = %s::jsonb, status = %s, error_message = '', updated_at = %s
+            where id = %s and user_id = %s and asset->>'storage_path' = %s
+            """,
+            (
+                json.dumps(guide.model_dump(mode="json")),
+                status,
+                datetime.now(UTC),
+                project_id,
+                user_id,
+                asset_path,
+            ),
+            stale_error_message="Project asset was replaced before guide grounding could be saved.",
         )
 
     def save_launch_script(
@@ -342,9 +390,7 @@ class ProjectStore:
         final_video: RenderedVideoRecord,
         asset_path: str | None = None,
     ) -> None:
-        self._save_render_outputs_payload(
-            user_id,
-            project_id,
+        sql, params, stale_error = save_render_outputs_payload(
             (
                 json.dumps(preview_video.model_dump(mode="json")) if preview_video is not None else None,
                 json.dumps(final_video.model_dump(mode="json")),
@@ -355,6 +401,7 @@ class ProjectStore:
             ),
             asset_path,
         )
+        self._execute_update(sql, params, stale_error_message=stale_error)
 
     def save_partial_render_output(
         self,
@@ -392,33 +439,6 @@ class ProjectStore:
             """,
             (*payload, asset_path),
             stale_error_message=f"Project asset was replaced before the {output_label} could be saved.",
-        )
-
-    def _save_render_outputs_payload(
-        self,
-        user_id: str,
-        project_id: str,
-        payload: tuple[object, ...],
-        asset_path: str | None,
-    ) -> None:
-        if asset_path is None:
-            self._execute_update(
-                """
-                update projects
-                set preview_video = %s::jsonb, final_video = %s::jsonb, status = %s, error_message = '', updated_at = %s
-                where id = %s and user_id = %s
-                """,
-                payload,
-            )
-            return
-        self._execute_update(
-            """
-            update projects
-            set preview_video = %s::jsonb, final_video = %s::jsonb, status = %s, error_message = '', updated_at = %s
-            where id = %s and user_id = %s and asset->>'storage_path' = %s
-            """,
-            (*payload, asset_path),
-            stale_error_message="Project asset was replaced before rendered outputs could be saved.",
         )
 
     def save_phase_four_state(
@@ -470,12 +490,6 @@ class ProjectStore:
         params: tuple[object, ...],
         stale_error_message: str | None = None,
     ) -> None:
-        with connection_scope() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(sql, params)
-                if cursor.rowcount != 1:
-                    if stale_error_message is not None:
-                        raise StaleProjectAssetError(stale_error_message)
-                    raise RuntimeError("Project not found.")
+        execute_project_update(sql, params, stale_error_message)
 
 project_store = ProjectStore()

@@ -7,6 +7,7 @@ from typing import Callable, Sequence
 from app.core.config import get_settings
 from app.models.projects import (
     BenchmarkReportRecord,
+    GuideRecord,
     LaunchScriptRecord,
     ManualOverrideRecord,
     ProcessingJobRecord,
@@ -18,6 +19,7 @@ from app.models.projects import (
 )
 from app.services.benchmarking import build_benchmark_report
 from app.services.edit_planner import generate_edit_plan
+from app.services.guide_synthesizer import synthesize_grounded_guide
 from app.services.job_store import job_store
 from app.services.phase_four import apply_phase_four_defaults
 from app.services.project_store import StaleProjectAssetError, project_store
@@ -118,9 +120,32 @@ def mark_transcript_failure(job: ProcessingJobRecord, transcript: Sequence[Trans
 
 def save_scripting_step(job: ProcessingJobRecord, transcript: list[TranscriptSegment]) -> LaunchScriptRecord:
     project_store.save_transcript(job.user_id, job.project_id, transcript, "scripting", asset_path=job.asset_path)
-    launch_script = generate_launch_script(require_project(job.user_id, job.project_id))
+    current_project = require_project(job.user_id, job.project_id)
+    launch_script: LaunchScriptRecord | None = None
+    try:
+        guide = generate_grounded_guide_if_available(current_project, transcript)
+    except Exception:
+        logger.exception(
+            "Grounded guide generation failed for project %s. Falling back to standard script generation.",
+            job.project_id,
+        )
+        guide = None
+    if guide is not None:
+        grounded_guide, launch_script = guide
+        project_store.save_guide(job.user_id, job.project_id, grounded_guide, "planning", asset_path=job.asset_path)
+    if launch_script is None:
+        launch_script = generate_launch_script(current_project)
     project_store.save_launch_script(job.user_id, job.project_id, launch_script, asset_path=job.asset_path)
     return launch_script
+
+
+def generate_grounded_guide_if_available(
+    project: ProjectRecord,
+    transcript: list[TranscriptSegment],
+) -> tuple[GuideRecord, LaunchScriptRecord] | None:
+    if project.recording_session is None or not project.recording_session.events:
+        return None
+    return synthesize_grounded_guide(project, transcript)
 
 
 def save_planning_step(
@@ -130,8 +155,8 @@ def save_planning_step(
     transcript: list[TranscriptSegment],
 ) -> None:
     logger.info("Planning started for project %s.", job.project_id)
-    visual_analyses = maybe_analyze_video_scenes(asset_file, launch_script, transcript)
     current_project = require_project(job.user_id, job.project_id)
+    visual_analyses = None if current_project.guide is not None else maybe_analyze_video_scenes(asset_file, launch_script, transcript)
     edit_plan = generate_edit_plan(current_project, visual_analyses)
     edit_plan, quality_report, benchmark_report, voiceover, template_config, manual_overrides = apply_phase_four_defaults(
         job.user_id,

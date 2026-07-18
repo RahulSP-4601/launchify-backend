@@ -1,0 +1,2 @@
+class StaleProjectAssetError(RuntimeError):
+    pass

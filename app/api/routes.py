@@ -8,6 +8,7 @@ from starlette.background import BackgroundTask
 
 from app.core.config import get_settings
 from app.models.projects import (
+    CreateRecordingSessionRequest,
     CreateProjectRequest,
     ProjectDetail,
     ProjectRecord,
@@ -102,6 +103,44 @@ async def update_recording_session(project_id: str, payload: UpdateRecordingSess
     return to_project_detail(user_id, project_id)
 
 
+@router.post("/projects/{project_id}/sessions", response_model=ProjectDetail, tags=["projects"])
+async def create_recording_session(
+    project_id: str,
+    request: Request,
+    file: UploadFile = File(),
+    recording_session: str = Form(),
+    filename: str | None = Form(default=None),
+) -> ProjectDetail:
+    user_id = get_authenticated_user_id(request)
+    usage = usage_summary_for_user(user_id)
+    if usage.blocked:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Your 10 minute trial limit has been reached. Uploads are blocked for now.",
+        )
+    upload_name = (filename or file.filename or "").strip()
+    if not upload_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Filename is required.")
+    project = must_get_project(user_id, project_id)
+    try:
+        session_payload = CreateRecordingSessionRequest.model_validate_json(recording_session)
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Recording session payload is invalid JSON.") from exc
+    temp_path = await write_upload_to_temp_file(file)
+    try:
+        asset = upload_video_file(
+            user_id,
+            project.id,
+            upload_name,
+            file.content_type or "application/octet-stream",
+            temp_path,
+        )
+    finally:
+        temp_path.unlink(missing_ok=True)
+    project_store.attach_session_asset_and_queue_job(user_id, project.id, asset, session_payload.recording_session)
+    return to_project_detail(user_id, project.id)
+
+
 @router.get("/projects/{project_id}/transcript", response_model=TranscriptResponse, tags=["projects"])
 async def get_transcript(project_id: str, request: Request) -> TranscriptResponse:
     user_id = get_authenticated_user_id(request)
@@ -125,6 +164,39 @@ async def get_render_output(project_id: str, variant: str, request: Request) -> 
         filename=rendered_video.filename,
         background=BackgroundTask(output_path.unlink, missing_ok=True),
         headers={"Content-Disposition": f'inline; filename="{rendered_video.filename}"'},
+    )
+
+
+@router.get("/projects/{project_id}/assets/source", tags=["projects"])
+async def get_source_asset(project_id: str, request: Request) -> FileResponse:
+    user_id = get_authenticated_user_id(request)
+    project = must_get_project(user_id, project_id)
+    if project.asset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source asset not found.")
+    output_path = download_asset_to_file(project.asset.storage_path)
+    return FileResponse(
+        path=output_path,
+        media_type=project.asset.content_type,
+        filename=project.asset.filename,
+        background=BackgroundTask(output_path.unlink, missing_ok=True),
+        headers={"Content-Disposition": f'inline; filename="{project.asset.filename}"'},
+    )
+
+
+@router.get("/projects/{project_id}/assets/voiceover", tags=["projects"])
+async def get_voiceover_asset(project_id: str, request: Request) -> FileResponse:
+    user_id = get_authenticated_user_id(request)
+    project = must_get_project(user_id, project_id)
+    if project.voiceover is None or not project.voiceover.audio_storage_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Voiceover asset not found.")
+    output_path = download_asset_to_file(project.voiceover.audio_storage_path)
+    filename = f"{project.project_name.lower().replace(' ', '-')}-voiceover.mp3"
+    return FileResponse(
+        path=output_path,
+        media_type="audio/mpeg",
+        filename=filename,
+        background=BackgroundTask(output_path.unlink, missing_ok=True),
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
 
 
@@ -174,6 +246,7 @@ def to_project_detail(user_id: str, project_id: str) -> ProjectDetail:
         created_at=project.created_at,
         updated_at=project.updated_at,
         has_transcript=bool(project.transcript),
+        has_guide=project.guide is not None and bool(project.guide.steps),
         has_launch_script=project.launch_script is not None,
         has_edit_plan=project.edit_plan is not None,
         has_quality_report=project.quality_report is not None,
@@ -183,6 +256,7 @@ def to_project_detail(user_id: str, project_id: str) -> ProjectDetail:
         has_final_video=project.final_video is not None,
         asset=project.asset,
         recording_session=project.recording_session,
+        guide=project.guide,
         launch_script=project.launch_script,
         edit_plan=project.edit_plan,
         template_config=project.template_config,

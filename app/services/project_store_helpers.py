@@ -9,6 +9,7 @@ from app.models.projects import (
     AssetRecord,
     BenchmarkReportRecord,
     EditPlanRecord,
+    GuideRecord,
     LaunchScriptRecord,
     ManualOverrideRecord,
     ProjectRecord,
@@ -37,6 +38,7 @@ def create_project_params(project: ProjectRecord, user_id: str) -> tuple[object,
         None,
         None,
         json.dumps([]),
+        None,
         None,
         None,
         json.dumps(template_config.model_dump(mode="json")),
@@ -68,7 +70,7 @@ def has_active_job(cursor: Any, project_id: str, asset_path: str) -> bool:
 def reset_project_for_asset_sql() -> str:
     return """
         update projects
-        set asset = %s::jsonb, recording_session = null, status = %s, transcript = '[]'::jsonb, launch_script = null, edit_plan = null,
+        set asset = %s::jsonb, recording_session = %s::jsonb, status = %s, transcript = '[]'::jsonb, guide = null, launch_script = null, edit_plan = null,
             manual_overrides = %s::jsonb, quality_report = null, benchmark_report = null, voiceover = %s::jsonb,
             preview_video = null, final_video = null,
             error_message = '', updated_at = %s
@@ -78,12 +80,14 @@ def reset_project_for_asset_sql() -> str:
 
 def reset_project_for_asset_params(
     asset: AssetRecord,
+    recording_session: RecordingSessionRecord | None,
     now: datetime,
     project_id: str,
     user_id: str,
 ) -> tuple[object, ...]:
     return (
         json.dumps(asset.model_dump(mode="json")),
+        json.dumps(recording_session.model_dump(mode="json")) if recording_session is not None else None,
         "queued",
         json.dumps(ManualOverrideRecord().model_dump(mode="json")),
         json.dumps(VoiceoverRecord().model_dump(mode="json")),
@@ -128,15 +132,16 @@ def project_from_row(row: tuple[object, ...]) -> ProjectRecord:
     asset = AssetRecord.model_validate(row[7]) if row[7] is not None else None
     recording_session = RecordingSessionRecord.model_validate(row[8]) if row[8] is not None else None
     transcript = [TranscriptSegment.model_validate(item) for item in as_list(row[9])]
-    launch_script = LaunchScriptRecord.model_validate(row[10]) if row[10] is not None else None
-    edit_plan = EditPlanRecord.model_validate(row[11]) if row[11] is not None else None
-    template_config = TemplateConfigRecord.model_validate(row[12]) if row[12] is not None else None
-    manual_overrides = ManualOverrideRecord.model_validate(row[13]) if row[13] is not None else None
-    quality_report = QualityReportRecord.model_validate(row[14]) if row[14] is not None else None
-    benchmark_report = BenchmarkReportRecord.model_validate(row[15]) if row[15] is not None else None
-    voiceover = VoiceoverRecord.model_validate(row[16]) if row[16] is not None else None
-    preview_video = RenderedVideoRecord.model_validate(row[17]) if row[17] is not None else None
-    final_video = RenderedVideoRecord.model_validate(row[18]) if row[18] is not None else None
+    guide = GuideRecord.model_validate(row[10]) if row[10] is not None else None
+    launch_script = LaunchScriptRecord.model_validate(row[11]) if row[11] is not None else None
+    edit_plan = EditPlanRecord.model_validate(row[12]) if row[12] is not None else None
+    template_config = TemplateConfigRecord.model_validate(row[13]) if row[13] is not None else None
+    manual_overrides = ManualOverrideRecord.model_validate(row[14]) if row[14] is not None else None
+    quality_report = QualityReportRecord.model_validate(row[15]) if row[15] is not None else None
+    benchmark_report = BenchmarkReportRecord.model_validate(row[16]) if row[16] is not None else None
+    voiceover = VoiceoverRecord.model_validate(row[17]) if row[17] is not None else None
+    preview_video = RenderedVideoRecord.model_validate(row[18]) if row[18] is not None else None
+    final_video = RenderedVideoRecord.model_validate(row[19]) if row[19] is not None else None
     return ProjectRecord(
         id=str(row[0]),
         project_name=str(row[1]),
@@ -148,6 +153,7 @@ def project_from_row(row: tuple[object, ...]) -> ProjectRecord:
         asset=asset,
         recording_session=recording_session,
         transcript=transcript,
+        guide=guide,
         launch_script=launch_script,
         edit_plan=edit_plan,
         template_config=template_config,
@@ -157,9 +163,9 @@ def project_from_row(row: tuple[object, ...]) -> ProjectRecord:
         voiceover=voiceover,
         preview_video=preview_video,
         final_video=final_video,
-        error_message=str(row[19]),
-        created_at=cast(datetime, row[20]),
-        updated_at=cast(datetime, row[21]),
+        error_message=str(row[20]),
+        created_at=cast(datetime, row[21]),
+        updated_at=cast(datetime, row[22]),
     )
 
 

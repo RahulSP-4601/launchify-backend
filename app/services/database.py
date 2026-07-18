@@ -115,6 +115,7 @@ def ensure_projects_schema(cursor: Any) -> None:
             asset jsonb,
             recording_session jsonb,
             transcript jsonb not null default '[]'::jsonb,
+            guide jsonb,
             launch_script jsonb,
             edit_plan jsonb,
             template_config jsonb,
@@ -131,6 +132,7 @@ def ensure_projects_schema(cursor: Any) -> None:
         """,
     )
     cursor.execute("alter table projects add column if not exists recording_session jsonb")
+    cursor.execute("alter table projects add column if not exists guide jsonb")
     cursor.execute("alter table projects add column if not exists launch_script jsonb")
     cursor.execute("alter table projects add column if not exists edit_plan jsonb")
     cursor.execute("alter table projects add column if not exists template_config jsonb")

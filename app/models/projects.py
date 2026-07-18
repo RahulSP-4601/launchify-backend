@@ -44,6 +44,10 @@ class SessionTargetRecord(BaseModel):
     role: str = ""
     text: str = ""
     href: str = ""
+    bbox_x: float | None = None
+    bbox_y: float | None = None
+    bbox_width: float | None = None
+    bbox_height: float | None = None
 
 
 class SessionEventRecord(BaseModel):
@@ -67,6 +71,36 @@ class RecordingSessionRecord(BaseModel):
     page_title: str = ""
     page_url: str = ""
     events: list[SessionEventRecord] = Field(default_factory=list)
+
+
+class GuideStepRecord(BaseModel):
+    step_index: int
+    title: str
+    instruction: str
+    narration: str
+    on_screen_text: str
+    start: float = Field(ge=0.0)
+    end: float = Field(ge=0.0)
+    event_type: str = ""
+    focus_selector: str = ""
+    focus_label: str = ""
+    highlight_label: str = ""
+    source_excerpt: str = ""
+
+
+class ArticleStepRecord(BaseModel):
+    step_index: int
+    title: str
+    body: str
+
+
+class GuideRecord(BaseModel):
+    title: str
+    summary: str
+    source: str = "grounded_session"
+    steps: list[GuideStepRecord] = Field(default_factory=list)
+    article_steps: list[ArticleStepRecord] = Field(default_factory=list)
+    generation_notes: list[str] = Field(default_factory=list)
 
 
 class LaunchScriptScene(BaseModel):
@@ -296,6 +330,7 @@ class ProjectRecord(BaseModel):
     asset: AssetRecord | None = None
     recording_session: RecordingSessionRecord | None = None
     transcript: list[TranscriptSegment] = Field(default_factory=list)
+    guide: GuideRecord | None = None
     launch_script: LaunchScriptRecord | None = None
     edit_plan: EditPlanRecord | None = None
     template_config: TemplateConfigRecord | None = None
@@ -317,6 +352,7 @@ class ProjectSummary(BaseModel):
     created_at: datetime
     updated_at: datetime
     has_transcript: bool
+    has_guide: bool
     has_launch_script: bool
     has_edit_plan: bool
     has_quality_report: bool
@@ -331,6 +367,7 @@ class ProjectDetail(ProjectSummary):
     target_audience: str
     asset: AssetRecord | None = None
     recording_session: RecordingSessionRecord | None = None
+    guide: GuideRecord | None = None
     launch_script: LaunchScriptRecord | None = None
     edit_plan: EditPlanRecord | None = None
     template_config: TemplateConfigRecord | None = None
@@ -350,6 +387,10 @@ class UpdatePhaseFourRequest(BaseModel):
 
 
 class UpdateRecordingSessionRequest(BaseModel):
+    recording_session: RecordingSessionRecord
+
+
+class CreateRecordingSessionRequest(BaseModel):
     recording_session: RecordingSessionRecord
 
 
