@@ -230,6 +230,7 @@ def segment_filters(
         chain.append(crop_filter)
     chain.extend(scene_overlay_filters(scene, start, end, crop_box, crop_bounds, quality, working_dir))
     chain.append(f"fps={target_fps(quality)}")
+    chain.append(passthrough_scale_filter(quality))
     chain.append(f"[v{index}]")
     filters = [".".join([])]  # placeholder removed below
     video_filter = ",".join(chain[:-1]) + chain[-1]
@@ -373,7 +374,7 @@ def output_scale_filter(quality: ExportQuality) -> str:
     height = settings.final_render_height if quality == "final" else settings.preview_proxy_height
     return (
         f"[joinedv]scale={width}:{height}:force_original_aspect_ratio=decrease,"
-        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black[vout]"
+        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,setsar=1[vout]"
     )
 
 
@@ -381,7 +382,7 @@ def passthrough_scale_filter(quality: ExportQuality) -> str:
     settings = get_settings()
     width = settings.final_render_width if quality == "final" else settings.preview_proxy_width
     height = settings.final_render_height if quality == "final" else settings.preview_proxy_height
-    return f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black"
+    return f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,setsar=1"
 
 
 def target_fps(quality: ExportQuality) -> int:
@@ -445,7 +446,6 @@ def normalized_caption_text(text: str) -> str:
     lines = [re.sub(r"\s+", " ", line).strip() for line in text.replace("\r", "").split("\n")]
     preserved = "\n".join(line for line in lines if line)
     return preserved or " "
-
 def escape_drawtext_path(path: Path) -> str:
     escaped = str(path).replace("\\", "\\\\")
     return escaped.replace("'", r"\'")
