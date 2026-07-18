@@ -36,8 +36,6 @@ from app.services.project_store_helpers import (
 from app.services.project_store_runtime import execute_project_update, save_render_outputs_payload
 
 PARTIAL_RENDER_OUTPUT_COLUMNS = frozenset({"preview_video"})
-
-
 class ProjectStore:
     def list_projects(self, user_id: str) -> list[ProjectRecord]:
         with connection_scope() as connection:
@@ -131,7 +129,6 @@ class ProjectStore:
             (status, error_message, datetime.now(UTC), project_id, user_id, asset_path),
             stale_error_message="Project asset was replaced by a newer upload.",
         )
-
     def attach_asset(self, user_id: str, project_id: str, asset: AssetRecord) -> None:
         self._execute_update(
             """
@@ -141,10 +138,8 @@ class ProjectStore:
             """,
             (json.dumps(asset.model_dump(mode="json")), "uploading", datetime.now(UTC), project_id, user_id),
         )
-
     def attach_asset_and_queue_job(self, user_id: str, project_id: str, asset: AssetRecord) -> None:
         self.attach_session_asset_and_queue_job(user_id, project_id, asset, None)
-
     def attach_session_asset_and_queue_job(
         self,
         user_id: str,
@@ -164,27 +159,43 @@ class ProjectStore:
                 if cursor.rowcount != 1:
                     raise RuntimeError("Project not found.")
                 cursor.execute(insert_processing_job_sql(), create_processing_job_params(user_id, project_id, asset, now))
-
     def save_recording_session(
         self,
         user_id: str,
         project_id: str,
         recording_session: RecordingSessionRecord,
+        asset_path: str | None = None,
     ) -> None:
+        if asset_path is None:
+            self._execute_update(
+                """
+                update projects
+                set recording_session = %s::jsonb, updated_at = %s
+                where id = %s and user_id = %s
+                """,
+                (
+                    json.dumps(recording_session.model_dump(mode="json")),
+                    datetime.now(UTC),
+                    project_id,
+                    user_id,
+                ),
+            )
+            return
         self._execute_update(
             """
             update projects
             set recording_session = %s::jsonb, updated_at = %s
-            where id = %s and user_id = %s
+            where id = %s and user_id = %s and asset->>'storage_path' = %s
             """,
             (
                 json.dumps(recording_session.model_dump(mode="json")),
                 datetime.now(UTC),
                 project_id,
                 user_id,
+                asset_path,
             ),
+            stale_error_message="Project asset was replaced before inferred session data could be saved.",
         )
-
     def save_transcript(
         self,
         user_id: str,
@@ -228,7 +239,6 @@ class ProjectStore:
             ),
             stale_error_message="Project asset was replaced before transcript could be saved.",
         )
-
     def save_guide(
         self,
         user_id: str,
@@ -268,7 +278,6 @@ class ProjectStore:
             ),
             stale_error_message="Project asset was replaced before guide grounding could be saved.",
         )
-
     def save_launch_script(
         self,
         user_id: str,
@@ -308,7 +317,6 @@ class ProjectStore:
             ),
             stale_error_message="Project asset was replaced before the launch script could be saved.",
         )
-
     def save_edit_plan(
         self,
         user_id: str,
@@ -348,7 +356,6 @@ class ProjectStore:
             ),
             stale_error_message="Project asset was replaced before the edit plan could be saved.",
         )
-
     def save_refined_edit_plan(
         self,
         user_id: str,

@@ -9,6 +9,7 @@ from app.models.projects import (
     EditPlanRecord,
     EditPlanScene,
     EditPlanZoom,
+    FocusBox,
     GuideRecord,
     GuideStepRecord,
     LaunchScriptScene,
@@ -219,26 +220,63 @@ def apply_grounded_focus(
     if event_focus_box is None:
         return zooms, highlights
     focus_region = region_for_box(event_focus_box)
-    return (
-        [
-            zoom.model_copy(update={
-                "focus_box": zoom.focus_box or event_focus_box,
-                "focus_region": focus_region if zoom.focus_region == "center" else zoom.focus_region,
-                "confidence": max(zoom.confidence, 0.82),
-                "scale": max(zoom.scale, 1.16),
-            })
-            for zoom in zooms
-        ],
-        [
-            highlight.model_copy(update={
-                "focus_box": highlight.focus_box or event_focus_box,
-                "anchor_region": focus_region if highlight.anchor_region == "center" else highlight.anchor_region,
-                "confidence": max(highlight.confidence, 0.84),
-                "ui_label": step.highlight_label or step.focus_label or highlight.ui_label,
-                "label": step.highlight_label or highlight.label,
-            })
-            for highlight in highlights
-        ],
+    grounded_zooms = [hydrate_grounded_zoom(zoom, event_focus_box, focus_region) for zoom in zooms]
+    grounded_highlights = [hydrate_grounded_highlight(highlight, step, event_focus_box, focus_region) for highlight in highlights]
+    if not grounded_zooms:
+        grounded_zooms = [seed_grounded_zoom(step, event_focus_box, focus_region)]
+    if not grounded_highlights:
+        grounded_highlights = [seed_grounded_highlight(step, event_focus_box, focus_region)]
+    return grounded_zooms, grounded_highlights
+
+
+def hydrate_grounded_zoom(zoom: EditPlanZoom, event_focus_box: FocusBox, focus_region: str) -> EditPlanZoom:
+    return zoom.model_copy(update={
+        "focus_box": zoom.focus_box or event_focus_box,
+        "focus_region": focus_region if zoom.focus_region == "center" else zoom.focus_region,
+        "confidence": max(zoom.confidence, 0.82),
+        "scale": max(zoom.scale, 1.16),
+    })
+
+
+def hydrate_grounded_highlight(
+    highlight: EditPlanHighlight,
+    step: GuideStepRecord,
+    event_focus_box: FocusBox,
+    focus_region: str,
+) -> EditPlanHighlight:
+    return highlight.model_copy(update={
+        "focus_box": highlight.focus_box or event_focus_box,
+        "anchor_region": focus_region if highlight.anchor_region == "center" else highlight.anchor_region,
+        "confidence": max(highlight.confidence, 0.84),
+        "ui_label": step.highlight_label or step.focus_label or highlight.ui_label,
+        "label": step.highlight_label or highlight.label,
+    })
+
+
+def seed_grounded_zoom(step: GuideStepRecord, event_focus_box: FocusBox, focus_region: str) -> EditPlanZoom:
+    return EditPlanZoom(
+        start=step.start,
+        end=step.end,
+        scale=1.18,
+        focus_region=focus_region,
+        reason="grounded session focus",
+        confidence=0.86,
+        focus_box=event_focus_box,
+        hold_ratio=0.68,
+        smoothing=0.14,
+    )
+
+
+def seed_grounded_highlight(step: GuideStepRecord, event_focus_box: FocusBox, focus_region: str) -> EditPlanHighlight:
+    return EditPlanHighlight(
+        start=step.start,
+        end=step.end,
+        label=step.highlight_label or step.focus_label or step.title,
+        style="spotlight",
+        anchor_region=focus_region,
+        confidence=0.88,
+        focus_box=event_focus_box,
+        ui_label=step.highlight_label or step.focus_label or step.title,
     )
 
 
