@@ -14,6 +14,7 @@ from app.models.projects import (
     VisualSceneAnalysisRecord,
 )
 from app.services.edit_planner import generate_edit_plan
+from app.services.grounded_script_refinement import refine_launch_script_with_visuals
 from app.services.guide_synthesizer import synthesize_grounded_guide
 from app.services.inference_step_builder import build_inference_script
 from app.services.inferred_recording_session import infer_recording_session

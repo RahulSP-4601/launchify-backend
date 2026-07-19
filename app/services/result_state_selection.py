@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.models.projects import FrameSignalRecord, LaunchScriptScene, SessionEventRecord, VisualSceneAnalysisRecord
 from app.services.inferred_recording_support import InteractionWindow, build_session_event, normalize_label
+from app.services.ui_structure_insights import structure_state_label
 
 MIN_RESULT_STATE_SCORE = 0.52
 
@@ -69,6 +70,9 @@ def result_frame_rank(frame: FrameSignalRecord) -> tuple[float, float, float]:
 
 
 def result_state_label(frame: FrameSignalRecord) -> str:
+    structure_label = structure_state_label(frame, [element.label for element in frame.ui_elements if element.label.strip()])
+    if structure_label:
+        return structure_label
     prominent = prominent_instruction_label(frame)
     if prominent:
         return prominent

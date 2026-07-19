@@ -29,7 +29,9 @@ def structure_state_label(frame: FrameSignalRecord, visible_labels: list[str]) -
     if ranked and structure_rank(ranked[0].label, ranked[0].role, structure) >= 0.6:
         return ranked[0].label.strip()
     visible = sorted((label for label in visible_labels if label.strip()), key=lambda item: structure_rank(item, "visible", structure), reverse=True)
-    return visible[0].strip() if visible and structure_rank(visible[0], "visible", structure) >= 0.6 else ""
+    if visible and structure_rank(visible[0], "visible", structure) >= 0.6:
+        return visible[0].strip()
+    return default_structure_label(structure, labels=collected_labels(frame, visible_labels))
 
 
 def prefers_state_event(frame: FrameSignalRecord, visible_labels: list[str]) -> bool:
@@ -56,6 +58,32 @@ def result_signal(labels: list[str]) -> bool:
     label_text = " ".join(labels)
     level_cards = sum(1 for label in labels if "jlpt level" in label)
     return "pick your" in label_text or "choose your" in label_text or level_cards >= 3
+
+
+def default_structure_label(
+    structure: StructureKind,
+    *,
+    labels: list[str],
+) -> str:
+    if structure == "dashboard" and dashboard_signal(labels):
+        return "Select a course"
+    if structure == "picker" and any("account" in label for label in labels):
+        return "Choose an account"
+    if structure == "result":
+        return result_structure_label(labels)
+    return ""
+
+
+def result_structure_label(labels: list[str]) -> str:
+    entity = next((label for label in labels if single_entity_label(label)), "")
+    if entity:
+        return f"Pick your {entity.title()} level before you start learning."
+    return ""
+
+
+def single_entity_label(label: str) -> bool:
+    tokens = normalize_label(label).split()
+    return len(tokens) == 1 and tokens[0] not in {"course", "courses", "dashboard", "account", "level"}
 
 
 def collected_labels(frame: FrameSignalRecord, visible_labels: list[str]) -> list[str]:

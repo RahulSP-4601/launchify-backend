@@ -12,6 +12,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from app.models.projects import ProjectRecord
+from app.services.grounded_script_refinement import refine_launch_script_with_events, refine_launch_script_with_visuals
 from app.services.inference_step_builder import build_inference_script
 from app.services.inferred_recording_session import infer_recording_session
 from app.services.transcription import transcribe_media_file
@@ -66,6 +67,7 @@ def main() -> int:
     write_json(output_dir / "scene_ranges.json", scene_ranges)
 
     visual_analyses = None
+    refined_launch_script = launch_script
     if args.skip_vision:
         print("[3/4] Skipping visual analysis by request")
     elif not visual_analysis_available():
@@ -73,6 +75,8 @@ def main() -> int:
     else:
         print(f"[3/4] Running visual analysis across {len(launch_script.scenes)} inferred scenes")
         visual_analyses = analyze_video_scenes(video_path, launch_script, transcript, scene_ranges)
+        refined_launch_script = refine_launch_script_with_visuals(launch_script, visual_analyses)
+        write_json(output_dir / "launch_script.json", refined_launch_script.model_dump(mode="json"))
         write_json(
             output_dir / "visual_analyses.json",
             [analysis.model_dump(mode="json") for analysis in visual_analyses],
@@ -81,11 +85,13 @@ def main() -> int:
     print("[4/4] Inferring grounded recording session events")
     recording_session = infer_recording_session(project, video_path, launch_script, transcript, visual_analyses)
     if recording_session is not None:
+        refined_launch_script = refine_launch_script_with_events(refined_launch_script, recording_session.events)
+        write_json(output_dir / "launch_script.json", refined_launch_script.model_dump(mode="json"))
         write_json(output_dir / "recording_session.json", recording_session.model_dump(mode="json"))
 
     write_json(
         output_dir / "summary.json",
-        build_summary(video_path, content_type, transcript, launch_script, scene_ranges, visual_analyses, recording_session),
+        build_summary(video_path, content_type, transcript, refined_launch_script, scene_ranges, visual_analyses, recording_session),
     )
     print_results(output_dir, recording_session)
     return 0
