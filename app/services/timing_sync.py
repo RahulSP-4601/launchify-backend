@@ -89,7 +89,14 @@ def synced_highlights(
         return scene.highlights
     synced = []
     for highlight in scene.highlights:
-        start, end, _settle_end = action_result_window(scene.start, scene.end, action_time, scene.spoken_line)
+        start, end, _settle_end = action_result_window(
+            scene.start,
+            scene.end,
+            action_time,
+            scene.spoken_line,
+            scene_role=scene.scene_role,
+            action_class=scene.action_class,
+        )
         end = min(scene.end, max(end, start + HIGHLIGHT_DURATION * 0.75))
         synced.append(highlight.model_copy(update={"start": round(start, 2), "end": round(end, 2)}))
     return synced

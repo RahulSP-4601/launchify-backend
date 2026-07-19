@@ -26,6 +26,8 @@ def build_zooms(
 ) -> list[EditPlanZoom]:
     if not policy.should_zoom:
         return []
+    if policy.scene_role == "result":
+        return result_zooms(start, end, policy)
     duration = max(end - start, 0.5)
     if duration >= 6:
         return three_step_zoom(start, end, duration, policy)
@@ -33,6 +35,13 @@ def build_zooms(
         return two_step_zoom(start, end, duration, policy)
     focus_start = round(start + duration * 0.08, 2)
     return [zoom_record(focus_start, min(end, focus_start + duration * 0.78), policy, 1.08, "ease-in-out", 0.82, 0.48)]
+
+
+def result_zooms(start: float, end: float, policy: ScenePolicy) -> list[EditPlanZoom]:
+    duration = max(end - start, 0.5)
+    focus_start = round(start + duration * 0.12, 2)
+    focus_end = min(end, round(focus_start + duration * 0.62, 2))
+    return [zoom_record(focus_start, focus_end, policy, 1.02, "ease-out", 0.9, 0.7)]
 
 
 def two_step_zoom(start: float, end: float, duration: float, policy: ScenePolicy) -> list[EditPlanZoom]:
@@ -92,7 +101,7 @@ def build_highlights(
     if not policy.should_highlight:
         return []
     focus_box = policy.anchor_box or policy.click_target_box or policy.cursor_box or policy.focus_box
-    highlight_start, highlight_end = highlight_window(start, end)
+    highlight_start, highlight_end = highlight_window(start, end, policy)
     return [
         EditPlanHighlight(
             start=highlight_start,
@@ -108,8 +117,15 @@ def build_highlights(
     ]
 
 
-def highlight_window(start: float, end: float) -> tuple[float, float]:
-    highlight_start, highlight_end, _settle_end = action_result_window(start, end, None, "")
+def highlight_window(start: float, end: float, policy: ScenePolicy) -> tuple[float, float]:
+    highlight_start, highlight_end, _settle_end = action_result_window(
+        start,
+        end,
+        None,
+        "",
+        scene_role=policy.scene_role,
+        action_class=policy.action_class,
+    )
     return highlight_start, highlight_end
 
 
@@ -131,6 +147,8 @@ def offset_for_box(box: FocusBox | None, region: str, axis: str) -> float:
 
 
 def zoom_base_scale(policy: ScenePolicy) -> float:
+    if policy.scene_role == "result":
+        return 1.08 if policy.anchor_box is not None else 1.04
     if policy.anchor_box is not None:
         area = policy.anchor_box.width * policy.anchor_box.height
         if area < 0.04:

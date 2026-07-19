@@ -75,6 +75,7 @@ export function spotlightStyle(highlights: RenderHighlight[], localSeconds: numb
     anchor: focusBoxToAnchor(highlight.focus_box) ?? highlightAnchor(highlight.anchor_region),
     intensity: highlight.confidence,
     focusBox: highlight.focus_box,
+    pulse: highlightPulse(highlight, localSeconds),
   };
 }
 
@@ -178,17 +179,22 @@ function motionIntensity(start: number, end: number, current: number, holdRatio:
   return 1;
 }
 
+function highlightPulse(highlight: RenderHighlight, localSeconds: number) {
+  const raw = motionIntensity(highlight.start, highlight.end, localSeconds, 0.45);
+  return raw < 0.5 ? 2 * raw * raw : 1 - Math.pow(-2 * raw + 2, 2) / 2;
+}
 
 function easedMotionIntensity(zoom: RenderZoom, localSeconds: number) {
   const raw = motionIntensity(zoom.start, zoom.end, localSeconds, zoom.hold_ratio);
+  const smoothed = raw < 0.5 ? 4 * raw * raw * raw : 1 - Math.pow(-2 * raw + 2, 3) / 2;
   if (zoom.easing === "ease-in") {
-    return Math.pow(raw, 1.25);
+    return Math.pow(smoothed, 1.18);
   }
   if (zoom.easing === "ease-out") {
-    return 1 - Math.pow(1 - raw, 1.25);
+    return 1 - Math.pow(1 - smoothed, 1.18);
   }
   if (zoom.easing === "ease-in-out") {
-    return raw < 0.5 ? 2 * raw * raw : 1 - Math.pow(-2 * raw + 2, 2) / 2;
+    return smoothed;
   }
-  return raw * (1 - zoom.smoothing) + raw * raw * zoom.smoothing;
+  return raw * (1 - zoom.smoothing) + smoothed * zoom.smoothing;
 }

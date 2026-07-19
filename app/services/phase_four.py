@@ -32,7 +32,7 @@ def apply_phase_four_defaults(
     manual_overrides = project.manual_overrides or ManualOverrideRecord()
     refined_edit_plan, quality_report = refined_plan_and_report(project, edit_plan, manual_overrides)
     default_voiceover_mode: VoiceoverMode = "voiceover"
-    voiceover = voiceover_for_project(user_id, project, default_voiceover_mode)
+    voiceover = voiceover_for_project(user_id, project, refined_edit_plan, default_voiceover_mode)
     reconciled_edit_plan, reconciled_voiceover = reconcile_edit_plan_to_voiceover(refined_edit_plan, voiceover)
     reconciled_voiceover = finalized_voiceover(user_id, project.id, reconciled_voiceover)
     benchmark_report = build_benchmark_report(project, reconciled_edit_plan, quality_report)
@@ -54,14 +54,19 @@ def apply_phase_four_update(
         }
     )
     refined_edit_plan, quality_report = refined_plan_and_report(updated_project, edit_plan, manual_overrides)
-    voiceover = voiceover_for_project(user_id, updated_project, voiceover_mode)
+    voiceover = voiceover_for_project(user_id, updated_project, refined_edit_plan, voiceover_mode)
     reconciled_edit_plan, reconciled_voiceover = reconcile_edit_plan_to_voiceover(refined_edit_plan, voiceover)
     reconciled_voiceover = finalized_voiceover(user_id, updated_project.id, reconciled_voiceover)
     benchmark_report = build_benchmark_report(updated_project, reconciled_edit_plan, quality_report)
     return reconciled_edit_plan, quality_report, benchmark_report, reconciled_voiceover
 
 
-def voiceover_for_project(user_id: str, project: ProjectRecord, voiceover_mode: VoiceoverMode) -> VoiceoverRecord:
+def voiceover_for_project(
+    user_id: str,
+    project: ProjectRecord,
+    edit_plan: EditPlanRecord,
+    voiceover_mode: VoiceoverMode,
+) -> VoiceoverRecord:
     if project.guide is None and project.launch_script is None:
         return VoiceoverRecord(mode=voiceover_mode, status="disabled")
     return build_voiceover(
@@ -71,6 +76,7 @@ def voiceover_for_project(user_id: str, project: ProjectRecord, voiceover_mode: 
         source_duration_seconds=recording_duration_seconds(project.recording_session, project.transcript),
         guide=project.guide,
         launch_script=project.launch_script,
+        edit_plan=edit_plan,
         recording_session=project.recording_session,
         transcript=project.transcript,
     )

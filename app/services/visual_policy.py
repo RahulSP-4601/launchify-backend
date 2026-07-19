@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-from app.models.projects import FocusBox, LaunchScriptScene, TranscriptSegment, VisualSceneAnalysisRecord
+from app.models.projects import FocusBox, LaunchScriptScene, SceneRole, TranscriptSegment, VisualSceneAnalysisRecord
 
 TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 ACTION_KEYWORDS = (
@@ -62,6 +62,8 @@ class ScenePolicy:
     anchor_box: FocusBox | None
     target_label: str
     visual_summary: str
+    scene_role: SceneRole
+    action_class: str
 
 
 @dataclass(frozen=True)
@@ -92,18 +94,21 @@ def build_scene_policy(
     scene: LaunchScriptScene,
     transcript: list[TranscriptSegment],
     visual_analysis: VisualSceneAnalysisRecord | None,
+    *,
+    scene_role: SceneRole = "action",
+    action_class: str = "generic_action",
 ) -> ScenePolicy:
     evidence = gather_evidence(scene, transcript, visual_analysis)
     scene_confidence, zoom_confidence, highlight_confidence = confidence_scores(evidence)
-    should_zoom = decide_zoom(evidence, zoom_confidence)
-    should_highlight = decide_highlight(evidence, should_zoom, highlight_confidence)
+    should_zoom = decide_zoom(evidence, zoom_confidence, scene_role, action_class)
+    should_highlight = decide_highlight(evidence, should_zoom, highlight_confidence, scene_role)
     return ScenePolicy(
         scene_confidence=round(scene_confidence, 2),
         zoom_confidence=round(zoom_confidence, 2),
         highlight_confidence=round(highlight_confidence, 2),
         focus_region=evidence.focus_region,
         anchor_region=evidence.focus_region,
-        highlight_style=infer_highlight_style(scene),
+        highlight_style=infer_highlight_style(scene_role, action_class, evidence),
         camera_mode="focus" if should_zoom else "static",
         focus_box=evidence.focus_box,
         cursor_box=evidence.cursor_box,
@@ -121,6 +126,8 @@ def build_scene_policy(
         ),
         should_zoom=should_zoom,
         should_highlight=should_highlight,
+        scene_role=scene_role,
+        action_class=action_class,
     )
 
 
@@ -255,7 +262,16 @@ def infer_focus_region(
     return "center", 0.2
 
 
-def decide_zoom(evidence: PolicyEvidence, zoom_confidence: float) -> bool:
+def decide_zoom(
+    evidence: PolicyEvidence,
+    zoom_confidence: float,
+    scene_role: SceneRole,
+    action_class: str,
+) -> bool:
+    if scene_role == "explanation":
+        return False
+    if scene_role == "result":
+        return result_scene_zoom(evidence, zoom_confidence)
     if evidence.visual_confidence == 0:
         return (
             zoom_confidence >= 0.44
@@ -293,7 +309,10 @@ def decide_highlight(
     evidence: PolicyEvidence,
     should_zoom: bool,
     highlight_confidence: float,
+    scene_role: SceneRole,
 ) -> bool:
+    if scene_role != "action":
+        return False
     return (
         should_zoom
         and highlight_confidence >= 0.58
@@ -303,14 +322,23 @@ def decide_highlight(
     )
 
 
-def infer_highlight_style(scene: LaunchScriptScene) -> str:
-    text = joined_text(scene.purpose, scene.spoken_line)
-    tokens = tokenize(text)
-    if "click" in tokens or "select" in tokens:
-        return "pulse-ring"
-    if "review" in tokens or "notice" in tokens:
-        return "spotlight"
-    return "outline"
+def infer_highlight_style(scene_role: SceneRole, action_class: str, evidence: PolicyEvidence) -> str:
+    if scene_role != "action":
+        return "ambient"
+    if compact_target(evidence):
+        return "soft-glow"
+    if action_class == "card_selection":
+        return "ambient-lift"
+    return "spotlight"
+
+
+def result_scene_zoom(evidence: PolicyEvidence, zoom_confidence: float) -> bool:
+    return (
+        zoom_confidence >= 0.62
+        and evidence.visual_confidence >= 0.52
+        and evidence.anchor_box is not None
+        and box_area(evidence.anchor_box) <= 0.18
+    )
 
 
 def build_decision_summary(
@@ -369,6 +397,16 @@ def focus_signal_is_trustworthy(evidence: PolicyEvidence) -> bool:
 
 def target_signal_is_trustworthy(evidence: PolicyEvidence) -> bool:
     return evidence.ocr_confidence >= 0.36 or evidence.click_score >= 0.62
+
+
+def compact_target(evidence: PolicyEvidence) -> bool:
+    if evidence.anchor_box is None:
+        return False
+    return box_area(evidence.anchor_box) <= 0.08
+
+
+def box_area(box: FocusBox) -> float:
+    return box.width * box.height
 
 
 def box_region(box: FocusBox) -> str:

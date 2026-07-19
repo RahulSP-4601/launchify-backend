@@ -11,13 +11,16 @@ def action_result_window(
     end: float,
     action_time: float | None,
     spoken_line: str,
+    *,
+    scene_role: str = "action",
+    action_class: str = "generic_action",
 ) -> tuple[float, float, float]:
     duration = max(end - start, 0.8)
     anchor = min(max(action_time if action_time is not None else start + duration * 0.4, start), end)
-    pre_roll = min(1.1, max(0.6, duration * 0.28))
+    pre_roll = scene_pre_roll(duration, scene_role, action_class)
     focus_start = max(start, anchor - pre_roll)
-    result_hold = result_hold_seconds(spoken_line, duration)
-    focus_peak_end = min(end, anchor + min(1.2, duration * 0.28 + 0.45))
+    result_hold = result_hold_seconds(spoken_line, duration, scene_role)
+    focus_peak_end = min(end, anchor + focus_peak_seconds(duration, scene_role))
     settle_end = min(end, max(focus_peak_end + result_hold, focus_peak_end))
     return round(focus_start, 2), round(focus_peak_end, 2), round(settle_end, 2)
 
@@ -32,7 +35,7 @@ def step_clip_window(scene: EditPlanScene) -> tuple[float, float]:
         scene.end,
         max(
             scene.action_timestamp
-            + result_hold_seconds(scene.spoken_line, duration)
+            + result_hold_seconds(scene.spoken_line, duration, scene.scene_role)
             + explanation_hold_seconds(scene.spoken_line, scene.action_class)
             + hold_extension,
             scene.action_timestamp + minimum_post_action_seconds(scene.action_class) + hold_extension,
@@ -41,9 +44,11 @@ def step_clip_window(scene: EditPlanScene) -> tuple[float, float]:
     return round(clip_start, 2), round(clip_end, 2)
 
 
-def result_hold_seconds(spoken_line: str, duration: float) -> float:
+def result_hold_seconds(spoken_line: str, duration: float, scene_role: str = "action") -> float:
     words = spoken_line.lower().split()
     explanation_bonus = 0.34 if any(word.strip(".,") in RESULT_WORDS for word in words) else 0.0
+    if scene_role == "result":
+        return min(2.2, max(1.2, duration * 0.34 + explanation_bonus))
     return min(1.8, max(0.9, duration * 0.28 + explanation_bonus))
 
 
@@ -57,6 +62,8 @@ def explanation_hold_seconds(spoken_line: str, action_class: str = "generic_acti
 
 
 def pre_action_seconds(scene: EditPlanScene) -> float:
+    if scene.scene_role == "result":
+        return min(0.75, max(0.45, (scene.end - scene.start) * 0.18))
     if scene.action_class in {"auth_action", "menu_open", "tab_switch"}:
         return min(1.35, max(0.9, (scene.end - scene.start) * 0.34))
     if scene.action_class == "card_selection":
@@ -82,6 +89,20 @@ def narration_density_hold(scene: EditPlanScene) -> float:
     if scene.action_class in {"result_state", "explanatory_hold", "card_selection"}:
         return round(min(base_extension + 0.35, 1.5), 2)
     return round(min(base_extension, 1.15), 2)
+
+
+def scene_pre_roll(duration: float, scene_role: str, action_class: str) -> float:
+    if scene_role == "result":
+        return min(0.7, max(0.35, duration * 0.16))
+    if action_class in {"auth_action", "navigation", "tab_switch"}:
+        return min(1.25, max(0.7, duration * 0.3))
+    return min(1.1, max(0.55, duration * 0.28))
+
+
+def focus_peak_seconds(duration: float, scene_role: str) -> float:
+    if scene_role == "result":
+        return min(0.85, duration * 0.2 + 0.28)
+    return min(1.2, duration * 0.28 + 0.45)
 
 
 def word_count(text: str) -> int:

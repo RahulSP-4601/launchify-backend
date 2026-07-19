@@ -63,6 +63,7 @@ export type RenderScene = {
   render_duration_seconds: number | null;
   confidence: number;
   camera_mode: "static" | "focus";
+  scene_role: "action" | "result" | "explanation";
   decision_summary: string;
   visual_summary: string;
   spoken_line: string;

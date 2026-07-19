@@ -41,6 +41,8 @@ def motion_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRecord]:
     issues: list[QualityIssueRecord] = []
     for scene in edit_plan.scenes:
         duration = max(scene.end - scene.start, 0.0)
+        if scene.scene_role == "explanation" and scene.zooms:
+            issues.append(issue("explanation-zoom", "medium", scene.scene_number, "Explanation scene still has camera motion.", "Keep explanation scenes static unless the focus target is very explicit."))
         if duration >= 4.0 and not scene.zooms and scene.camera_mode == "focus":
             issues.append(issue("missing-focus-motion", "medium", scene.scene_number, "Scene is marked as focus but has no zoom move.", "Add a zoom or switch the camera mode to static."))
         if duration >= 3.0 and any(zoom.end - zoom.start >= duration * 0.85 for zoom in scene.zooms):
@@ -58,6 +60,16 @@ def highlight_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRecord]:
     issues: list[QualityIssueRecord] = []
     for scene in edit_plan.scenes:
         duration = max(scene.end - scene.start, 0.0)
+        if scene.scene_role != "action" and scene.highlights:
+            issues.append(
+                issue(
+                    "non-action-highlight",
+                    "medium",
+                    scene.scene_number,
+                    "Result or explanation scene still carries an action highlight.",
+                    "Drop the highlight or convert the scene back into a real action moment.",
+                )
+            )
         if any(highlight.end - highlight.start > 1.8 for highlight in scene.highlights):
             issues.append(issue("long-highlight", "medium", scene.scene_number, "Highlight lingers too long and stops feeling tied to a real interaction.", "Shorten the highlight to the action moment."))
         if duration >= 3.0 and any(highlight.end - highlight.start >= duration * 0.85 for highlight in scene.highlights):
@@ -72,6 +84,8 @@ def visual_intelligence_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRe
     for scene in edit_plan.scenes:
         if scene.camera_mode == "focus" and not scene.highlights and not scene.zooms:
             issues.append(issue("weak-visual-decision", "medium", scene.scene_number, "Focus scene has no strong visual action left after refinement.", "Keep the scene static or improve cursor/click detection."))
+        if scene.scene_role == "action" and scene.camera_mode == "static" and not scene.highlights:
+            issues.append(issue("flat-action-scene", "low", scene.scene_number, "Action scene has no visual emphasis left.", "Recover a highlight or add a short anchored focus move for the action."))
     return issues
 
 

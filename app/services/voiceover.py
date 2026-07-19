@@ -13,6 +13,8 @@ from urllib.parse import quote, urlsplit
 from app.core.config import get_settings
 from app.models.projects import (
     AssetRecord,
+    EditPlanRecord,
+    EditPlanScene,
     GuideRecord,
     GuideStepRecord,
     LaunchScriptRecord,
@@ -26,6 +28,7 @@ from app.models.projects import (
     VoiceoverStatus,
 )
 from app.services.storage import download_asset_to_file, upload_audio_file
+from app.services.walkthrough_narration import scene_voice_line
 from app.services.walkthrough_guardrails import guide_is_under_grounded, session_is_under_grounded
 
 logger = logging.getLogger(__name__)
@@ -54,10 +57,11 @@ def build_voiceover(
     source_duration_seconds: float = 0.0,
     guide: GuideRecord | None = None,
     launch_script: LaunchScriptRecord | None = None,
+    edit_plan: EditPlanRecord | None = None,
     recording_session: RecordingSessionRecord | None = None,
     transcript: list[TranscriptSegment] | None = None,
 ) -> VoiceoverRecord:
-    units = voiceover_units(guide=guide, launch_script=launch_script)
+    units = voiceover_units(guide=guide, launch_script=launch_script, edit_plan=edit_plan)
     script = " ".join(unit.text for unit in units).strip()
     base_clips = clip_records(units)
     if mode == "original":
@@ -106,7 +110,7 @@ def degraded_voiceover(
     weak_guide = guide is not None and guide_is_under_grounded(guide, source_duration_seconds)
     if not weak_guide and not weak_session and not missing_grounded_session:
         return None
-    units = voiceover_units(guide=guide, launch_script=launch_script)
+    units = voiceover_units(guide=guide, launch_script=launch_script, edit_plan=None)
     return script_only_voiceover(mode, "script_only", " ".join(unit.text for unit in units).strip(), clip_records(units))
 
 
@@ -131,12 +135,22 @@ def voiceover_units(
     *,
     guide: GuideRecord | None,
     launch_script: LaunchScriptRecord | None,
+    edit_plan: EditPlanRecord | None,
 ) -> list[VoiceoverUnit]:
+    if edit_plan is not None and edit_plan.scenes:
+        return [unit_from_edit_scene(scene) for scene in edit_plan.scenes if scene_voice_line(scene)]
     if guide is not None and guide.steps:
         return [unit_from_step(step) for step in guide.steps if normalized_voice_line(step.narration)]
     if launch_script is None:
         return []
     return units_from_script(launch_script)
+
+
+def unit_from_edit_scene(scene: EditPlanScene) -> VoiceoverUnit:
+    text = normalized_voice_line(scene_voice_line(scene))
+    start = round(scene.start, 2)
+    end = round(start + max(scene.render_duration_seconds or (scene.end - scene.start), 0.8), 2)
+    return VoiceoverUnit(scene_number=scene.scene_number, start=start, end=end, text=text)
 
 def unit_from_step(step: GuideStepRecord) -> VoiceoverUnit:
     text = normalized_voice_line(step.narration)

@@ -15,6 +15,7 @@ CaptionProfile = Literal["product", "minimal", "cinematic"]
 MotionProfile = Literal["balanced", "dynamic", "calm"]
 IssueSeverity = Literal["low", "medium", "high"]
 TransitionStyle = Literal["cut", "fade", "slide-up", "focus-push"]
+SceneRole = Literal["action", "result", "explanation"]
 
 
 class CreateProjectRequest(BaseModel):
@@ -222,6 +223,7 @@ class EditPlanScene(BaseModel):
     on_screen_text: str
     source_excerpt: str
     action_class: str = "generic_action"
+    scene_role: SceneRole = "action"
     action_timestamp: float | None = None
     transition_style: TransitionStyle = "fade"
     transition_duration_seconds: float = 0.32
