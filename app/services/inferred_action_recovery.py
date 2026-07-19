@@ -5,15 +5,17 @@ from typing import Sequence
 from app.models.projects import FocusBox, FrameSignalRecord, SessionEventRecord, SessionEventType, TranscriptSegment, VisualSceneAnalysisRecord
 from app.services.inferred_recording_support import (
     InteractionWindow,
+    actionable_label,
     build_session_event,
     fallback_intent_label,
     intent_overlap_score,
     intent_tokens,
     low_signal_label,
+    state_like_label,
 )
-from app.services.walkthrough_guardrails import sparse_action_count
+from app.services.walkthrough_guardrails import meaningful_event_count, sparse_action_count
 
-MIN_RECOVERY_SCORE = 0.24
+MIN_RECOVERY_SCORE = 0.4
 MAX_RECOVERY_EVENTS = 8
 CLICK_WORDS = frozenset({"click", "tap", "press", "select", "open", "start", "login", "log in"})
 NAVIGATION_WORDS = frozenset({"page", "screen", "dashboard", "course", "continue", "next"})
@@ -25,7 +27,7 @@ def needs_action_recovery(
     transcript: Sequence[TranscriptSegment],
 ) -> bool:
     duration = max((segment.end for segment in transcript), default=0.0)
-    return sparse_action_count(len(events), duration)
+    return sparse_action_count(meaningful_event_count(events), duration)
 
 
 def recover_events_from_analyses(
@@ -57,7 +59,7 @@ def recovered_event(
     frame = best_recovery_frame(analysis)
     event_type = recovered_event_type(transcript_excerpt, label)
     score = recovered_score(analysis, frame, transcript_excerpt, label)
-    if score < MIN_RECOVERY_SCORE:
+    if score < MIN_RECOVERY_SCORE or not valid_recovered_event(label, transcript_excerpt, analysis, frame, score):
         return None
     focus_box = recovered_focus_box(analysis, frame)
     window = InteractionWindow(
@@ -96,7 +98,11 @@ def recovered_label(analysis: VisualSceneAnalysisRecord, transcript_excerpt: str
         reverse=True,
     )
     if ranked:
-        return ranked[0]
+        preferred = ranked[0]
+        fallback = fallback_intent_label(transcript_excerpt, analysis.summary)
+        if state_like_label(preferred) and fallback and actionable_label(fallback):
+            return fallback
+        return preferred
     return fallback_intent_label(transcript_excerpt, analysis.summary)
 
 
@@ -150,3 +156,33 @@ def recovered_score(
         frame_score = frame.click_confidence * 0.38 + frame.importance_score * 0.22 + frame.diff_score * 0.2
     label_score = 0.0 if low_signal_label(label) else 0.2
     return round(min(frame_score + token_overlap * 0.32 + label_score, 1.0), 3)
+
+
+def valid_recovered_event(
+    label: str,
+    transcript_excerpt: str,
+    analysis: VisualSceneAnalysisRecord,
+    frame: FrameSignalRecord | None,
+    score: float,
+) -> bool:
+    transcript_match = intent_overlap_score(label, intent_tokens(transcript_excerpt))
+    visual_strength = analysis.confidence
+    compact_focus = False
+    if frame is not None:
+        visual_strength = max(visual_strength, frame.click_confidence, frame.importance_score, frame.diff_score)
+        focus_box = frame.click_target_box or frame.dominant_box or frame.cursor_box
+        compact_focus = focus_box is not None and focus_box.width * focus_box.height <= 0.14
+    if state_like_label(label):
+        return transcript_match >= 0.42 and visual_strength >= 0.56 and compact_focus and score >= 0.5
+    if not actionable_label(label):
+        return transcript_match >= 0.36 and visual_strength >= 0.54 and compact_focus and score >= 0.48
+    evidence_count = 0
+    if transcript_match >= 0.22:
+        evidence_count += 1
+    if visual_strength >= 0.62:
+        evidence_count += 1
+    if compact_focus:
+        evidence_count += 1
+    if any(word in transcript_excerpt.lower() for word in CLICK_WORDS | INPUT_WORDS | NAVIGATION_WORDS):
+        evidence_count += 1
+    return evidence_count >= 2

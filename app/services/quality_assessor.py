@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.models.projects import EditPlanRecord, IssueSeverity, ProjectRecord, QualityIssueRecord, QualityReportRecord
-from app.services.walkthrough_guardrails import guide_is_under_grounded, recording_duration_seconds
+from app.services.walkthrough_guardrails import guide_is_under_grounded, recording_duration_seconds, session_is_under_grounded
 
 
 def build_quality_report(project: ProjectRecord, edit_plan: EditPlanRecord) -> QualityReportRecord:
@@ -111,7 +111,9 @@ def manual_review_issues(project: ProjectRecord) -> list[QualityIssueRecord]:
 
 def grounding_issues(project: ProjectRecord) -> list[QualityIssueRecord]:
     duration_seconds = recording_duration_seconds(project.recording_session, project.transcript)
-    if not guide_is_under_grounded(project.guide, duration_seconds):
+    weak_guide = guide_is_under_grounded(project.guide, duration_seconds)
+    weak_session = session_is_under_grounded(project.recording_session, project.transcript)
+    if not weak_guide and not weak_session:
         return []
     return [
         issue(

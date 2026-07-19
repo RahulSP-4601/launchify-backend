@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Protocol, Sequence
 
 from app.models.projects import ArticleStepRecord, GuideRecord, GuideStepRecord, ProjectRecord, RecordingSessionRecord, SessionEventRecord
+from app.services.action_classifier import event_action_class
 from app.services.event_grounding import normalize_event_timestamp
 
 MIN_STEP_DURATION_SECONDS = 0.8
@@ -45,6 +46,7 @@ def compile_guide_from_clusters(
                 focus_label=label,
                 highlight_label=(label or title)[:48],
                 source_excerpt=cluster.transcript_excerpt or label,
+                action_class=event_action_class(cluster.event),
             )
         )
         article_steps.append(ArticleStepRecord(step_index=cluster.index, title=title, body=instruction))

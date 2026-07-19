@@ -126,7 +126,7 @@ def save_scripting_step(
         guide = generate_grounded_guide_if_available(current_project, transcript)
         if guide is None:
             guide = generate_inferred_grounded_guide(current_project, job, asset_file, transcript)
-        guide = acceptable_grounded_guide(guide, current_project, transcript, job.project_id)
+        guide = acceptable_grounded_guide(guide, require_project(job.user_id, job.project_id), transcript, job.project_id)
     except Exception:
         logger.exception(
             "Grounded guide generation failed for project %s. Falling back to standard script generation.",
@@ -211,7 +211,7 @@ def save_planning_step(
 ) -> None:
     logger.info("Planning started for project %s.", job.project_id)
     current_project = require_project(job.user_id, job.project_id)
-    visual_analyses = None if current_project.guide is not None else maybe_analyze_video_scenes(asset_file, launch_script, transcript)
+    visual_analyses = maybe_analyze_video_scenes(asset_file, launch_script, transcript)
     edit_plan = generate_edit_plan(current_project, visual_analyses)
     edit_plan, quality_report, benchmark_report, voiceover, template_config, manual_overrides = apply_phase_four_defaults(
         job.user_id,

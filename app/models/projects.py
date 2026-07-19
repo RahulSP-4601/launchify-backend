@@ -87,6 +87,7 @@ class GuideStepRecord(BaseModel):
     focus_label: str = ""
     highlight_label: str = ""
     source_excerpt: str = ""
+    action_class: str = "generic_action"
 
 
 class ArticleStepRecord(BaseModel):
@@ -220,6 +221,7 @@ class EditPlanScene(BaseModel):
     spoken_line: str
     on_screen_text: str
     source_excerpt: str
+    action_class: str = "generic_action"
     action_timestamp: float | None = None
     transition_style: TransitionStyle = "fade"
     transition_duration_seconds: float = 0.32

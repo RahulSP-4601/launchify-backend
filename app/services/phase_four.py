@@ -71,6 +71,8 @@ def voiceover_for_project(user_id: str, project: ProjectRecord, voiceover_mode: 
         source_duration_seconds=recording_duration_seconds(project.recording_session, project.transcript),
         guide=project.guide,
         launch_script=project.launch_script,
+        recording_session=project.recording_session,
+        transcript=project.transcript,
     )
 
 

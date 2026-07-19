@@ -18,9 +18,11 @@ from app.models.projects import (
     ProjectRecord,
     RenderSpecRecord,
     SessionEventRecord,
+    SessionEventType,
     TranscriptSegment,
     VisualSceneAnalysisRecord,
 )
+from app.services.action_classifier import classify_action, event_action_class
 from app.services.caption_designer import build_caption_track
 from app.services.event_grounding import focus_box_for_event, normalize_event_timestamp, primary_event_for_window, region_for_box
 from app.services.motion_director import build_motion_track, offset_for_box
@@ -127,6 +129,7 @@ def build_edit_scene(
     policy = build_scene_policy(scene, transcript_slice, visual_analysis)
     captions = build_caption_track(transcript_slice, start, end, project.template_config)
     zooms, highlights = build_motion_track(scene, start, end, policy, project.template_config)
+    action_class = scene_action_class(scene, transcript_slice)
     return EditPlanScene(
         scene_number=scene.scene_number,
         title=f"Scene {scene.scene_number}",
@@ -140,6 +143,7 @@ def build_edit_scene(
         spoken_line=scene.spoken_line,
         on_screen_text=scene.on_screen_text,
         source_excerpt=scene.source_excerpt,
+        action_class=action_class,
         action_timestamp=None,
         transition_style="fade",
         transition_duration_seconds=0.32,
@@ -147,6 +151,30 @@ def build_edit_scene(
         zooms=zooms,
         highlights=highlights,
     )
+
+
+def scene_action_class(
+    scene: LaunchScriptScene,
+    transcript_slice: list[TranscriptSegment],
+) -> str:
+    event_type = inferred_scene_event_type(scene, transcript_slice)
+    transcript_text = " ".join(segment.text for segment in transcript_slice)
+    return classify_action(event_type, scene.on_screen_text or scene.purpose, transcript_text, scene.source_excerpt)
+
+
+def inferred_scene_event_type(
+    scene: LaunchScriptScene,
+    transcript_slice: list[TranscriptSegment],
+) -> SessionEventType:
+    transcript_text = " ".join(segment.text.lower() for segment in transcript_slice)
+    combined = f"{scene.purpose} {scene.spoken_line} {scene.on_screen_text} {scene.source_excerpt} {transcript_text}".lower()
+    if any(token in combined for token in ("type", "enter", "write", "email", "password", "search")):
+        return "input"
+    if any(token in combined for token in ("focus", "review", "notice", "look at")):
+        return "focus"
+    if any(token in combined for token in ("navigate", "go to", "redirect", "takes you to")):
+        return "navigation"
+    return "click"
 
 
 def build_grounded_scene(
@@ -157,26 +185,15 @@ def build_grounded_scene(
     start = round(step.start, 2)
     end = round(max(step.end, start + 0.8), 2)
     transcript_slice = slice_transcript(project.transcript, start, end)
-    primary_event = primary_event_for_window(
-        project.recording_session,
-        start,
-        end,
-        " ".join(part for part in (step.focus_label, step.title, step.instruction, step.narration) if part),
-    )
-    scene_number = int(primary_event.metadata.get("scene_number", "0")) if primary_event is not None else step.step_index
+    primary_event = grounded_primary_event(project, step, start, end)
+    scene_number = grounded_scene_number(primary_event, step)
     visual_analysis = analyses_by_scene.get(scene_number) or analyses_by_scene.get(step.step_index)
-    synthetic_scene = LaunchScriptScene(
-        scene_number=step.step_index,
-        purpose=step.instruction,
-        spoken_line=step.narration,
-        on_screen_text=step.on_screen_text,
-        source_excerpt=step.source_excerpt or step.focus_label or step.title,
-        estimated_duration_seconds=max(end - start, 0.8),
-    )
+    synthetic_scene = grounded_synthetic_scene(step, start, end)
     policy, captions, zooms, highlights = grounded_motion_assets(
         project, step, synthetic_scene, transcript_slice, start, end, visual_analysis, primary_event,
     )
     event_time = normalize_event_timestamp(primary_event.timestamp) if primary_event is not None else start
+    action_class = grounded_action_class(step, primary_event)
     return EditPlanScene(
         scene_number=step.step_index,
         title=step.title or f"Step {step.step_index}",
@@ -190,6 +207,7 @@ def build_grounded_scene(
         spoken_line=step.narration,
         on_screen_text=step.on_screen_text,
         source_excerpt=step.source_excerpt or step.focus_label or step.title,
+        action_class=action_class,
         action_timestamp=event_time,
         transition_style="focus-push",
         transition_duration_seconds=0.24,
@@ -197,6 +215,37 @@ def build_grounded_scene(
         zooms=zooms,
         highlights=highlights,
     )
+
+
+def grounded_primary_event(
+    project: ProjectRecord,
+    step: GuideStepRecord,
+    start: float,
+    end: float,
+) -> SessionEventRecord | None:
+    preferred = " ".join(part for part in (step.focus_label, step.title, step.instruction, step.narration) if part)
+    return primary_event_for_window(project.recording_session, start, end, preferred)
+
+
+def grounded_scene_number(primary_event: SessionEventRecord | None, step: GuideStepRecord) -> int:
+    return int(primary_event.metadata.get("scene_number", "0")) if primary_event is not None else step.step_index
+
+
+def grounded_synthetic_scene(step: GuideStepRecord, start: float, end: float) -> LaunchScriptScene:
+    return LaunchScriptScene(
+        scene_number=step.step_index,
+        purpose=step.instruction,
+        spoken_line=step.narration,
+        on_screen_text=step.on_screen_text,
+        source_excerpt=step.source_excerpt or step.focus_label or step.title,
+        estimated_duration_seconds=max(end - start, 0.8),
+    )
+
+
+def grounded_action_class(step: GuideStepRecord, primary_event: SessionEventRecord | None) -> str:
+    if primary_event is not None:
+        return event_action_class(primary_event)
+    return step.action_class or classify_action("click", step.focus_label or step.title, step.narration, step.source_excerpt)
 
 
 def grounded_motion_assets(

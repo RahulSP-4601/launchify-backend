@@ -13,6 +13,7 @@ from app.models.projects import (
     UiElementRecord,
     VisualSceneAnalysisRecord,
 )
+from app.services.action_classifier import classify_action
 
 INTERACTION_GAP_SECONDS = 0.55
 EVENT_FOCUS_DISTANCE_PIXELS = 48.0
@@ -22,8 +23,11 @@ SYNTHETIC_DUPLICATE_GAP_SECONDS = 1.8
 GENERIC_LABELS = frozenset(
     {
         "button",
+        "coming soon",
         "control",
         "continue",
+        "course",
+        "courses",
         "next",
         "one",
         "two",
@@ -34,6 +38,15 @@ GENERIC_LABELS = frozenset(
         "free",
         "learning",
         "login",
+    }
+)
+STATE_LABELS = frozenset(
+    {
+        "available",
+        "coming soon",
+        "displayed",
+        "logged in",
+        "view courses",
     }
 )
 LOW_SIGNAL_TOKENS = frozenset(
@@ -73,6 +86,19 @@ def low_signal_label(label: str) -> bool:
     if len(tokens) == 1 and (tokens[0] in LOW_SIGNAL_TOKENS or len(tokens[0]) <= 3):
         return True
     return len(normalized) < 4
+
+
+def state_like_label(label: str) -> bool:
+    normalized = normalize_label(label)
+    if not normalized:
+        return True
+    if normalized in STATE_LABELS:
+        return True
+    return any(phrase in normalized for phrase in ("coming soon", "logged in", "courses displayed", "available now"))
+
+
+def actionable_label(label: str) -> bool:
+    return not low_signal_label(label) and not state_like_label(label)
 
 
 def fallback_intent_label(transcript_excerpt: str, source_excerpt: str) -> str:
@@ -212,6 +238,8 @@ def keepable_window(
     has_direct_click_signal = analysis.click_detected or "login" in label or transcript_match >= 0.2
     if low_signal_label(window.label) and not has_direct_click_signal:
         return False
+    if state_like_label(window.label) and not (transcript_match >= 0.34 and analysis.click_detected):
+        return False
     return window.score >= MIN_WINDOW_SCORE
 
 
@@ -223,7 +251,7 @@ def canonical_window_rank(
 ) -> tuple[float, float, float, float, float]:
     tokens = intent_tokens(transcript_excerpt, source_excerpt)
     label_overlap = intent_overlap_score(window.label, tokens)
-    label_quality = 0.0 if low_signal_label(window.label) else min(len(normalize_label(window.label)) / 18.0, 1.0)
+    label_quality = 0.0 if not actionable_label(window.label) else min(len(normalize_label(window.label)) / 18.0, 1.0)
     click_bonus = 1.0 if (analysis.click_detected or window.event_type == "click") else 0.0
     compact_focus = 0.0 if window.focus_box is None else max(0.0, 0.12 - (window.focus_box.width * window.focus_box.height))
     return (window.score, click_bonus, label_overlap, label_quality, compact_focus)
@@ -236,6 +264,7 @@ def build_session_event(
     viewport_height: int,
 ) -> SessionEventRecord:
     x, y, width, height = denormalize_box(window.focus_box, viewport_width, viewport_height)
+    action_class = classify_action(window.event_type, window.label, window.transcript_excerpt, window.text)
     return SessionEventRecord(
         type=window.event_type,
         timestamp=window.timestamp,
@@ -256,6 +285,7 @@ def build_session_event(
             "scene_number": str(scene_number),
             "synthetic_selector": f"[data-launchify-scene='{scene_number}']",
             "score": f"{window.score:.2f}",
+            "action_class": action_class,
             "transcript_excerpt": window.transcript_excerpt[:180],
         },
     )
@@ -349,7 +379,8 @@ def denormalize_box(
 
 def ui_element_rank(element: UiElementRecord) -> tuple[float, float, float]:
     label = normalize_label(element.label)
-    label_quality = 0.0 if low_signal_label(label) else min(len(label) / 18.0, 1.0)
+    label_quality = 0.0 if not actionable_label(label) else min(len(label) / 18.0, 1.0)
     box_area = element.box.width * element.box.height if element.box is not None else 0.0
     compactness = max(0.0, 0.08 - abs(box_area - 0.08))
-    return (label_quality, element.confidence, compactness)
+    large_box_penalty = -0.2 if box_area >= 0.22 else 0.0
+    return (label_quality, element.confidence + large_box_penalty, compactness)

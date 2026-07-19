@@ -19,6 +19,7 @@ from app.models.projects import (
 from app.services.inferred_recording_support import (
     InteractionWindow,
     MIN_WINDOW_SCORE,
+    actionable_label,
     best_matching_ui_box,
     box_area,
     box_center_delta,
@@ -35,6 +36,7 @@ from app.services.inferred_recording_support import (
     merge_windows,
     normalize_label,
     select_distinct_windows,
+    state_like_label,
     transcript_window,
 )
 from app.services.guide_event_dedupe import synthetic_event_score
@@ -46,7 +48,7 @@ from app.services.visual_analysis import analysis_map
 DEFAULT_VIEWPORT = (1280, 720)
 MAX_EVENTS = 16
 MAX_EVENTS_PER_SCENE = 3
-CANDIDATE_EVIDENCE_THRESHOLD = 0.34
+CANDIDATE_EVIDENCE_THRESHOLD = 0.44
 LOCAL_TRANSCRIPT_PADDING_SECONDS = 2.2
 CLICK_WORDS = frozenset({"click", "tap", "press", "select", "choose", "continue", "open", "start", "launch", "login", "log in"})
 INPUT_WORDS = frozenset({"type", "enter", "write", "search", "email", "password", "name"})
@@ -146,7 +148,7 @@ def frame_is_candidate(
     evidence = max(frame.click_confidence, frame.diff_score, frame.importance_score, stop_score, label_change, intent)
     if evidence < CANDIDATE_EVIDENCE_THRESHOLD:
         return False
-    if action_phrase < 0.18 and max(frame.click_confidence, stop_score, intent) < 0.22 and visual_strength < 0.42:
+    if action_phrase < 0.24 and max(frame.click_confidence, stop_score, intent) < 0.28 and visual_strength < 0.48:
         return False
     return inferred_focus_box(frame, transcript_excerpt, source_excerpt) is not None
 def build_window(
@@ -162,7 +164,7 @@ def build_window(
     label = inferred_label(frame, analysis.visible_labels, transcript_excerpt, source_excerpt, focus_box)
     event_type = inferred_event_type(transcript_excerpt, source_excerpt, label, frame)
     score = interaction_score(analysis.frames, index, transcript_excerpt, source_excerpt)
-    if score < MIN_WINDOW_SCORE:
+    if score < MIN_WINDOW_SCORE or not semantically_valid_window(label, transcript_excerpt, source_excerpt, frame, score):
         return None
     return InteractionWindow(
         timestamp=round(frame.timestamp, 2),
@@ -188,7 +190,44 @@ def interaction_score(
         + label_change_score(frames, index) * 0.06
         + transcript_intent_score(transcript_excerpt, source_excerpt, frame) * 0.14
     )
-    return round(min(max(score, 0.0), 1.0), 3)
+    return round(min(max(score + semantic_bonus(transcript_excerpt, source_excerpt, frame), 0.0), 1.0), 3)
+
+
+def semantic_bonus(
+    transcript_excerpt: str,
+    source_excerpt: str,
+    frame: FrameSignalRecord,
+) -> float:
+    label_match = transcript_intent_score(transcript_excerpt, source_excerpt, frame)
+    action_phrase = action_phrase_score(transcript_excerpt, source_excerpt)
+    return round(label_match * 0.08 + action_phrase * 0.06, 3)
+
+
+def semantically_valid_window(
+    label: str,
+    transcript_excerpt: str,
+    source_excerpt: str,
+    frame: FrameSignalRecord,
+    score: float,
+) -> bool:
+    transcript_match = intent_overlap_score(label, intent_tokens(transcript_excerpt, source_excerpt))
+    strong_visual_signal = max(frame.click_confidence, frame.importance_score, frame.diff_score) >= 0.56
+    compact_focus = frame.click_target_box is not None and box_area(frame.click_target_box) <= 0.14
+    actionable = actionable_label(label)
+    if state_like_label(label):
+        return transcript_match >= 0.42 and strong_visual_signal and compact_focus and score >= 0.52
+    if not actionable:
+        return transcript_match >= 0.36 and strong_visual_signal and compact_focus and score >= 0.5
+    evidence_count = 0
+    if action_phrase_score(transcript_excerpt, source_excerpt) >= 0.24:
+        evidence_count += 1
+    if transcript_match >= 0.22:
+        evidence_count += 1
+    if compact_focus:
+        evidence_count += 1
+    if strong_visual_signal:
+        evidence_count += 1
+    return evidence_count >= 2
 def cursor_stop_score(frames: list[FrameSignalRecord], index: int) -> float:
     current = frames[index]
     if current.cursor_box is None or index == 0:
@@ -326,6 +365,8 @@ def inferred_label(
     lead = preferred[0]
     if low_signal_label(lead):
         return fallback or lead
+    if state_like_label(lead) and fallback and actionable_label(fallback):
+        return fallback
     if fallback and intent_overlap_score(lead, intent_tokens(transcript_excerpt, source_excerpt)) < 0.34:
         return fallback
     return lead

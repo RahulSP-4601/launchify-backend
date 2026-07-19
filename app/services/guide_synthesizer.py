@@ -19,6 +19,7 @@ from app.models.projects import (
     SessionEventRecord,
     TranscriptSegment,
 )
+from app.services.action_classifier import event_action_class
 from app.services.guide_event_dedupe import synthetic_duplicate_index, synthetic_event_score
 from app.services.event_grounding import normalize_event_timestamp
 from app.services.guide_compiler import compile_guide_from_clusters
@@ -391,6 +392,7 @@ def reconcile_grounded_guide(
             focus_label=label,
             highlight_label=highlight,
             source_excerpt=cluster.transcript_excerpt or label,
+            action_class=event_action_class(cluster.event),
         ))
         article_steps.append(ArticleStepRecord(
             step_index=cluster.index,
@@ -488,11 +490,10 @@ def launch_script_from_guide(guide: GuideRecord) -> LaunchScriptRecord:
         )
         for step in guide.steps
     ]
-    title_options = [guide.title, f"{guide.title} in minutes", f"How {guide.title.lower()}"]
     return LaunchScriptRecord(
         hook=guide.title,
         summary=guide.summary,
-        title_options=title_options[:3],
+        title_options=[guide.title, f"{guide.title} in minutes", f"How {guide.title.lower()}"][:3],
         scenes=scenes,
         cta="Turn rough recordings into polished launch videos.",
         notes=guide.generation_notes,

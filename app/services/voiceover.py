@@ -16,6 +16,8 @@ from app.models.projects import (
     GuideRecord,
     GuideStepRecord,
     LaunchScriptRecord,
+    RecordingSessionRecord,
+    TranscriptSegment,
     LaunchScriptScene,
     VoiceoverClipRecord,
     VoiceoverCueRecord,
@@ -24,7 +26,7 @@ from app.models.projects import (
     VoiceoverStatus,
 )
 from app.services.storage import download_asset_to_file, upload_audio_file
-from app.services.walkthrough_guardrails import guide_is_under_grounded
+from app.services.walkthrough_guardrails import guide_is_under_grounded, session_is_under_grounded
 
 logger = logging.getLogger(__name__)
 MAX_TTS_CHARACTERS = 1800
@@ -52,13 +54,15 @@ def build_voiceover(
     source_duration_seconds: float = 0.0,
     guide: GuideRecord | None = None,
     launch_script: LaunchScriptRecord | None = None,
+    recording_session: RecordingSessionRecord | None = None,
+    transcript: list[TranscriptSegment] | None = None,
 ) -> VoiceoverRecord:
     units = voiceover_units(guide=guide, launch_script=launch_script)
     script = " ".join(unit.text for unit in units).strip()
     base_clips = clip_records(units)
     if mode == "original":
         return script_only_voiceover(mode, "disabled", script, base_clips)
-    degraded = degraded_voiceover(guide, launch_script, mode, source_duration_seconds)
+    degraded = degraded_voiceover(guide, launch_script, mode, source_duration_seconds, recording_session, transcript or [])
     if degraded is not None:
         return degraded
     if not script:
@@ -89,8 +93,18 @@ def degraded_voiceover(
     launch_script: LaunchScriptRecord | None,
     mode: VoiceoverMode,
     source_duration_seconds: float,
+    recording_session: RecordingSessionRecord | None,
+    transcript: list[TranscriptSegment],
 ) -> VoiceoverRecord | None:
-    if guide is None or not guide_is_under_grounded(guide, source_duration_seconds):
+    weak_session = session_is_under_grounded(recording_session, transcript)
+    missing_grounded_session = (
+        guide is None
+        and launch_script is not None
+        and recording_session is None
+        and max((segment.end for segment in transcript), default=0.0) > 0.0
+    )
+    weak_guide = guide is not None and guide_is_under_grounded(guide, source_duration_seconds)
+    if not weak_guide and not weak_session and not missing_grounded_session:
         return None
     units = voiceover_units(guide=guide, launch_script=launch_script)
     return script_only_voiceover(mode, "script_only", " ".join(unit.text for unit in units).strip(), clip_records(units))
