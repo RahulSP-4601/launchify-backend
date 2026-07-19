@@ -18,6 +18,7 @@ from app.services.override_manager import apply_manual_overrides
 from app.services.refinement_loop import refine_edit_plan
 from app.services.voiceover import build_voiceover, refresh_voiceover_asset
 from app.services.voiceover_timeline import reconcile_edit_plan_to_voiceover
+from app.services.walkthrough_guardrails import recording_duration_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,7 @@ def voiceover_for_project(user_id: str, project: ProjectRecord, voiceover_mode: 
         user_id,
         project.id,
         voiceover_mode,
+        source_duration_seconds=recording_duration_seconds(project.recording_session, project.transcript),
         guide=project.guide,
         launch_script=project.launch_script,
     )

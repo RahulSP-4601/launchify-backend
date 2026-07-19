@@ -30,6 +30,7 @@ from app.services.scene_alignment import align_script_scenes
 from app.services.timing_sync import sync_edit_plan_timing
 from app.services.visual_analysis import analysis_map
 from app.services.visual_policy import ScenePolicy, build_scene_policy
+from app.services.walkthrough_windows import action_result_window
 
 
 def generate_edit_plan(
@@ -333,10 +334,7 @@ def grounded_focus_windows(
     primary_event: SessionEventRecord | None,
 ) -> tuple[float, float, float]:
     event_time = normalize_event_timestamp(primary_event.timestamp) if primary_event is not None else step.start
-    step_duration = max(step.end - step.start, 0.8)
-    focus_start = max(step.start, event_time - min(0.55, step_duration * 0.22))
-    focus_peak_end = min(step.end, event_time + min(1.2, step_duration * 0.34 + 0.45))
-    settle_end = min(step.end, focus_peak_end + min(0.9, step_duration * 0.22 + 0.18))
+    focus_start, focus_peak_end, settle_end = action_result_window(step.start, step.end, event_time, step.narration)
     if focus_peak_end - focus_start < 0.7:
         focus_peak_end = min(step.end, focus_start + 0.7)
     return focus_start, focus_peak_end, settle_end

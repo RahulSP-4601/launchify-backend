@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.models.projects import EditPlanHighlight, EditPlanZoom, FocusBox, LaunchScriptScene, TemplateConfigRecord
 from app.services.visual_policy import ScenePolicy
+from app.services.walkthrough_windows import action_result_window
 
 
 def build_motion_track(
@@ -108,10 +109,7 @@ def build_highlights(
 
 
 def highlight_window(start: float, end: float) -> tuple[float, float]:
-    duration = max(end - start, 0.8)
-    lead = min(0.42, duration * 0.18)
-    highlight_start = round(min(max(start + lead, start), end), 2)
-    highlight_end = round(min(end, highlight_start + min(1.35, duration * 0.42 + 0.35)), 2)
+    highlight_start, highlight_end, _settle_end = action_result_window(start, end, None, "")
     return highlight_start, highlight_end
 
 

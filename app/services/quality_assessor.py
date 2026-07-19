@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.models.projects import EditPlanRecord, IssueSeverity, ProjectRecord, QualityIssueRecord, QualityReportRecord
+from app.services.walkthrough_guardrails import guide_is_under_grounded, recording_duration_seconds
 
 
 def build_quality_report(project: ProjectRecord, edit_plan: EditPlanRecord) -> QualityReportRecord:
@@ -11,6 +12,7 @@ def build_quality_report(project: ProjectRecord, edit_plan: EditPlanRecord) -> Q
         *timing_issues(edit_plan),
         *visual_intelligence_issues(edit_plan),
         *transcript_issues(project, edit_plan),
+        *grounding_issues(project),
         *manual_review_issues(project),
     ]
     score = max(0, 100 - sum(issue_penalty(issue.severity) for issue in issues))
@@ -105,6 +107,21 @@ def manual_review_issues(project: ProjectRecord) -> list[QualityIssueRecord]:
                 )
             )
     return issues
+
+
+def grounding_issues(project: ProjectRecord) -> list[QualityIssueRecord]:
+    duration_seconds = recording_duration_seconds(project.recording_session, project.transcript)
+    if not guide_is_under_grounded(project.guide, duration_seconds):
+        return []
+    return [
+        issue(
+            "under-grounded-walkthrough",
+            "high",
+            None,
+            "The walkthrough structure is under-grounded for the source duration.",
+            "Recover more distinct actions before exporting voiceover, trimming, and focus motion.",
+        )
+    ]
 
 
 def issue_penalty(severity: str) -> int:

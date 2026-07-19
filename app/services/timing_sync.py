@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.models.projects import EditPlanHighlight, EditPlanRecord, EditPlanScene, EditPlanZoom, VisualSceneAnalysisRecord
 from app.services.inferred_recording_support import box_area
+from app.services.walkthrough_windows import action_result_window
 
 PRE_ZOOM_LEAD = 0.28
 HIGHLIGHT_DURATION = 1.2
@@ -58,13 +59,24 @@ def synced_zooms(
     scene: EditPlanScene,
     action_time: float | None,
 ) -> list[EditPlanZoom]:
-    if action_time is None:
+    if action_time is None or not scene.zooms:
         return scene.zooms
-    synced = []
+    original_start = min(zoom.start for zoom in scene.zooms)
+    original_end = max(zoom.end for zoom in scene.zooms)
+    target_start = action_time - PRE_ZOOM_LEAD
+    shift = target_start - original_start
+    shifted_start = original_start + shift
+    shifted_end = original_end + shift
+    if shifted_start < scene.start:
+        shift += scene.start - shifted_start
+    if shifted_end > scene.end:
+        shift -= shifted_end - scene.end
+    synced: list[EditPlanZoom] = []
     for zoom in scene.zooms:
-        duration = max(zoom.end - zoom.start, 0.5)
-        start = max(scene.start, action_time - PRE_ZOOM_LEAD)
-        end = min(scene.end, start + duration)
+        start = max(scene.start, zoom.start + shift)
+        end = min(scene.end, zoom.end + shift)
+        if end <= start:
+            end = min(scene.end, start + 0.5)
         synced.append(zoom.model_copy(update={"start": round(start, 2), "end": round(end, 2)}))
     return synced
 
@@ -77,8 +89,8 @@ def synced_highlights(
         return scene.highlights
     synced = []
     for highlight in scene.highlights:
-        start = max(scene.start, action_time - 0.05)
-        end = min(scene.end, start + HIGHLIGHT_DURATION)
+        start, end, _settle_end = action_result_window(scene.start, scene.end, action_time, scene.spoken_line)
+        end = min(scene.end, max(end, start + HIGHLIGHT_DURATION * 0.75))
         synced.append(highlight.model_copy(update={"start": round(start, 2), "end": round(end, 2)}))
     return synced
 

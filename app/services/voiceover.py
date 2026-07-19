@@ -21,8 +21,10 @@ from app.models.projects import (
     VoiceoverCueRecord,
     VoiceoverMode,
     VoiceoverRecord,
+    VoiceoverStatus,
 )
 from app.services.storage import download_asset_to_file, upload_audio_file
+from app.services.walkthrough_guardrails import guide_is_under_grounded
 
 logger = logging.getLogger(__name__)
 MAX_TTS_CHARACTERS = 1800
@@ -47,6 +49,7 @@ def build_voiceover(
     project_id: str,
     mode: VoiceoverMode,
     *,
+    source_duration_seconds: float = 0.0,
     guide: GuideRecord | None = None,
     launch_script: LaunchScriptRecord | None = None,
 ) -> VoiceoverRecord:
@@ -54,27 +57,14 @@ def build_voiceover(
     script = " ".join(unit.text for unit in units).strip()
     base_clips = clip_records(units)
     if mode == "original":
-        cues = cue_track(base_clips)
-        return VoiceoverRecord(
-            mode=mode,
-            status="disabled",
-            script=script,
-            cues=cues,
-            clips=base_clips,
-            duration_seconds=round(cues[-1].end, 2) if cues else 0.0,
-        )
+        return script_only_voiceover(mode, "disabled", script, base_clips)
+    degraded = degraded_voiceover(guide, launch_script, mode, source_duration_seconds)
+    if degraded is not None:
+        return degraded
     if not script:
         return VoiceoverRecord(mode=mode, status="disabled", script="", cues=[], clips=[])
     if not get_settings().deepgram_api_key:
-        cues = cue_track(base_clips)
-        return VoiceoverRecord(
-            mode=mode,
-            status="script_only",
-            script=script,
-            cues=cues,
-            clips=base_clips,
-            duration_seconds=round(cues[-1].end, 2) if cues else 0.0,
-        )
+        return script_only_voiceover(mode, "script_only", script, base_clips)
     generated = synthesize_voiceover_clips(user_id, project_id, units)
     merged_audio_asset = merged_voiceover_asset(user_id, project_id, generated)
     clips = [item.clip for item in generated]
@@ -94,6 +84,35 @@ def build_voiceover(
     )
 
 
+def degraded_voiceover(
+    guide: GuideRecord | None,
+    launch_script: LaunchScriptRecord | None,
+    mode: VoiceoverMode,
+    source_duration_seconds: float,
+) -> VoiceoverRecord | None:
+    if guide is None or not guide_is_under_grounded(guide, source_duration_seconds):
+        return None
+    units = voiceover_units(guide=guide, launch_script=launch_script)
+    return script_only_voiceover(mode, "script_only", " ".join(unit.text for unit in units).strip(), clip_records(units))
+
+
+def script_only_voiceover(
+    mode: VoiceoverMode,
+    status: VoiceoverStatus,
+    script: str,
+    clips: list[VoiceoverClipRecord],
+) -> VoiceoverRecord:
+    cues = cue_track(clips)
+    return VoiceoverRecord(
+        mode=mode,
+        status=status,
+        script=script,
+        cues=cues,
+        clips=clips,
+        duration_seconds=round(cues[-1].end, 2) if cues else 0.0,
+    )
+
+
 def voiceover_units(
     *,
     guide: GuideRecord | None,
@@ -104,7 +123,6 @@ def voiceover_units(
     if launch_script is None:
         return []
     return units_from_script(launch_script)
-
 
 def unit_from_step(step: GuideStepRecord) -> VoiceoverUnit:
     text = normalized_voice_line(step.narration)

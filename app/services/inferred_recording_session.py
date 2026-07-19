@@ -26,6 +26,7 @@ from app.services.inferred_recording_support import (
     canonical_scene_windows,
     contains_any,
     dedupe_events,
+    duplicate_event,
     fallback_intent_label,
     intent_overlap_score,
     intent_tokens,
@@ -36,11 +37,15 @@ from app.services.inferred_recording_support import (
     select_distinct_windows,
     transcript_window,
 )
+from app.services.guide_event_dedupe import synthetic_event_score
+from app.services.inferred_action_recovery import needs_action_recovery, recover_events_from_analyses
+from app.services.inferred_action_selection import SceneEventCandidate, select_global_events
+from app.services.grounding_diagnostics import recording_diagnostics
 from app.services.visual_analysis import analysis_map
 
 DEFAULT_VIEWPORT = (1280, 720)
 MAX_EVENTS = 16
-MAX_EVENTS_PER_SCENE = 1
+MAX_EVENTS_PER_SCENE = 3
 CANDIDATE_EVIDENCE_THRESHOLD = 0.34
 LOCAL_TRANSCRIPT_PADDING_SECONDS = 2.2
 CLICK_WORDS = frozenset({"click", "tap", "press", "select", "choose", "continue", "open", "start", "launch", "login", "log in"})
@@ -63,6 +68,7 @@ def infer_recording_session(
         viewport_width=viewport_width,
         viewport_height=viewport_height,
         page_title=project.product_name,
+        grounding_diagnostics=recording_diagnostics(events, transcript, list(analyses_by_scene.values())),
         events=events[:MAX_EVENTS],
         started_at="0.0",
         ended_at=f"{max((segment.end for segment in transcript), default=0.0):.2f}",
@@ -74,7 +80,7 @@ def build_inferred_events(
     viewport_width: int,
     viewport_height: int,
 ) -> list[SessionEventRecord]:
-    inferred_events: list[SessionEventRecord] = []
+    inferred_events: list[SceneEventCandidate] = []
     source_excerpt_by_scene = {scene.scene_number: scene.source_excerpt for scene in launch_script.scenes}
     for scene in launch_script.scenes:
         analysis = analyses_by_scene.get(scene.scene_number)
@@ -84,10 +90,15 @@ def build_inferred_events(
         transcript_excerpt = transcript_window(transcript, analysis.start, analysis.end)
         windows = infer_scene_windows(analysis, transcript, source_excerpt)
         inferred_events.extend(
-            build_session_event(window, scene.scene_number, viewport_width, viewport_height)
+            SceneEventCandidate(scene.scene_number, build_session_event(window, scene.scene_number, viewport_width, viewport_height))
             for window in canonical_scene_windows(windows, analysis, transcript_excerpt, scene.source_excerpt)[:MAX_EVENTS_PER_SCENE]
         )
-    return dedupe_events(sorted(inferred_events, key=lambda item: item.timestamp))
+    deduped = dedupe_events(sorted((candidate.event for candidate in inferred_events), key=lambda item: item.timestamp))
+    if needs_action_recovery(deduped, transcript):
+        recovered = recover_events_from_analyses(transcript, list(analyses_by_scene.values()), viewport_width, viewport_height)
+        deduped = dedupe_events(sorted([*deduped, *recovered], key=lambda item: item.timestamp))
+    candidates = [SceneEventCandidate(int(event.metadata.get("scene_number", "0") or 0), event) for event in deduped]
+    return select_global_events(candidates)
 
 
 def infer_scene_windows(
@@ -376,6 +387,8 @@ def label_rank(
         source_weight + proximity,
         box_compactness,
     )
+
+
 
 
 def video_dimensions(video_path: Path) -> tuple[int, int]:

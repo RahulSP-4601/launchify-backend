@@ -25,6 +25,7 @@ from app.services.storage import download_asset_to_file
 from app.services.timing import timed_stage
 from app.services.transcription import transcribe_media_file
 from app.services.visual_analysis import analyze_video_scenes, visual_analysis_available
+from app.services.walkthrough_guardrails import guide_is_under_grounded, recording_duration_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +126,7 @@ def save_scripting_step(
         guide = generate_grounded_guide_if_available(current_project, transcript)
         if guide is None:
             guide = generate_inferred_grounded_guide(current_project, job, asset_file, transcript)
+        guide = acceptable_grounded_guide(guide, current_project, transcript, job.project_id)
     except Exception:
         logger.exception(
             "Grounded guide generation failed for project %s. Falling back to standard script generation.",
@@ -134,6 +136,25 @@ def save_scripting_step(
     launch_script = persist_guide_or_script(current_project, job, guide, fallback_script)
     project_store.save_launch_script(job.user_id, job.project_id, launch_script, asset_path=job.asset_path)
     return launch_script
+
+
+def acceptable_grounded_guide(
+    guide: tuple[GuideRecord, LaunchScriptRecord] | None,
+    project: ProjectRecord,
+    transcript: list[TranscriptSegment],
+    project_id: str,
+) -> tuple[GuideRecord, LaunchScriptRecord] | None:
+    if guide is None:
+        return None
+    duration_seconds = recording_duration_seconds(project.recording_session, transcript)
+    if not guide_is_under_grounded(guide[0], duration_seconds):
+        return guide
+    logger.warning(
+        "Grounded guide for project %s is under-grounded for a %.2fs walkthrough; falling back to inferred multi-scene script.",
+        project_id,
+        duration_seconds,
+    )
+    return None
 
 
 def persist_guide_or_script(

@@ -21,7 +21,10 @@ from app.models.projects import (
 )
 from app.services.guide_event_dedupe import synthetic_duplicate_index, synthetic_event_score
 from app.services.event_grounding import normalize_event_timestamp
+from app.services.guide_compiler import compile_guide_from_clusters
+from app.services.guide_recovery import needs_cluster_recovery, recovered_step_seeds
 from app.services.script_writer import describe_transport_error, extract_message_content, openai_headers
+from app.services.walkthrough_guardrails import guide_is_under_grounded, recording_duration_seconds
 
 MEANINGFUL_EVENT_TYPES = frozenset({"click", "input", "navigation", "keypress", "keydown", "focus", "custom"})
 CLUSTER_GAP_SECONDS = 2.5
@@ -49,11 +52,13 @@ def synthesize_grounded_guide(
     if not normalized_events:
         raise RuntimeError("Grounded session capture did not include any actionable events.")
     clusters = cluster_events(normalized_events, transcript)
+    if needs_cluster_recovery(normalized_events, transcript):
+        recovered = recovered_clusters(normalized_events, transcript)
+        if len(recovered) > len(clusters):
+            clusters = recovered
     guide = request_grounded_guide(project, transcript, session, clusters)
     launch_script = launch_script_from_guide(guide)
     return guide, launch_script
-
-
 def require_session(recording_session: RecordingSessionRecord | None) -> RecordingSessionRecord:
     if recording_session is None or not recording_session.events:
         raise RuntimeError("Recording session with captured events is required for grounded guide synthesis.")
@@ -128,10 +133,48 @@ def cluster_events(
     return clusters
 
 
+def recovered_clusters(
+    events: Sequence[SessionEventRecord],
+    transcript: Sequence[TranscriptSegment],
+) -> list[EventCluster]:
+    seeds = recovered_step_seeds(transcript)[:MAX_STEP_COUNT]
+    if not seeds or not events:
+        return []
+    available_events = list(events)
+    clusters: list[EventCluster] = []
+    for index, seed in enumerate(seeds, start=1):
+        matched = nearest_event_for_seed(seed.start, seed.end, available_events)
+        if matched is None:
+            continue
+        available_events.remove(matched)
+        clusters.append(
+            EventCluster(
+                index=index,
+                start=round(seed.start, 2),
+                end=round(max(seed.end, seed.start + MIN_STEP_DURATION_SECONDS), 2),
+                event=matched,
+                transcript_excerpt=seed.transcript_excerpt,
+            )
+        )
+    return clusters
+
+
+def nearest_event_for_seed(
+    start: float,
+    end: float,
+    events: Sequence[SessionEventRecord],
+) -> SessionEventRecord | None:
+    if not events:
+        return None
+    midpoint = (start + end) / 2
+    return min(events, key=lambda event: event_seed_distance(event, midpoint))
+
+
+def event_seed_distance(event: SessionEventRecord, midpoint: float) -> float:
+    return abs(normalize_event_timestamp(event.timestamp) - midpoint)
 def excerpt_for_window(transcript: Sequence[TranscriptSegment], start: float, end: float) -> str:
     parts = [segment.text.strip() for segment in transcript if segment.end >= start and segment.start <= end and segment.text.strip()]
     return " ".join(parts)
-
 
 def transcript_window_end(
     transcript: Sequence[TranscriptSegment],
@@ -146,7 +189,6 @@ def transcript_window_end(
     if not overlapping:
         return candidate_end
     return min(overlapping[-1].end + LEAD_OUT_SECONDS, (candidate_end or overlapping[-1].end + LEAD_OUT_SECONDS))
-
 
 def request_grounded_guide(
     project: ProjectRecord,
@@ -191,8 +233,10 @@ def request_grounded_guide(
         guide = GuideRecord.model_validate(parse_openai_guide_payload(payload))
     except ValidationError as exc:
         raise RuntimeError("OpenAI returned an invalid grounded guide structure.") from exc
-    return reconcile_grounded_guide(guide, clusters, session)
-
+    reconciled = reconcile_grounded_guide(guide, clusters, session)
+    if guide_is_under_grounded(reconciled, recording_duration_seconds(session, transcript)):
+        return fallback_guide(project, clusters, session)
+    return reconciled
 
 def grounded_system_prompt() -> str:
     return (
@@ -313,45 +357,7 @@ def fallback_guide(
     clusters: Sequence[EventCluster],
     session: RecordingSessionRecord | None = None,
 ) -> GuideRecord:
-    ranges = contextual_cluster_ranges(clusters, session)
-    steps: list[GuideStepRecord] = []
-    article_steps: list[ArticleStepRecord] = []
-    for cluster, (step_start, step_end) in zip(clusters, ranges, strict=False):
-        label = cluster.event.target.label or cluster.event.target.text or readable_selector(cluster.event.target.selector)
-        instruction = build_instruction(cluster.event, label)
-        narration = cluster.transcript_excerpt or instruction
-        on_screen_text = label or instruction
-        steps.append(
-            GuideStepRecord(
-                step_index=cluster.index,
-                title=label or f"Step {cluster.index}",
-                instruction=instruction,
-                narration=narration,
-                on_screen_text=on_screen_text,
-                start=step_start,
-                end=step_end,
-                event_type=cluster.event.type,
-                focus_selector=cluster.event.target.selector,
-                focus_label=label,
-                highlight_label=label[:48],
-                source_excerpt=cluster.transcript_excerpt or label,
-            )
-        )
-        article_steps.append(
-            ArticleStepRecord(
-                step_index=cluster.index,
-                title=label or f"Step {cluster.index}",
-                body=instruction,
-            )
-        )
-    return GuideRecord(
-        title=f"{project.product_name}: grounded walkthrough",
-        summary=f"A grounded walkthrough for {project.product_name} generated from recorded user actions.",
-        steps=steps,
-        article_steps=article_steps,
-        generation_notes=["Fallback guide used because OpenAI grounded synthesis was unavailable."],
-    )
-
+    return compile_guide_from_clusters(project, clusters, session, "Fallback guide used because OpenAI grounded synthesis was unavailable.")
 
 def reconcile_grounded_guide(
     guide: GuideRecord,

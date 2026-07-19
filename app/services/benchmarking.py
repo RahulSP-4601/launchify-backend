@@ -7,6 +7,7 @@ from app.models.projects import (
     ProjectRecord,
     QualityReportRecord,
 )
+from app.services.walkthrough_guardrails import guide_is_under_grounded, recording_duration_seconds
 
 
 def build_benchmark_report(
@@ -19,6 +20,7 @@ def build_benchmark_report(
         metric("caption_balance", caption_balance(edit_plan), "Share of longer captions balanced into readable lines."),
         metric("motion_confidence", motion_confidence(edit_plan), "Average confidence of approved zoom moves."),
         metric("timing_sync", timing_sync_score(edit_plan), "Share of focus scenes with detected action timing."),
+        metric("grounding_health", grounding_health(project), "Whether the walkthrough structure is sufficiently grounded for the source duration."),
         metric("review_debt", review_debt_score(project), "How much unresolved manual review debt is still present."),
         metric("quality_gate", quality_gate_score(quality_report), "Quality-report readiness after review and refinement."),
     ]
@@ -71,6 +73,11 @@ def review_debt_score(project: ProjectRecord) -> float:
     noted_scenes = sum(1 for scene in project.manual_overrides.scenes if scene.notes.strip())
     total_scenes = len(project.manual_overrides.scenes)
     return max(0.0, 1 - noted_scenes / max(total_scenes, 1))
+
+
+def grounding_health(project: ProjectRecord) -> float:
+    duration_seconds = recording_duration_seconds(project.recording_session, project.transcript)
+    return 0.0 if guide_is_under_grounded(project.guide, duration_seconds) else 1.0
 
 
 def quality_gate_score(quality_report: QualityReportRecord) -> float:

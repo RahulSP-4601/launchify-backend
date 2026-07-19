@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.models.projects import EditPlanScene, ProjectRecord
+from app.services.walkthrough_guardrails import guide_is_under_grounded, recording_duration_seconds
+from app.services.walkthrough_windows import step_clip_window
 
 MIN_CLIP_DURATION_SECONDS = 0.45
 CLIP_PADDING_SECONDS = 0.1
@@ -25,6 +27,8 @@ class RenderClip:
 def highlight_clips(project: ProjectRecord) -> list[RenderClip]:
     if project.edit_plan is None:
         return []
+    if guide_is_under_grounded(project.guide, recording_duration_seconds(project.recording_session, project.transcript)):
+        return contextual_highlight_clips(project)
     if prefer_walkthrough_clips(project):
         return walkthrough_clips(project)
     clips = action_highlight_clips(project)
@@ -117,11 +121,9 @@ def walkthrough_bounds(
     source_start: float,
     source_end: float,
 ) -> tuple[float, float]:
-    clip_start = max(previous_end, source_start, scene.start)
-    clip_end = min(source_end, max(scene.end, clip_start + MIN_WALKTHROUGH_CLIP_SECONDS))
-    if scene.action_timestamp is not None:
-        clip_start = max(previous_end, source_start, min(scene.start, scene.action_timestamp - WALKTHROUGH_PRE_ACTION_SECONDS))
-        clip_end = min(source_end, max(scene.end, scene.action_timestamp + WALKTHROUGH_POST_ACTION_SECONDS))
+    clip_start, clip_end = step_clip_window(scene)
+    clip_start = max(previous_end, source_start, clip_start)
+    clip_end = min(source_end, max(clip_end, clip_start + MIN_WALKTHROUGH_CLIP_SECONDS))
     if next_scene is not None:
         clip_end = min(clip_end, contextual_scene_end(scene, next_scene, source_end))
     return clip_start, clip_end

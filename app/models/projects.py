@@ -70,6 +70,7 @@ class RecordingSessionRecord(BaseModel):
     viewport_height: int = 0
     page_title: str = ""
     page_url: str = ""
+    grounding_diagnostics: dict[str, str] = Field(default_factory=dict)
     events: list[SessionEventRecord] = Field(default_factory=list)
 
 

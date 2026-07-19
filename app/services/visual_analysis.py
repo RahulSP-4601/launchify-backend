@@ -10,6 +10,7 @@ from app.core.config import Settings, get_settings
 from app.models.projects import FrameSignalRecord, LaunchScriptRecord, LaunchScriptScene, TranscriptSegment, VisualSceneAnalysisRecord
 from app.services.ocr_pipeline import OcrFrameResult, extract_ocr_labels
 from app.services.scene_alignment import align_script_scenes
+from app.services.lightweight_visual_hunt import lightweight_scene_analysis
 from app.services.video_frames import ExtractedFrame
 from app.services.video_frames import extract_frames_for_scene
 from app.services.vision_analyzer import analyze_scene_frames
@@ -25,18 +26,43 @@ def analyze_video_scenes(
 ) -> list[VisualSceneAnalysisRecord]:
     settings = get_settings()
     ranges = scene_ranges or align_script_scenes(launch_script.scenes, transcript)
+    prioritized = prioritized_scene_inputs(launch_script.scenes, ranges, transcript)
     analyses: list[VisualSceneAnalysisRecord] = []
     started_at = monotonic()
+    total_scenes = len(launch_script.scenes)
     with TemporaryDirectory(prefix="launchify-vision-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
-        for scene, scene_range in zip(launch_script.scenes, ranges, strict=True):
+        for index, (scene, scene_range) in enumerate(prioritized, start=1):
             elapsed = monotonic() - started_at
             if visual_analysis_budget_reached(elapsed, settings.visual_analysis_total_budget_seconds):
-                break
-            analysis = analyze_scene(video_path, temp_dir, scene, scene_range, elapsed, settings)
+                analyses.append(lightweight_scene_analysis(video_path, temp_dir, scene, scene_range, settings))
+                continue
+            analysis = analyze_scene(video_path, temp_dir, scene, scene_range, elapsed, settings, scene_budget_frames(index, total_scenes, settings))
             if analysis is not None:
                 analyses.append(analysis)
     return analyses
+
+
+def prioritized_scene_inputs(
+    scenes: list[LaunchScriptScene],
+    ranges: list[tuple[float, float]],
+    transcript: list[TranscriptSegment],
+) -> list[tuple[LaunchScriptScene, tuple[float, float]]]:
+    paired = list(zip(scenes, ranges, strict=True))
+    return sorted(paired, key=lambda item: scene_priority(item[0], item[1], transcript), reverse=True)
+
+
+def scene_priority(
+    scene: LaunchScriptScene,
+    scene_range: tuple[float, float],
+    transcript: list[TranscriptSegment],
+) -> tuple[float, float, float]:
+    transcript_text = " ".join(segment.text for segment in transcript if segment.end >= scene_range[0] and segment.start <= scene_range[1])
+    action_keywords = ("click", "select", "open", "type", "enter", "continue", "login", "course")
+    action_hits = sum(1 for keyword in action_keywords if keyword in transcript_text.lower() or keyword in scene.spoken_line.lower())
+    duration = max(scene_range[1] - scene_range[0], 0.0)
+    early_bonus = max(0.0, 1.0 - scene_range[0] / 60.0)
+    return float(action_hits), early_bonus, duration
 
 
 def analysis_map(analyses: list[VisualSceneAnalysisRecord]) -> dict[int, VisualSceneAnalysisRecord]:
@@ -60,6 +86,7 @@ def analyze_scene(
     scene_range: tuple[float, float],
     elapsed: float,
     settings: Settings,
+    frame_budget: int,
 ) -> VisualSceneAnalysisRecord | None:
     scene_output_dir = temp_dir / f"scene-{scene.scene_number}"
     scene_output_dir.mkdir(parents=True, exist_ok=True)
@@ -77,7 +104,7 @@ def analyze_scene(
             scene.scene_number,
             scene_range,
             scene_output_dir,
-            frame_budget=settings.visual_analysis_frames_per_scene,
+            frame_budget=frame_budget,
             frame_width=settings.visual_analysis_frame_width,
             jpeg_quality=settings.visual_analysis_jpeg_quality,
         )
@@ -98,6 +125,22 @@ def analyze_scene(
             exc,
         )
         return local_fallback_analysis(scene, scene_range, extracted_frames, ocr_labels)
+
+
+def scene_budget_frames(scene_index: int, total_scenes: int, settings: Settings) -> int:
+    if total_scenes <= 0:
+        return settings.visual_analysis_frames_per_scene
+    adaptive_budget = max(settings.visual_analysis_frames_per_scene // 2, 4)
+    if total_scenes <= 4 or scene_index <= 2:
+        return settings.visual_analysis_frames_per_scene
+    return adaptive_budget
+
+
+def budget_fallback_analysis(
+    scene: LaunchScriptScene,
+    scene_range: tuple[float, float],
+) -> VisualSceneAnalysisRecord:
+    return local_fallback_analysis(scene, scene_range, [], {})
 
 
 def visual_analysis_available() -> bool:
