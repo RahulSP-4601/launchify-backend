@@ -94,4 +94,14 @@ def normalized_line(line: str) -> str:
 
 
 def valid_line(line: str) -> bool:
-    return len(line) >= 2 and any(character.isalpha() for character in line)
+    if len(line) < 2 or not any(character.isalpha() for character in line):
+        return False
+    lowered = line.lower()
+    tokens = [token for token in lowered.replace("/", " ").split() if token]
+    if not tokens:
+        return False
+    if len(tokens) == 1 and (tokens[0].isdigit() or len(tokens[0]) <= 3):
+        return False
+    if lowered in {"one", "two", "three", "four", "five", "free", "learn", "start"}:
+        return False
+    return any(character.isalpha() for character in line)

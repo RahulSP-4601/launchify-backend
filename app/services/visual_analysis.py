@@ -92,12 +92,8 @@ def analyze_scene(
     scene_output_dir.mkdir(parents=True, exist_ok=True)
     extracted_frames: list[ExtractedFrame] = []
     ocr_labels: dict[float, OcrFrameResult] = {}
-    logger.info(
-        "Visual analysis: scene %s started (elapsed %.2fs, budget %ss).",
-        scene.scene_number,
-        elapsed,
-        settings.visual_analysis_total_budget_seconds,
-    )
+    scene_started_at = monotonic()
+    logger.info("Visual analysis: scene %s started (elapsed %.2fs, budget %ss).", scene.scene_number, elapsed, settings.visual_analysis_total_budget_seconds)
     try:
         extracted_frames = extract_frames_for_scene(
             video_path,
@@ -109,6 +105,8 @@ def analyze_scene(
             jpeg_quality=settings.visual_analysis_jpeg_quality,
         )
         ocr_labels = extract_ocr_labels(extracted_frames)
+        if should_fallback_after_extraction(scene_started_at, settings, scene_range, extracted_frames, ocr_labels):
+            return local_fallback_analysis(scene, scene_range, extracted_frames, ocr_labels)
         analysis = analyze_scene_frames(
             scene,
             scene_range,
@@ -130,10 +128,29 @@ def analyze_scene(
 def scene_budget_frames(scene_index: int, total_scenes: int, settings: Settings) -> int:
     if total_scenes <= 0:
         return settings.visual_analysis_frames_per_scene
-    adaptive_budget = max(settings.visual_analysis_frames_per_scene // 2, 4)
+    adaptive_budget = max(settings.visual_analysis_frames_per_scene // 2, 2)
     if total_scenes <= 4 or scene_index <= 2:
         return settings.visual_analysis_frames_per_scene
     return adaptive_budget
+
+
+def scene_took_too_long(scene_started_at: float, settings: Settings) -> bool:
+    return monotonic() - scene_started_at >= max(settings.visual_analysis_scene_timeout_seconds * 0.45, 8.0)
+
+
+def should_fallback_after_extraction(
+    scene_started_at: float,
+    settings: Settings,
+    scene_range: tuple[float, float],
+    extracted_frames: list[ExtractedFrame],
+    ocr_labels: dict[float, OcrFrameResult],
+) -> bool:
+    if not scene_took_too_long(scene_started_at, settings):
+        return False
+    if not extracted_frames:
+        return True
+    populated_ocr = sum(1 for result in ocr_labels.values() if result.labels)
+    return populated_ocr == 0
 
 
 def budget_fallback_analysis(

@@ -52,6 +52,7 @@ def extract_frames_for_scene(
 ) -> list[ExtractedFrame]:
     extracted_frames: list[ExtractedFrame] = []
     safe_scene_range = normalize_scene_range(video_path, scene_range)
+    failed_attempts = 0
     for frame_index, frame_time in enumerate(sample_times(*safe_scene_range, frame_budget=frame_budget), start=1):
         try:
             image_path = extract_frame(
@@ -72,6 +73,9 @@ def extract_frames_for_scene(
                 video_path.name,
                 exc,
             )
+            failed_attempts += 1
+            if failed_attempts >= 2 and not extracted_frames:
+                break
             continue
         extracted_frames.append(ExtractedFrame(timestamp=frame_time, image_path=image_path))
     if not extracted_frames:
@@ -116,23 +120,26 @@ def extract_frame(
     frame_width: int | None = None,
     jpeg_quality: int = 2,
 ) -> Path:
-    output_path = output_dir / f"scene-{scene_number}-frame-{frame_index}.jpg"
+    output_path = output_dir / f"scene-{scene_number}-frame-{frame_index}.png"
     extraction_error: RuntimeError | None = None
+    near_end = timestamp >= max(video_duration_seconds(video_path) - 3.0, 0.0)
     for candidate_timestamp in candidate_timestamps(timestamp):
         output_path.unlink(missing_ok=True)
-        try:
-            run_ffmpeg_capture(
-                video_path,
-                output_path,
-                candidate_timestamp,
-                frame_width=frame_width,
-                jpeg_quality=jpeg_quality,
-            )
-        except RuntimeError as exc:
-            extraction_error = exc
-            continue
-        if output_path.exists() and output_path.stat().st_size > 0:
-            return output_path
+        for seek_mode in (("input", "output") if near_end else ("input",)):
+            try:
+                run_ffmpeg_capture(
+                    video_path,
+                    output_path,
+                    candidate_timestamp,
+                    frame_width=frame_width,
+                    jpeg_quality=jpeg_quality,
+                    seek_mode=seek_mode,
+                )
+            except RuntimeError as exc:
+                extraction_error = exc
+                continue
+            if output_path.exists() and output_path.stat().st_size > 0:
+                return output_path
     if extraction_error is not None:
         raise extraction_error
     raise RuntimeError("FFmpeg did not write a usable frame image.")
@@ -145,8 +152,11 @@ def run_ffmpeg_capture(
     *,
     frame_width: int | None,
     jpeg_quality: int,
+    seek_mode: str,
 ) -> None:
-    command = build_ffmpeg_command(video_path, output_path, timestamp, frame_width=frame_width, jpeg_quality=jpeg_quality)
+    command = build_ffmpeg_command(
+        video_path, output_path, timestamp, frame_width=frame_width, jpeg_quality=jpeg_quality, seek_mode=seek_mode,
+    )
     try:
         subprocess.run(
             command,
@@ -167,7 +177,7 @@ def run_ffmpeg_capture(
 
 
 def candidate_timestamps(timestamp: float) -> list[float]:
-    offsets = (0.0, 0.08, 0.16, 0.28, 0.4, 0.6)
+    offsets = (0.0, 0.12, 0.32)
     candidates: list[float] = []
     for offset in offsets:
         candidate = round(max(timestamp - offset, 0.0), 2)
@@ -183,24 +193,40 @@ def build_ffmpeg_command(
     *,
     frame_width: int | None = None,
     jpeg_quality: int = 2,
+    seek_mode: str = "input",
 ) -> list[str]:
     settings = get_settings()
     ffmpeg_binary = settings.ffmpeg_binary
+    filter_parts = []
+    if frame_width is not None:
+        filter_parts.append(f"scale='min(iw,{frame_width})':-2")
+    filter_parts.append("format=rgb24")
     command = [
         ffmpeg_binary,
         "-y",
-        "-ss",
-        str(timestamp),
-        "-i",
-        str(video_path),
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-threads",
+        "1",
+    ]
+    if seek_mode == "input":
+        command.extend(["-ss", str(timestamp), "-i", str(video_path)])
+    else:
+        command.extend(["-i", str(video_path), "-ss", str(timestamp)])
+    command.extend([
         "-frames:v",
         "1",
-        "-q:v",
-        str(jpeg_quality),
-    ]
-    if frame_width is not None:
-        command.extend(["-vf", f"scale='min(iw,{frame_width})':-2"])
-    command.append(str(output_path))
+        "-an",
+        "-sn",
+        "-vf",
+        ",".join(filter_parts),
+        "-fps_mode",
+        "passthrough",
+        "-c:v",
+        "png",
+        str(output_path),
+    ])
     return command
 
 

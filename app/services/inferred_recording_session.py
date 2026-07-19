@@ -41,8 +41,19 @@ from app.services.inferred_recording_support import (
 )
 from app.services.guide_event_dedupe import synthetic_event_score
 from app.services.inferred_action_recovery import needs_action_recovery, recover_events_from_analyses
-from app.services.inferred_action_selection import SceneEventCandidate, select_global_events
+from app.services.inferred_action_selection import SceneEventCandidate
+from app.services.inferred_grounding_policy import (
+    MIN_CANDIDATE_SIGNAL_COUNT,
+    candidate_signal_count,
+    plausible_focus_box,
+    select_global_event_candidates,
+    should_retry_strict_recovery,
+)
 from app.services.grounding_diagnostics import recording_diagnostics
+from app.services.inferred_label_selection import inferred_target_selection
+from app.services.action_sequence_metrics import focused_excerpt, sequence_action_score, valid_action_outcome
+from app.services.event_flow_refinement import refine_event_flow
+from app.services.flow_chain_selector import select_flow_chains
 from app.services.visual_analysis import analysis_map
 
 DEFAULT_VIEWPORT = (1280, 720)
@@ -99,8 +110,16 @@ def build_inferred_events(
     if needs_action_recovery(deduped, transcript):
         recovered = recover_events_from_analyses(transcript, list(analyses_by_scene.values()), viewport_width, viewport_height)
         deduped = dedupe_events(sorted([*deduped, *recovered], key=lambda item: item.timestamp))
-    candidates = [SceneEventCandidate(int(event.metadata.get("scene_number", "0") or 0), event) for event in deduped]
-    return select_global_events(candidates)
+    deduped = select_flow_chains(deduped, launch_script.scenes, analyses_by_scene)
+    selected = select_global_event_candidates(deduped)
+    if should_retry_strict_recovery(selected, transcript):
+        strict_recovered = recover_events_from_analyses(
+            transcript, list(analyses_by_scene.values()), viewport_width, viewport_height, strict=True,
+        )
+        retried = dedupe_events(sorted([*deduped, *strict_recovered], key=lambda item: item.timestamp))
+        retried = select_flow_chains(retried, launch_script.scenes, analyses_by_scene)
+        selected = select_global_event_candidates(retried)
+    return refine_event_flow(selected, launch_script.scenes, analyses_by_scene)
 
 
 def infer_scene_windows(
@@ -129,8 +148,8 @@ def local_transcript_excerpt(
     timestamp = analysis.frames[index].timestamp
     start = max(analysis.start, timestamp - LOCAL_TRANSCRIPT_PADDING_SECONDS)
     end = min(analysis.end, timestamp + LOCAL_TRANSCRIPT_PADDING_SECONDS)
-    excerpt = transcript_window(transcript, start, end)
-    return excerpt or transcript_window(transcript, analysis.start, analysis.end)
+    excerpt = transcript_window(transcript, start, end) or transcript_window(transcript, analysis.start, analysis.end)
+    return focused_excerpt(excerpt, analysis, index)
 
 
 def frame_is_candidate(
@@ -140,17 +159,25 @@ def frame_is_candidate(
     source_excerpt: str,
 ) -> bool:
     frame = frames[index]
+    focus_box = inferred_focus_box(frame, transcript_excerpt, source_excerpt)
+    if focus_box is None or not plausible_focus_box(focus_box):
+        return False
     stop_score = cursor_stop_score(frames, index)
     label_change = label_change_score(frames, index)
     intent = transcript_intent_score(transcript_excerpt, source_excerpt, frame)
     action_phrase = action_phrase_score(transcript_excerpt, source_excerpt)
+    sequence_score = sequence_action_score(frames, index, focus_box)
     visual_strength = max(frame.click_confidence, frame.diff_score, frame.importance_score)
-    evidence = max(frame.click_confidence, frame.diff_score, frame.importance_score, stop_score, label_change, intent)
+    evidence = max(frame.click_confidence, frame.diff_score, frame.importance_score, stop_score, label_change, intent, sequence_score)
     if evidence < CANDIDATE_EVIDENCE_THRESHOLD:
         return False
-    if action_phrase < 0.24 and max(frame.click_confidence, stop_score, intent) < 0.28 and visual_strength < 0.48:
+    if candidate_signal_count(stop_score, action_phrase, visual_strength, focus_box, frame.diff_score) < MIN_CANDIDATE_SIGNAL_COUNT:
         return False
-    return inferred_focus_box(frame, transcript_excerpt, source_excerpt) is not None
+    if action_phrase < 0.24 and max(frame.click_confidence, stop_score, intent, sequence_score) < 0.28 and visual_strength < 0.48:
+        return False
+    if sequence_score < 0.16 and visual_strength < 0.52 and intent < 0.32:
+        return False
+    return True
 def build_window(
     analysis: VisualSceneAnalysisRecord,
     index: int,
@@ -158,12 +185,17 @@ def build_window(
     source_excerpt: str,
 ) -> InteractionWindow | None:
     frame = analysis.frames[index]
-    focus_box = inferred_focus_box(frame, transcript_excerpt, source_excerpt) or analysis.click_target_box or analysis.anchor_box or analysis.primary_focus_box
-    if focus_box is None:
+    base_focus_box = inferred_focus_box(frame, transcript_excerpt, source_excerpt) or analysis.click_target_box or analysis.anchor_box or analysis.primary_focus_box
+    if base_focus_box is None:
         return None
-    label = inferred_label(frame, analysis.visible_labels, transcript_excerpt, source_excerpt, focus_box)
+    selection = inferred_target_selection(frame, analysis.visible_labels, transcript_excerpt, source_excerpt, base_focus_box)
+    if selection is None:
+        return None
+    label, focus_box = selection
     event_type = inferred_event_type(transcript_excerpt, source_excerpt, label, frame)
     score = interaction_score(analysis.frames, index, transcript_excerpt, source_excerpt)
+    if not valid_action_outcome(analysis.frames, index, label, focus_box, transcript_excerpt, source_excerpt):
+        return None
     if score < MIN_WINDOW_SCORE or not semantically_valid_window(label, transcript_excerpt, source_excerpt, frame, score):
         return None
     return InteractionWindow(
@@ -188,6 +220,7 @@ def interaction_score(
         + frame.importance_score * 0.14
         + cursor_stop_score(frames, index) * 0.16
         + label_change_score(frames, index) * 0.06
+        + sequence_action_score(frames, index, frame.click_target_box or frame.dominant_box) * 0.08
         + transcript_intent_score(transcript_excerpt, source_excerpt, frame) * 0.14
     )
     return round(min(max(score + semantic_bonus(transcript_excerpt, source_excerpt, frame), 0.0), 1.0), 3)
@@ -349,86 +382,6 @@ def intent_matching_ui_box(
     if not ranked:
         return None
     return ranked[0].box if intent_overlap_score(ranked[0].label, tokens) >= 0.2 else None
-
-
-def inferred_label(
-    frame: FrameSignalRecord,
-    visible_labels: list[str],
-    transcript_excerpt: str,
-    source_excerpt: str,
-    focus_box: FocusBox | None,
-) -> str:
-    preferred = ranked_candidate_labels(frame, visible_labels, transcript_excerpt, source_excerpt, focus_box)
-    fallback = fallback_intent_label(transcript_excerpt, source_excerpt)
-    if not preferred:
-        return fallback
-    lead = preferred[0]
-    if low_signal_label(lead):
-        return fallback or lead
-    if state_like_label(lead) and fallback and actionable_label(fallback):
-        return fallback
-    if fallback and intent_overlap_score(lead, intent_tokens(transcript_excerpt, source_excerpt)) < 0.34:
-        return fallback
-    return lead
-
-
-def ranked_candidate_labels(
-    frame: FrameSignalRecord,
-    visible_labels: list[str],
-    transcript_excerpt: str,
-    source_excerpt: str,
-    focus_box: FocusBox | None,
-) -> list[str]:
-    tokens = intent_tokens(transcript_excerpt, source_excerpt)
-    labels = unique_label_candidates(label_candidates(frame, visible_labels))
-    unique = [candidate for candidate in labels if candidate[0] and candidate[0].strip() and not low_signal_label(candidate[0])]
-    ranked = sorted(
-        unique,
-        key=lambda candidate: label_rank(candidate, tokens, frame, focus_box),
-        reverse=True,
-    )
-    return [label for label, _box, _source_weight in ranked]
-
-
-def label_candidates(
-    frame: FrameSignalRecord,
-    visible_labels: list[str],
-) -> list[tuple[str, FocusBox | None, float]]:
-    candidates: list[tuple[str, FocusBox | None, float]] = [(element.label, element.box, 1.0) for element in frame.ui_elements]
-    candidates.extend((label, None, 0.72) for label in frame.ocr_labels)
-    candidates.extend((label, None, 0.55) for label in visible_labels)
-    return candidates
-
-
-def unique_label_candidates(
-    candidates: list[tuple[str, FocusBox | None, float]],
-) -> list[tuple[str, FocusBox | None, float]]:
-    deduped: dict[str, tuple[str, FocusBox | None, float]] = {}
-    for label, box, source_weight in candidates:
-        key = normalize_label(label)
-        current = deduped.get(key)
-        if current is None or source_weight > current[2]:
-            deduped[key] = (label, box, source_weight)
-    return list(deduped.values())
-
-
-def label_rank(
-    candidate: tuple[str, FocusBox | None, float],
-    tokens: set[str],
-    frame: FrameSignalRecord,
-    focus_box: FocusBox | None,
-) -> tuple[float, float, float, float]:
-    label, candidate_box, source_weight = candidate
-    focus_delta = box_center_delta(focus_box or frame.cursor_box, candidate_box or focus_box)
-    proximity = 0.0 if focus_delta == 0.0 and candidate_box is None else max(0.0, 1.0 - focus_delta * 3.0)
-    box_compactness = 0.0 if candidate_box is None else max(0.0, 0.16 - box_area(candidate_box))
-    return (
-        intent_overlap_score(label, tokens),
-        label_quality_score(label),
-        source_weight + proximity,
-        box_compactness,
-    )
-
 
 
 

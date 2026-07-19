@@ -4,6 +4,7 @@ from typing import Sequence
 
 from app.models.projects import SessionEventRecord, TranscriptSegment, VisualSceneAnalysisRecord
 from app.services.walkthrough_guardrails import (
+    auth_state_ratio,
     meaningful_event_count,
     low_confidence_ratio,
     recording_duration_seconds,
@@ -34,6 +35,7 @@ def recording_diagnostics(
         "timeline_coverage_ratio": f"{timeline_coverage_ratio(events, duration_seconds):.2f}",
         "weak_label_ratio": f"{weak_label_ratio(events):.2f}",
         "low_confidence_ratio": f"{low_confidence_ratio(events):.2f}",
+        "auth_state_ratio": f"{auth_state_ratio(events):.2f}",
         "repeated_transcript_ratio": f"{repeated_transcript_ratio(events):.2f}",
         "visual_scene_count": str(len(analyses)),
         "fallback_scene_count": str(fallback_scene_count),

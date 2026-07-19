@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 
 from app.models.projects import LaunchScriptRecord, LaunchScriptScene, ProjectRecord, TranscriptSegment
+from app.services.inference_step_semantics import semantic_merge_steps
 
 ACTION_HINTS = frozenset({
     "click",
@@ -33,6 +34,7 @@ GAP_SPLIT_SECONDS = 1.1
 MIN_STEP_SECONDS = 1.2
 MAX_STEP_SECONDS = 4.8
 MAX_STEPS = 12
+FOCUSED_MAX_STEPS = 6
 ABSOLUTE_MAX_STEP_SECONDS = 5.4
 MAX_REBALANCED_STEP_SECONDS = 5.6
 
@@ -42,13 +44,11 @@ class InferenceStep:
     start: float
     end: float
     text: str
-
-
 def build_inference_script(
     project: ProjectRecord,
     transcript: list[TranscriptSegment],
 ) -> tuple[LaunchScriptRecord, list[tuple[float, float]]]:
-    steps = bounded_steps(normalize_step_durations(transcript_steps(transcript)))
+    steps = focused_steps(transcript)
     scenes = [
         LaunchScriptScene(
             scene_number=index,
@@ -70,6 +70,14 @@ def build_inference_script(
     )
     return script, [(step.start, step.end) for step in steps]
 
+def focused_steps(transcript: list[TranscriptSegment]) -> list[InferenceStep]:
+    steps = bounded_steps(normalize_step_durations(transcript_steps(transcript)))
+    compacted = prune_noise_steps(steps)
+    compacted = semantic_merge_steps(compacted)
+    action_focused = prioritize_action_steps(compacted)
+    if coarse_transcript(transcript) and len(compacted) > FOCUSED_MAX_STEPS:
+        return coverage_bounded_steps(action_focused, FOCUSED_MAX_STEPS)
+    return action_focused
 
 def transcript_steps(transcript: list[TranscriptSegment]) -> list[InferenceStep]:
     if not transcript:
@@ -95,6 +103,35 @@ def transcript_steps(transcript: list[TranscriptSegment]) -> list[InferenceStep]
     steps.append(InferenceStep(start=round(current_start, 2), end=round(current_end, 2), text=joined_text(parts)))
     return [step for step in steps if step.text]
 
+
+def coarse_transcript(transcript: list[TranscriptSegment]) -> bool:
+    average_duration = sum(max(segment.end - segment.start, 0.0) for segment in transcript) / max(len(transcript), 1)
+    return len(transcript) <= 3 or average_duration >= 8.5
+
+
+def prune_noise_steps(steps: list[InferenceStep]) -> list[InferenceStep]:
+    compacted: list[InferenceStep] = []
+    for step in steps:
+        if should_absorb_step(step) and compacted:
+            compacted[-1] = merge_group([compacted[-1], step])
+            continue
+        compacted.append(step)
+    return [step for step in compacted if not low_signal_text(step.text)]
+
+
+def should_absorb_step(step: InferenceStep) -> bool:
+    tokens = tokenized(step.text)
+    return len(tokens) <= 2 or (action_score(step.text) == 0 and len(tokens) <= 5)
+
+
+def low_signal_text(text: str) -> bool:
+    normalized = " ".join(tokenized(text))
+    return not normalized or normalized in {"first", "officially there are five", "there are five"}
+
+
+def prioritize_action_steps(steps: list[InferenceStep]) -> list[InferenceStep]:
+    action_steps = [step for step in steps if action_score(step.text) > 0]
+    return action_steps if len(action_steps) >= 3 else steps
 
 def normalize_step_durations(steps: list[InferenceStep]) -> list[InferenceStep]:
     normalized: list[InferenceStep] = []
@@ -137,7 +174,6 @@ def rebalance_parts(parts: list[str], chunk_count: int) -> list[str]:
     for index, part in enumerate(parts):
         grouped[min(index * chunk_count // len(parts), chunk_count - 1)].append(part)
     return [" ".join(group).strip() for group in grouped if group]
-
 
 def sparse_text_chunks(text: str, chunk_count: int) -> list[str]:
     clean = text.strip()

@@ -26,12 +26,16 @@ def step_clip_window(scene: EditPlanScene) -> tuple[float, float]:
     duration = max(scene.end - scene.start, 0.8)
     if scene.action_timestamp is None:
         return scene.start, scene.end
+    hold_extension = narration_density_hold(scene)
     clip_start = max(scene.start, scene.action_timestamp - pre_action_seconds(scene))
     clip_end = min(
         scene.end,
         max(
-            scene.action_timestamp + result_hold_seconds(scene.spoken_line, duration) + explanation_hold_seconds(scene.spoken_line, scene.action_class),
-            scene.action_timestamp + minimum_post_action_seconds(scene.action_class),
+            scene.action_timestamp
+            + result_hold_seconds(scene.spoken_line, duration)
+            + explanation_hold_seconds(scene.spoken_line, scene.action_class)
+            + hold_extension,
+            scene.action_timestamp + minimum_post_action_seconds(scene.action_class) + hold_extension,
         ),
     )
     return round(clip_start, 2), round(clip_end, 2)
@@ -66,3 +70,19 @@ def minimum_post_action_seconds(action_class: str) -> float:
     if action_class in {"auth_action", "navigation", "tab_switch"}:
         return 1.7
     return 1.45
+
+
+def narration_density_hold(scene: EditPlanScene) -> float:
+    spoken_words = word_count(scene.spoken_line)
+    source_words = word_count(scene.source_excerpt)
+    if source_words <= spoken_words + 2:
+        return 0.0
+    density_gap = min((source_words - spoken_words) / 10.0, 1.0)
+    base_extension = 0.4 + density_gap * 0.9
+    if scene.action_class in {"result_state", "explanatory_hold", "card_selection"}:
+        return round(min(base_extension + 0.35, 1.5), 2)
+    return round(min(base_extension, 1.15), 2)
+
+
+def word_count(text: str) -> int:
+    return len([word for word in text.split() if word.strip(".,")])

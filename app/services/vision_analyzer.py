@@ -14,7 +14,9 @@ from app.models.projects import FocusBox, FrameSignalRecord, LaunchScriptScene, 
 from app.services.frame_signal_analyzer import FrameDiffResult, frame_diff_scores
 from app.services.ocr_pipeline import OcrFrameResult
 from app.services.script_writer import describe_transport_error, openai_headers
+from app.services.vision_candidate_hints import candidate_hint_text
 from app.services.video_frames import ExtractedFrame
+from app.services.vision_response_schema import visual_response_format
 
 logger = logging.getLogger(__name__)
 
@@ -109,8 +111,8 @@ def request_openai_vision_once(
     request_payload = {
         "model": get_settings().openai_vision_model,
         "temperature": 0.1,
-        "max_tokens": 1400 if reduced else 2200,
-        "response_format": {"type": "json_object"},
+        "max_tokens": 900 if reduced else 1500,
+        "response_format": visual_response_format(),
         "messages": [
             {"role": "system", "content": vision_system_prompt()},
             {"role": "user", "content": content},
@@ -131,6 +133,7 @@ def retryable_visual_payload_error(exc: RuntimeError) -> bool:
 def vision_system_prompt() -> str:
     return (
         "You analyze product UI video frames for an AI video editor. "
+        "Return only one raw JSON object with no markdown fences, prose, or commentary. "
         "Return valid JSON with keys: scene_number, start, end, summary, confidence, motion_score, "
         "click_detected, visible_labels, primary_focus_box, cursor_box, click_target_box, "
         "frame_diff_score, cursor_path_confidence, ocr_match_score, anchor_box, frames. "
@@ -166,10 +169,12 @@ def vision_text_message(
             f"Transcript excerpt: {scene.source_excerpt}\n\n"
             f"Frame timestamps and diff scores: {motion_evidence_text if not reduced else 'Condensed retry mode.'}\n"
             f"Local OCR hints: {ocr_context(extracted_frames, ocr_labels_by_timestamp, reduced=reduced)}\n\n"
+            f"Structured local candidate hints: {candidate_hint_text(extracted_frames, ocr_labels_by_timestamp, reduced=reduced)}\n\n"
             "Track the cursor across frames, identify likely click hotspots, read visible UI labels, "
             "and anchor the best UI focus box. Be conservative. If evidence is weak, keep boxes null "
             "and lower confidence. Favor stable UI elements that match the spoken step. If frame-diff "
-            "motion evidence is unavailable, rely on the frame images and OCR hints instead of guessing motion."
+            "motion evidence is unavailable, rely on the frame images and OCR hints instead of guessing motion. "
+            "If OCR hints suggest only state text and no compact actionable control is visible, prefer a low-confidence result-state analysis over inventing a click target."
         ),
     }
 def vision_image_messages(extracted_frames: list[ExtractedFrame]) -> list[dict[str, object]]:
@@ -193,7 +198,8 @@ def vision_image_messages(extracted_frames: list[ExtractedFrame]) -> list[dict[s
     return messages
 def data_url(frame_path: Path) -> str:
     encoded = base64.b64encode(frame_path.read_bytes()).decode("utf-8")
-    return f"data:image/jpeg;base64,{encoded}"
+    mime_type = "image/png" if frame_path.suffix.lower() == ".png" else "image/jpeg"
+    return f"data:{mime_type};base64,{encoded}"
 
 def parse_visual_payload(payload: dict[str, object]) -> dict[str, object]:
     choices = payload.get("choices", [])
@@ -466,15 +472,14 @@ def ocr_context(
     return "; ".join(parts) if parts else "none"
 
 def reduced_frames(extracted_frames: list[ExtractedFrame]) -> list[ExtractedFrame]:
-    if len(extracted_frames) <= 3:
+    if len(extracted_frames) <= 2:
         return extracted_frames
-    middle_index = len(extracted_frames) // 2
-    selected = [extracted_frames[0], extracted_frames[middle_index], extracted_frames[-1]]
+    selected = [extracted_frames[0], extracted_frames[-1]]
     unique_by_timestamp: dict[float, ExtractedFrame] = {frame.timestamp: frame for frame in selected}
     return list(unique_by_timestamp.values())
 
 def reduced_timeout_seconds(timeout_seconds: int) -> int:
-    return max(timeout_seconds, 45)
+    return min(timeout_seconds, 18)
 def ocr_confidence(frames: list[FrameSignalRecord]) -> float:
     if not frames:
         return 0.0

@@ -36,11 +36,11 @@ class Settings(BaseSettings):
     tesseract_binary: str = "/opt/homebrew/bin/tesseract"
     tesseract_timeout_seconds: int = 15
     visual_analysis_concurrency: int = 1
-    visual_analysis_frames_per_scene: int = 4
+    visual_analysis_frames_per_scene: int = 3
     visual_analysis_frame_width: int = 640
     visual_analysis_jpeg_quality: int = 10
-    visual_analysis_scene_timeout_seconds: int = 45
-    visual_analysis_total_budget_seconds: int = 180
+    visual_analysis_scene_timeout_seconds: int = 25
+    visual_analysis_total_budget_seconds: int = 120
     blocking_visual_analysis_enabled: bool = True
     render_worker_dir: str = str(Path(__file__).resolve().parents[2] / "render-worker")
     render_timeout_seconds: int = 900

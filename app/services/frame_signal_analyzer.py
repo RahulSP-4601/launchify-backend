@@ -55,29 +55,31 @@ def grayscale_frame(video_path: Path, timestamp: float) -> bytes | None:
 
 
 def run_raw_frame_command(video_path: Path, timestamp: float) -> bytes | None:
-    command = ffmpeg_raw_frame_command(video_path, timestamp)
-    try:
-        result = subprocess.run(
-            command,
-            check=True,
-            capture_output=True,
-            timeout=get_settings().ffmpeg_timeout_seconds,
-        )
-    except FileNotFoundError as exc:
-        raise RuntimeError("FFmpeg is required for frame-diff analysis.") from exc
-    except subprocess.TimeoutExpired:
-        logger.warning(
-            "FFmpeg frame-diff extraction timed out for %s at %.3fs after %ss",
-            video_path.name,
-            timestamp,
-            get_settings().ffmpeg_timeout_seconds,
-        )
-        return None
-    except subprocess.CalledProcessError as exc:
-        detail = exc.stderr.decode("utf-8", errors="ignore").strip()
-        logger.warning("FFmpeg frame-diff extraction failed for %s at %.3fs: %s", video_path.name, timestamp, detail)
-        return None
-    return result.stdout or None
+    for seek_mode in ("input", "output"):
+        command = ffmpeg_raw_frame_command(video_path, timestamp, seek_mode=seek_mode)
+        try:
+            result = subprocess.run(
+                command,
+                check=True,
+                capture_output=True,
+                timeout=get_settings().ffmpeg_timeout_seconds,
+            )
+        except FileNotFoundError as exc:
+            raise RuntimeError("FFmpeg is required for frame-diff analysis.") from exc
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "FFmpeg frame-diff extraction timed out for %s at %.3fs after %ss",
+                video_path.name,
+                timestamp,
+                get_settings().ffmpeg_timeout_seconds,
+            )
+            continue
+        except subprocess.CalledProcessError as exc:
+            detail = exc.stderr.decode("utf-8", errors="ignore").strip()
+            logger.warning("FFmpeg frame-diff extraction failed for %s at %.3fs: %s", video_path.name, timestamp, detail)
+            continue
+        return result.stdout or None
+    return None
 
 
 def diff_score(previous_frame: bytes, current_frame: bytes) -> float:
@@ -92,17 +94,21 @@ def normalize_scores(scores: list[float]) -> list[float]:
     return [min(1.0, score / peak) for score in scores]
 
 
-def ffmpeg_raw_frame_command(video_path: Path, timestamp: float) -> list[str]:
+def ffmpeg_raw_frame_command(video_path: Path, timestamp: float, *, seek_mode: str = "input") -> list[str]:
     ffmpeg_binary = get_settings().ffmpeg_binary
-    return [
+    command = [
         ffmpeg_binary,
         "-hide_banner",
         "-loglevel",
         "error",
-        "-ss",
-        str(timestamp),
-        "-i",
-        str(video_path),
+        "-threads",
+        "1",
+    ]
+    if seek_mode == "input":
+        command.extend(["-ss", str(timestamp), "-i", str(video_path)])
+    else:
+        command.extend(["-i", str(video_path), "-ss", str(timestamp)])
+    command.extend([
         "-frames:v",
         "1",
         "-vf",
@@ -112,4 +118,5 @@ def ffmpeg_raw_frame_command(video_path: Path, timestamp: float) -> list[str]:
         "-f",
         "rawvideo",
         "-",
-    ]
+    ])
+    return command

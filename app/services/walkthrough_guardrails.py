@@ -15,6 +15,7 @@ MIN_TIMELINE_COVERAGE_RATIO = 0.42
 MAX_WEAK_LABEL_RATIO = 0.45
 MAX_LOW_CONFIDENCE_RATIO = 0.5
 MAX_REPEATED_TRANSCRIPT_RATIO = 0.5
+MAX_AUTH_STATE_RATIO = 0.45
 
 
 def recording_duration_seconds(
@@ -76,6 +77,8 @@ def session_is_under_grounded(
         return True
     if low_confidence_ratio(recording_session.events) > MAX_LOW_CONFIDENCE_RATIO:
         return True
+    if auth_state_ratio(recording_session.events) > MAX_AUTH_STATE_RATIO:
+        return True
     return repeated_transcript_ratio(recording_session.events) >= MAX_REPEATED_TRANSCRIPT_RATIO
 
 
@@ -116,6 +119,13 @@ def timeline_coverage_ratio(events: Sequence[SessionEventRecord], duration_secon
         return 0.0
     covered = max(timestamps[-1] - timestamps[0], 0.0)
     return round(min(covered / duration_seconds, 1.0), 3)
+
+
+def auth_state_ratio(events: Sequence[SessionEventRecord]) -> float:
+    if not events:
+        return 1.0
+    auth_or_state = sum(1 for event in events if event_action_class(event) in {"auth_action", "result_state"})
+    return round(auth_or_state / len(events), 3)
 
 
 def event_score(event: SessionEventRecord) -> float:

@@ -83,7 +83,11 @@ def low_signal_label(label: str) -> bool:
     if sentence_like_label(label):
         return True
     tokens = normalized.split()
+    if any(token.isdigit() for token in tokens):
+        return True
     if len(tokens) == 1 and (tokens[0] in LOW_SIGNAL_TOKENS or len(tokens[0]) <= 3):
+        return True
+    if len(tokens) <= 2 and any(token in {"one", "two", "three", "four", "five"} for token in tokens):
         return True
     return len(normalized) < 4
 
@@ -109,7 +113,10 @@ def fallback_intent_label(transcript_excerpt: str, source_excerpt: str) -> str:
         (r"\bgoogle login\b", "Google Login"),
         (r"\blog in with google\b", "Log In With Google"),
         (r"\bsign up with google\b", "Sign Up With Google"),
+        (r"\bexisting account\b", "Existing Account"),
+        (r"\bchoose (?:an )?account\b", "Choose Account"),
         (r"\bjapanese(?: basic 1)? course\b", "Japanese Course"),
+        (r"\bjapan course\b", "Japan Course"),
         (r"\bcreate account\b", "Create Account"),
         (r"\blog in\b", "Log In"),
         (r"\bsign up\b", "Sign Up"),
