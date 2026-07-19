@@ -34,7 +34,10 @@ async function renderVideo(mode, options) {
   assertOption(options.output, "--output is required");
   assertOption(options.source, "--source is required");
   const rawPayload = JSON.parse(await readFile(options.input, "utf-8"));
-  const assetPaths = [options.source, rawPayload.voiceoverAudioPath].filter(Boolean);
+  const clipAudioPaths = Array.isArray(rawPayload.voiceover?.clips)
+    ? rawPayload.voiceover.clips.map((clip) => clip.audio_storage_path).filter(Boolean)
+    : [];
+  const assetPaths = [options.source, rawPayload.voiceoverAudioPath, ...clipAudioPaths].filter(Boolean);
   await withServedAssets(assetPaths, async (assetServer) => {
     const payload = preparePayload(rawPayload, options.source, assetServer);
     const entryPoint = path.join(__dirname, "../src/index.ts");
@@ -249,6 +252,15 @@ function preparePayload(payload, sourcePath, assetServer) {
     quality: payload.quality ?? mode,
     sourceVideoPath: withFileProtocol(assetServer.urlFor(sourcePath)),
     voiceoverAudioPath: assetServer.urlFor(payload.voiceoverAudioPath),
+    voiceover: {
+      ...payload.voiceover,
+      clips: Array.isArray(payload.voiceover?.clips)
+        ? payload.voiceover.clips.map((clip) => ({
+            ...clip,
+            audio_storage_path: assetServer.urlFor(clip.audio_storage_path),
+          }))
+        : [],
+    },
   };
 }
 

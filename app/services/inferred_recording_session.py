@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import re
 import subprocess
-from dataclasses import dataclass
 from pathlib import Path
 
 from app.core.config import get_settings
@@ -14,57 +12,37 @@ from app.models.projects import (
     RecordingSessionRecord,
     SessionEventRecord,
     SessionEventType,
-    SessionTargetRecord,
     TranscriptSegment,
     UiElementRecord,
     VisualSceneAnalysisRecord,
+)
+from app.services.inferred_recording_support import (
+    InteractionWindow,
+    MIN_WINDOW_SCORE,
+    best_matching_ui_box,
+    box_center_delta,
+    build_session_event,
+    canonical_scene_windows,
+    contains_any,
+    dedupe_events,
+    fallback_intent_label,
+    intent_overlap_score,
+    intent_tokens,
+    low_signal_label,
+    merge_windows,
+    normalize_label,
+    select_distinct_windows,
+    transcript_window,
 )
 from app.services.visual_analysis import analysis_map
 
 DEFAULT_VIEWPORT = (1280, 720)
 MAX_EVENTS = 16
-MAX_EVENTS_PER_SCENE = 5
-INTERACTION_GAP_SECONDS = 0.55
-EVENT_FOCUS_DISTANCE_PIXELS = 48.0
-MIN_DISTINCT_WINDOW_SECONDS = 0.9
-GENERIC_LABELS = frozenset({
-    "button",
-    "control",
-    "continue",
-    "next",
-    "one",
-    "two",
-    "three",
-    "four",
-    "five",
-    "learn",
-    "free",
-})
-LOW_SIGNAL_TOKENS = frozenset({
-    "and",
-    "for",
-    "from",
-    "into",
-    "language",
-    "the",
-    "this",
-    "that",
-    "with",
-    "your",
-})
+MAX_EVENTS_PER_SCENE = 1
+CANDIDATE_EVIDENCE_THRESHOLD = 0.34
 CLICK_WORDS = frozenset({"click", "tap", "press", "select", "choose", "continue", "open", "start", "launch", "login", "log in"})
 INPUT_WORDS = frozenset({"type", "enter", "write", "search", "email", "password", "name"})
 NAVIGATION_WORDS = frozenset({"page", "screen", "dashboard", "home", "next", "continue", "course"})
-
-@dataclass(frozen=True)
-class InteractionWindow:
-    timestamp: float
-    score: float
-    event_type: SessionEventType
-    label: str
-    text: str
-    focus_box: FocusBox | None
-    transcript_excerpt: str
 def infer_recording_session(
     project: ProjectRecord,
     video_path: Path,
@@ -102,7 +80,7 @@ def build_inferred_events(
         windows = infer_scene_windows(analysis, transcript_excerpt, scene.source_excerpt)
         inferred_events.extend(
             build_session_event(window, scene.scene_number, viewport_width, viewport_height)
-            for window in windows[:MAX_EVENTS_PER_SCENE]
+            for window in canonical_scene_windows(windows, analysis, transcript_excerpt, scene.source_excerpt)[:MAX_EVENTS_PER_SCENE]
         )
     return dedupe_events(sorted(inferred_events, key=lambda item: item.timestamp))
 def infer_scene_windows(
@@ -129,7 +107,7 @@ def frame_is_candidate(
     label_change = label_change_score(frames, index)
     intent = transcript_intent_score(transcript_excerpt, source_excerpt, frame)
     evidence = max(frame.click_confidence, frame.diff_score, frame.importance_score, stop_score, label_change, intent)
-    return evidence >= 0.22 and inferred_focus_box(frame) is not None
+    return evidence >= CANDIDATE_EVIDENCE_THRESHOLD and inferred_focus_box(frame) is not None
 def build_window(
     analysis: VisualSceneAnalysisRecord,
     index: int,
@@ -143,6 +121,8 @@ def build_window(
     label = inferred_label(frame, analysis.visible_labels, transcript_excerpt, source_excerpt)
     event_type = inferred_event_type(transcript_excerpt, source_excerpt, label, frame)
     score = interaction_score(analysis.frames, index, transcript_excerpt, source_excerpt)
+    if score < MIN_WINDOW_SCORE:
+        return None
     return InteractionWindow(
         timestamp=round(frame.timestamp, 2),
         score=score,
@@ -247,8 +227,7 @@ def inferred_label(
     preferred = ranked_candidate_labels(frame, visible_labels, transcript_excerpt, source_excerpt)
     if preferred:
         return preferred[0]
-    fallback = source_excerpt.strip() or transcript_excerpt.strip() or "Product interaction"
-    return sentence_fallback_label(fallback)
+    return fallback_intent_label(transcript_excerpt, source_excerpt)
 
 
 def ranked_candidate_labels(
@@ -266,208 +245,6 @@ def ranked_candidate_labels(
         reverse=True,
     )
     return ranked
-
-
-def low_signal_label(label: str) -> bool:
-    normalized = normalize_label(label)
-    if not normalized:
-        return True
-    if normalized in GENERIC_LABELS:
-        return True
-    tokens = normalized.split()
-    if len(tokens) == 1 and tokens[0] in LOW_SIGNAL_TOKENS:
-        return True
-    if len(tokens) == 1 and len(tokens[0]) <= 3:
-        return True
-    return len(normalized) < 4
-
-
-def sentence_fallback_label(text: str) -> str:
-    sentence = re.split(r"[.!?]", text, maxsplit=1)[0].strip()
-    return sentence[:72] if sentence else "Product interaction"
-
-
-def intent_overlap_score(label: str, intent_tokens_set: set[str]) -> float:
-    if not intent_tokens_set:
-        return 0.0
-    label_tokens = set(normalize_label(label).split())
-    overlap = len(label_tokens & intent_tokens_set)
-    return overlap / max(len(label_tokens), 1)
-
-
-def intent_tokens(*texts: str) -> set[str]:
-    tokens: set[str] = set()
-    for text in texts:
-        for token in re.findall(r"[a-z0-9]+", text.lower()):
-            if len(token) >= 3:
-                tokens.add(token)
-    return tokens
-
-
-def normalize_label(label: str) -> str:
-    return " ".join(re.findall(r"[a-z0-9]+", label.lower()))
-
-
-def merge_windows(windows: list[InteractionWindow]) -> list[InteractionWindow]:
-    if not windows:
-        return []
-    merged: list[InteractionWindow] = [windows[0]]
-    for window in windows[1:]:
-        previous = merged[-1]
-        if should_merge(previous, window):
-            merged[-1] = previous if previous.score >= window.score else window
-            continue
-        merged.append(window)
-    return sorted(merged, key=lambda item: item.score, reverse=True)
-
-
-def select_distinct_windows(windows: list[InteractionWindow]) -> list[InteractionWindow]:
-    selected: list[InteractionWindow] = []
-    for window in windows:
-        if any(window_conflicts(window, existing) for existing in selected):
-            continue
-        selected.append(window)
-    return selected
-
-
-def window_conflicts(left: InteractionWindow, right: InteractionWindow) -> bool:
-    close_in_time = abs(left.timestamp - right.timestamp) < MIN_DISTINCT_WINDOW_SECONDS
-    same_label = normalize_label(left.label) == normalize_label(right.label)
-    same_focus = box_center_delta(left.focus_box, right.focus_box) <= 0.08
-    return close_in_time and (same_label or same_focus)
-
-
-def should_merge(left: InteractionWindow, right: InteractionWindow) -> bool:
-    if abs(left.timestamp - right.timestamp) > INTERACTION_GAP_SECONDS:
-        return False
-    same_label = normalize_label(left.label) == normalize_label(right.label)
-    same_type = left.event_type == right.event_type
-    same_focus = box_center_delta(left.focus_box, right.focus_box) <= 0.06
-    return same_type and (same_label or same_focus)
-
-
-def build_session_event(
-    window: InteractionWindow,
-    scene_number: int,
-    viewport_width: int,
-    viewport_height: int,
-) -> SessionEventRecord:
-    x, y, width, height = denormalize_box(window.focus_box, viewport_width, viewport_height)
-    return SessionEventRecord(
-        type=window.event_type,
-        timestamp=window.timestamp,
-        x=x,
-        y=y,
-        target=SessionTargetRecord(
-            selector=f"[data-launchify-scene='{scene_number}']",
-            label=window.label,
-            text=window.text,
-            role="control",
-            bbox_x=x - width / 2 if x is not None and width is not None else None,
-            bbox_y=y - height / 2 if y is not None and height is not None else None,
-            bbox_width=width,
-            bbox_height=height,
-        ),
-        metadata={
-            "inferred": "true",
-            "scene_number": str(scene_number),
-            "score": f"{window.score:.2f}",
-            "transcript_excerpt": window.transcript_excerpt[:180],
-        },
-    )
-
-
-def dedupe_events(events: list[SessionEventRecord]) -> list[SessionEventRecord]:
-    deduped: list[SessionEventRecord] = []
-    for event in events:
-        if deduped and duplicate_event(deduped[-1], event):
-            if float(event.metadata.get("score", "0")) > float(deduped[-1].metadata.get("score", "0")):
-                deduped[-1] = event
-            continue
-        deduped.append(event)
-    return deduped
-
-
-def duplicate_event(left: SessionEventRecord, right: SessionEventRecord) -> bool:
-    same_label = normalize_label(left.target.label) == normalize_label(right.target.label)
-    close_in_time = abs(left.timestamp - right.timestamp) <= INTERACTION_GAP_SECONDS
-    same_type = left.type == right.type
-    same_focus = focus_distance(left, right) <= EVENT_FOCUS_DISTANCE_PIXELS
-    return close_in_time and same_type and (same_label or same_focus)
-
-
-def focus_distance(left: SessionEventRecord, right: SessionEventRecord) -> float:
-    left_point = event_point(left)
-    right_point = event_point(right)
-    if left_point is None or right_point is None:
-        return 1.0
-    return abs(left_point[0] - right_point[0]) + abs(left_point[1] - right_point[1])
-
-
-def event_point(event: SessionEventRecord) -> tuple[float, float] | None:
-    width = event.target.bbox_width
-    height = event.target.bbox_height
-    left = event.target.bbox_x
-    top = event.target.bbox_y
-    if width is not None and height is not None and left is not None and top is not None:
-        safe_width = float(width)
-        safe_height = float(height)
-        safe_left = float(left)
-        safe_top = float(top)
-        return safe_left + safe_width / 2, safe_top + safe_height / 2
-    if event.x is None or event.y is None:
-        return None
-    return event.x, event.y
-
-
-def transcript_window(transcript: list[TranscriptSegment], start: float, end: float) -> str:
-    parts = [segment.text.strip() for segment in transcript if segment.end >= start and segment.start <= end and segment.text.strip()]
-    return " ".join(parts)
-
-
-def box_center_delta(left: FocusBox | None, right: FocusBox | None) -> float:
-    if left is None or right is None:
-        return 0.0
-    left_center = (left.x + left.width / 2, left.y + left.height / 2)
-    right_center = (right.x + right.width / 2, right.y + right.height / 2)
-    return abs(left_center[0] - right_center[0]) + abs(left_center[1] - right_center[1])
-
-
-def contains_any(text: str, words: frozenset[str]) -> bool:
-    return any(word in text for word in words)
-
-
-def denormalize_box(
-    focus_box: FocusBox | None,
-    viewport_width: int,
-    viewport_height: int,
-) -> tuple[float | None, float | None, float | None, float | None]:
-    if focus_box is None:
-        return None, None, None, None
-    width = round(focus_box.width * viewport_width, 2)
-    height = round(focus_box.height * viewport_height, 2)
-    x = round((focus_box.x + focus_box.width / 2) * viewport_width, 2)
-    y = round((focus_box.y + focus_box.height / 2) * viewport_height, 2)
-    return x, y, width, height
-
-
-def best_matching_ui_box(frame: FrameSignalRecord) -> FocusBox | None:
-    if not frame.ui_elements:
-        return None
-    ranked = sorted(
-        (element for element in frame.ui_elements if element.box is not None),
-        key=ui_element_rank,
-        reverse=True,
-    )
-    return ranked[0].box if ranked else None
-
-
-def ui_element_rank(element: UiElementRecord) -> tuple[float, float, float]:
-    label = normalize_label(element.label)
-    label_quality = 0.0 if low_signal_label(label) else min(len(label) / 18.0, 1.0)
-    box_area = element.box.width * element.box.height if element.box is not None else 0.0
-    compactness = max(0.0, 0.08 - abs(box_area - 0.08))
-    return (label_quality, element.confidence, compactness)
 
 
 def video_dimensions(video_path: Path) -> tuple[int, int]:

@@ -151,7 +151,7 @@ def build_passthrough_command(
 ) -> list[str]:
     settings = get_settings()
     voiceover_mode = resolved_voiceover_mode(project, voiceover_audio)
-    duration_seconds = source_duration_seconds(project, source_video)
+    duration_seconds = preview_audio_duration(project, source_duration_seconds(project, source_video), voiceover_mode)
     command = [settings.ffmpeg_binary, "-y", "-i", str(source_video)]
     if voiceover_mode != "original" and voiceover_audio is not None:
         command.extend(["-i", str(voiceover_audio)])
@@ -208,7 +208,12 @@ def build_highlight_filter(
     concat_labels = "[joinedv][aorig]" if concat_audio else "[joinedv]"
     filters.append(f"{''.join(concat_inputs)}concat=n={len(clips)}:v=1:a={1 if concat_audio else 0}{concat_labels}")
     filters.append(output_scale_filter(quality))
-    audio_output = audio_mix_filter(clips, has_audio, voiceover_mode)
+    visual_duration = round(sum(clip.end - clip.start for clip in clips), 2)
+    audio_output = audio_mix_filter(
+        has_audio,
+        voiceover_mode,
+        preview_audio_duration(project, visual_duration, voiceover_mode),
+    )
     if audio_output:
         filters.append(audio_output)
     return ";".join(filters)
@@ -378,19 +383,12 @@ def output_scale_filter(quality: ExportQuality) -> str:
     settings = get_settings()
     width = settings.final_render_width if quality == "final" else settings.preview_proxy_width
     height = settings.final_render_height if quality == "final" else settings.preview_proxy_height
-    return (
-        f"[joinedv]scale={width}:{height}:force_original_aspect_ratio=decrease,"
-        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,setsar=1[vout]"
-    )
-
-
+    return f"[joinedv]scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,setsar=1[vout]"
 def passthrough_scale_filter(quality: ExportQuality) -> str:
     settings = get_settings()
     width = settings.final_render_width if quality == "final" else settings.preview_proxy_width
     height = settings.final_render_height if quality == "final" else settings.preview_proxy_height
     return f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,setsar=1"
-
-
 def target_fps(quality: ExportQuality) -> int:
     settings = get_settings()
     return settings.final_render_fps if quality == "final" else settings.preview_proxy_fps
@@ -398,24 +396,20 @@ def resolved_voiceover_mode(project: ProjectRecord, voiceover_audio: Path | None
     if voiceover_audio is None or project.voiceover is None or project.voiceover.status != "ready":
         return "original"
     return project.voiceover.mode
-
-
-def audio_mix_filter(clips: list[RenderClip], has_audio: bool, voiceover_mode: VoiceoverMode) -> str:
-    total_duration = round(sum(clip.end - clip.start for clip in clips), 2)
+def audio_mix_filter(has_audio: bool, voiceover_mode: VoiceoverMode, duration_seconds: float) -> str:
+    safe_duration = max(round(duration_seconds, 2), 0.1)
     if voiceover_mode == "voiceover":
-        return f"[1:a]atrim=start=0:end={total_duration},asetpts=PTS-STARTPTS[aout]"
+        return f"[1:a]atrim=start=0:end={safe_duration},asetpts=PTS-STARTPTS[aout]"
     if voiceover_mode == "mixed" and has_audio:
         return (
-            f"[1:a]atrim=start=0:end={total_duration},asetpts=PTS-STARTPTS[avo];"
-            "[aorig][avo]amix=inputs=2:duration=first:dropout_transition=0[aout]"
+            f"[1:a]atrim=start=0:end={safe_duration},asetpts=PTS-STARTPTS[avo];"
+            "[aorig][avo]amix=inputs=2:duration=longest:dropout_transition=0[aout]"
         )
     if voiceover_mode == "mixed":
-        return f"[1:a]atrim=start=0:end={total_duration},asetpts=PTS-STARTPTS[aout]"
+        return f"[1:a]atrim=start=0:end={safe_duration},asetpts=PTS-STARTPTS[aout]"
     if has_audio:
         return "[aorig]anull[aout]"
     return ""
-
-
 def passthrough_audio_filter(has_audio: bool, voiceover_mode: VoiceoverMode, duration_seconds: float) -> str:
     safe_duration = max(round(duration_seconds, 2), 0.1)
     if voiceover_mode == "voiceover":
@@ -424,15 +418,13 @@ def passthrough_audio_filter(has_audio: bool, voiceover_mode: VoiceoverMode, dur
         return (
             f"[0:a]atrim=start=0:end={safe_duration},asetpts=PTS-STARTPTS[aorig];"
             f"[1:a]atrim=start=0:end={safe_duration},asetpts=PTS-STARTPTS[avo];"
-            "[aorig][avo]amix=inputs=2:duration=first:dropout_transition=0[aout]"
+            "[aorig][avo]amix=inputs=2:duration=longest:dropout_transition=0[aout]"
         )
     if voiceover_mode == "mixed":
         return f"[1:a]atrim=start=0:end={safe_duration},asetpts=PTS-STARTPTS[aout]"
     if has_audio:
         return f"[0:a]atrim=start=0:end={safe_duration},asetpts=PTS-STARTPTS[aout]"
     return "anullsrc=channel_layout=stereo:sample_rate=48000[aout]"
-
-
 def source_duration_seconds(project: ProjectRecord, source_video: Path) -> float:
     fallback = 0.0
     if project.edit_plan is not None:
@@ -440,8 +432,15 @@ def source_duration_seconds(project: ProjectRecord, source_video: Path) -> float
     if fallback <= 0 and project.transcript:
         fallback = round(max(segment.end for segment in project.transcript), 2)
     return output_duration_seconds(source_video, fallback=fallback)
-
-
+def preview_audio_duration(project: ProjectRecord, visual_duration: float, voiceover_mode: VoiceoverMode) -> float:
+    return round(max(visual_duration, scheduled_voiceover_duration(project, voiceover_mode), 0.1), 2)
+def scheduled_voiceover_duration(project: ProjectRecord, voiceover_mode: VoiceoverMode) -> float:
+    voiceover = project.voiceover
+    if voiceover_mode == "original" or voiceover is None or voiceover.status != "ready":
+        return 0.0
+    clip_end = max((clip.end for clip in voiceover.clips if clip.audio_storage_path), default=0.0)
+    cue_end = max((cue.end for cue in voiceover.cues), default=0.0)
+    return round(max(voiceover.duration_seconds, clip_end, cue_end), 2)
 def write_caption_text_file(working_dir: Path, scene_number: int, caption_index: int, text: str) -> Path:
     caption_file = working_dir / f"scene-{scene_number}-caption-{caption_index}.txt"
     caption_file.write_text(normalized_caption_text(text), encoding="utf-8")
@@ -467,8 +466,6 @@ def persist_proxy_preview(
     if heartbeat is not None:
         heartbeat()
     return preview_video
-
-
 def persist_proxy_preview_after_final(
     user_id: str,
     project: ProjectRecord,
@@ -482,8 +479,6 @@ def persist_proxy_preview_after_final(
     except Exception:
         logger.exception("Proxy preview upload failed after final render succeeded for project %s.", project.id)
         return None
-
-
 def persist_proxy_preview_on_failure(
     user_id: str,
     project: ProjectRecord,

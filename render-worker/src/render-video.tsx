@@ -97,7 +97,9 @@ const SceneComposition: React.FC<{ fastPreview: boolean; payload: RenderPayload;
   scene,
 }) => {
   const frame = useCurrentFrame();
-  const localSeconds = scene.start + frame / payload.dimensions.fps;
+  const sourceDuration = Math.max(scene.end - scene.start, 0);
+  const sourceSeconds = Math.min(frame / payload.dimensions.fps, sourceDuration);
+  const localSeconds = scene.start + sourceSeconds;
   const caption = activeCaption(scene, localSeconds);
   const focusBox = activeFocusBox(scene, localSeconds);
   const zoom = zoomTransform(scene.zooms, localSeconds);
@@ -186,7 +188,25 @@ const BrowserChrome: React.FC<{
 );
 
 const AudioTrack: React.FC<{ introFrames: number; payload: RenderPayload }> = ({ introFrames, payload }) => {
-  if (!payload.voiceoverAudioPath || payload.voiceover.mode === "original") {
+  if (payload.voiceover.mode === "original" || payload.voiceover.status !== "ready") {
+    return null;
+  }
+  const clipTracks = payload.voiceover.clips.filter((clip) => Boolean(clip.audio_storage_path));
+  if (clipTracks.length > 0) {
+    return (
+      <>
+        {clipTracks.map((clip) => (
+          <Sequence
+            key={`${clip.scene_number}-${clip.start}-${clip.audio_storage_path}`}
+            from={introFrames + Math.round(clip.start * payload.dimensions.fps)}
+          >
+            <Audio src={clip.audio_storage_path} volume={voiceoverVolume(payload)} />
+          </Sequence>
+        ))}
+      </>
+    );
+  }
+  if (!payload.voiceoverAudioPath) {
     return null;
   }
   return (
@@ -676,7 +696,9 @@ function highlightLabelStyle(fastPreview: boolean, intensity: number): React.CSS
 }
 
 function sourceVideoVolume(payload: RenderPayload): number {
-  const hasReadyVoiceover = Boolean(payload.voiceoverAudioPath) && payload.voiceover.status === "ready";
+  const hasReadyVoiceover =
+    payload.voiceover.status === "ready" &&
+    (Boolean(payload.voiceoverAudioPath) || payload.voiceover.clips.some((clip) => Boolean(clip.audio_storage_path)));
   if (payload.voiceover.mode === "voiceover" && hasReadyVoiceover) {
     return 0;
   }

@@ -36,7 +36,8 @@ export function totalFrames(payload: RenderPayload) {
 }
 
 export function sceneDurationFrames(scene: RenderScene, fps: number) {
-  return Math.max(1, Math.round((scene.end - scene.start) * fps));
+  const duration = scene.render_duration_seconds ?? (scene.end - scene.start);
+  return Math.max(1, Math.round(duration * fps));
 }
 
 export function activeCaption(scene: RenderScene, localSeconds: number) {

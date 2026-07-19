@@ -211,6 +211,7 @@ class EditPlanScene(BaseModel):
     purpose: str
     start: float
     end: float
+    render_duration_seconds: float | None = None
     confidence: float = Field(ge=0.0, le=1.0)
     camera_mode: Literal["static", "focus"]
     decision_summary: str
@@ -290,6 +291,15 @@ class VoiceoverCueRecord(BaseModel):
     duration_seconds: float
 
 
+class VoiceoverClipRecord(BaseModel):
+    scene_number: int
+    start: float
+    end: float
+    text: str
+    duration_seconds: float
+    audio_storage_path: str = ""
+
+
 class VoiceoverRecord(BaseModel):
     provider: str = "deepgram"
     model: str = "aura-2-thalia-en"
@@ -297,6 +307,7 @@ class VoiceoverRecord(BaseModel):
     status: VoiceoverStatus = "disabled"
     script: str = ""
     cues: list[VoiceoverCueRecord] = Field(default_factory=list)
+    clips: list[VoiceoverClipRecord] = Field(default_factory=list)
     audio_storage_path: str = ""
     duration_seconds: float = 0.0
 

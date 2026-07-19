@@ -25,6 +25,7 @@ from app.services.project_store import project_store
 from app.services.project_summary_store import project_summary_store
 from app.services.storage import download_asset_to_file, upload_video_file
 from app.services.usage_service import total_rendered_seconds
+from app.services.voiceover import downloadable_voiceover_audio
 
 router = APIRouter()
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
@@ -187,9 +188,11 @@ async def get_source_asset(project_id: str, request: Request) -> FileResponse:
 async def get_voiceover_asset(project_id: str, request: Request) -> FileResponse:
     user_id = get_authenticated_user_id(request)
     project = must_get_project(user_id, project_id)
-    if project.voiceover is None or not project.voiceover.audio_storage_path:
+    if project.voiceover is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Voiceover asset not found.")
-    output_path = download_asset_to_file(project.voiceover.audio_storage_path)
+    output_path = downloadable_voiceover_audio(project.voiceover)
+    if output_path is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Voiceover asset not found.")
     filename = f"{project.project_name.lower().replace(' ', '-')}-voiceover.mp3"
     return FileResponse(
         path=output_path,

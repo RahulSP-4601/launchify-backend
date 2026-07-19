@@ -13,6 +13,7 @@ from app.services.render_payloads import total_render_duration
 from app.services.render_proxy_clips import proxy_highlight_duration
 from app.services.storage import download_asset_to_file, upload_rendered_video_file
 from app.services.usage_service import projected_rendered_seconds, total_rendered_seconds
+from app.services.voiceover import downloadable_voiceover_audio
 
 logger = logging.getLogger(__name__)
 
@@ -185,9 +186,9 @@ def effective_final_duration(project: ProjectRecord, settings: object) -> float:
 
 
 def download_voiceover_audio(project: ProjectRecord) -> Path | None:
-    if project.voiceover is None or not project.voiceover.audio_storage_path:
+    if project.voiceover is None:
         return None
-    return download_asset_to_file(project.voiceover.audio_storage_path)
+    return downloadable_voiceover_audio(project.voiceover)
 
 
 def require_edit_plan(project: ProjectRecord) -> EditPlanRecord:

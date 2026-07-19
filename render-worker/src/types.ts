@@ -29,6 +29,14 @@ export type RenderPayload = {
       text: string;
       duration_seconds: number;
     }>;
+    clips: Array<{
+      scene_number: number;
+      start: number;
+      end: number;
+      text: string;
+      duration_seconds: number;
+      audio_storage_path: string;
+    }>;
     audio_storage_path: string;
     duration_seconds: number;
   };
@@ -52,6 +60,7 @@ export type RenderScene = {
   purpose: string;
   start: number;
   end: number;
+  render_duration_seconds: number | null;
   confidence: number;
   camera_mode: "static" | "focus";
   decision_summary: string;

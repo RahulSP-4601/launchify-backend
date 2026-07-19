@@ -19,6 +19,7 @@ from app.models.projects import (
     SessionEventRecord,
     TranscriptSegment,
 )
+from app.services.guide_event_dedupe import synthetic_duplicate_index, synthetic_event_score
 from app.services.event_grounding import normalize_event_timestamp
 from app.services.script_writer import describe_transport_error, extract_message_content, openai_headers
 
@@ -77,7 +78,14 @@ def normalize_events(
             if dedupe_key in seen_input_keys:
                 continue
             seen_input_keys.add(dedupe_key)
-        normalized.append(event.model_copy(update={"timestamp": timestamp}))
+        normalized_event = event.model_copy(update={"timestamp": timestamp})
+        duplicate_index = synthetic_duplicate_index(normalized, normalized_event)
+        if duplicate_index is not None:
+            existing = normalized[duplicate_index]
+            if synthetic_event_score(normalized_event) > synthetic_event_score(existing):
+                normalized[duplicate_index] = normalized_event
+            continue
+        normalized.append(normalized_event)
     return normalized
 
 
