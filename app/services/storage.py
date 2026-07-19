@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import http.client
+import logging
 import mimetypes
 import re
 import socket
@@ -17,6 +18,7 @@ from app.models.projects import AssetRecord, RenderedVideoRecord
 
 FILENAME_SANITIZE_PATTERN = re.compile(r"[^A-Za-z0-9._-]+")
 UploadHeartbeat = Callable[[], None]
+logger = logging.getLogger(__name__)
 
 
 def upload_video(user_id: str, project_id: str, filename: str, content_type: str, file_bytes: bytes) -> AssetRecord:
@@ -63,7 +65,7 @@ def download_asset(storage_path: str) -> bytes:
         raise RuntimeError(f"Supabase Storage download failed: {detail}") from exc
 
 
-def download_asset_to_file(storage_path: str) -> Path:
+def download_asset_to_file(storage_path: str, heartbeat: UploadHeartbeat | None = None) -> Path:
     settings = get_settings()
     endpoint = f"{settings.supabase_url}/storage/v1/object/{settings.supabase_storage_bucket}/{storage_path}"
     download_request = request.Request(
@@ -76,15 +78,27 @@ def download_asset_to_file(storage_path: str) -> Path:
     )
     temp_file = NamedTemporaryFile(delete=False)
     try:
+        logger.info("Downloading source asset from storage path %s.", storage_path)
         with request.urlopen(download_request, timeout=120) as response:
             while chunk := response.read(1024 * 1024):
                 temp_file.write(chunk)
+                if heartbeat is not None:
+                    heartbeat()
+    except error.URLError as exc:
+        temp_file.close()
+        Path(temp_file.name).unlink(missing_ok=True)
+        raise RuntimeError(f"Supabase Storage download failed: {exc.reason}") from exc
+    except TimeoutError as exc:
+        temp_file.close()
+        Path(temp_file.name).unlink(missing_ok=True)
+        raise RuntimeError("Supabase Storage download timed out.") from exc
     except error.HTTPError as exc:
         temp_file.close()
         Path(temp_file.name).unlink(missing_ok=True)
         detail = exc.read().decode("utf-8", errors="ignore")
         raise RuntimeError(f"Supabase Storage download failed: {detail}") from exc
     temp_file.close()
+    logger.info("Downloaded source asset from storage path %s into %s.", storage_path, temp_file.name)
     return Path(temp_file.name)
 
 

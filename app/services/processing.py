@@ -46,7 +46,9 @@ def process_job(job_id: str) -> None:
         return
     asset_file: Path | None = None
     try:
-        asset_file = download_asset_to_file(job.asset_path)
+        logger.info("Processing job %s: downloading uploaded asset %s.", job.id, job.asset_path)
+        asset_file = download_asset_to_file(job.asset_path, heartbeat=lambda: job_store.heartbeat(job.id))
+        logger.info("Processing job %s: downloaded uploaded asset to %s.", job.id, asset_file)
         run_processing_pipeline(job, asset_file)
     except StaleProjectAssetError:
         job_store.mark_completed(job.id)
@@ -82,7 +84,9 @@ def run_processing_pipeline(job: ProcessingJobRecord, asset_file: Path) -> None:
     settings = get_settings()
     job_store.heartbeat(job.id)
     with timed_stage("transcription", settings.transcription_warn_seconds):
-        transcript = transcribe_media_file(asset_file, job.content_type)
+        logger.info("Processing job %s: transcription started for %s.", job.id, asset_file.name)
+        transcript = transcribe_media_file(asset_file, job.content_type, heartbeat=lambda: job_store.heartbeat(job.id))
+        logger.info("Processing job %s: transcription finished with %s segments.", job.id, len(transcript))
     if stale_asset_detected(job.user_id, job.project_id, job.asset_path, job.id):
         return
     if not transcript_is_usable(transcript):

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import http.client
 import json
+import logging
 import subprocess
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from typing import Callable
 from typing import Any
 from urllib import error, request
 from urllib.parse import urlsplit
@@ -13,6 +15,8 @@ from app.core.config import get_settings
 from app.models.projects import TranscriptSegment
 
 DEEPGRAM_QUERY = "model=nova-3&smart_format=true&punctuate=true&paragraphs=true&utterances=true&detect_language=true"
+Heartbeat = Callable[[], None]
+logger = logging.getLogger(__name__)
 
 
 def transcribe_media(file_bytes: bytes, content_type: str) -> list[TranscriptSegment]:
@@ -40,17 +44,29 @@ def transcribe_media(file_bytes: bytes, content_type: str) -> list[TranscriptSeg
     return parse_segments(payload)
 
 
-def transcribe_media_file(source_path: Path, content_type: str) -> list[TranscriptSegment]:
+def transcribe_media_file(
+    source_path: Path,
+    content_type: str,
+    heartbeat: Heartbeat | None = None,
+) -> list[TranscriptSegment]:
     settings = get_settings()
     if not settings.deepgram_api_key:
         raise RuntimeError("Deepgram is not configured yet. Add DEEPGRAM_API_KEY to enable transcription.")
+    logger.info("Preparing transcription source for %s with content type %s.", source_path.name, content_type)
     transcription_source, transcription_type, should_cleanup = transcription_source_file(source_path, content_type)
+    if heartbeat is not None:
+        heartbeat()
     endpoint = f"https://api.deepgram.com/v1/listen?{DEEPGRAM_QUERY}"
     parsed = urlsplit(endpoint)
     if not parsed.hostname:
         raise RuntimeError("Deepgram URL is missing a hostname.")
     connection = http.client.HTTPSConnection(parsed.hostname, parsed.port, timeout=180)
     try:
+        logger.info(
+            "Submitting %s bytes to Deepgram for transcription from %s.",
+            transcription_source.stat().st_size,
+            transcription_source.name,
+        )
         connection.putrequest("POST", parsed.path + ("?" + parsed.query if parsed.query else ""))
         connection.putheader("Authorization", f"Token {settings.deepgram_api_key}")
         connection.putheader("Content-Type", transcription_type)
@@ -59,11 +75,21 @@ def transcribe_media_file(source_path: Path, content_type: str) -> list[Transcri
         with transcription_source.open("rb") as file_pointer:
             while chunk := file_pointer.read(1024 * 1024):
                 connection.send(chunk)
+                if heartbeat is not None:
+                    heartbeat()
         response = connection.getresponse()
+        if heartbeat is not None:
+            heartbeat()
         payload = response.read().decode("utf-8", errors="ignore")
         if response.status >= 400:
             raise RuntimeError(f"Deepgram transcription failed: {payload}")
-        return parse_segments(json.loads(payload))
+        segments = parse_segments(json.loads(payload))
+        logger.info("Deepgram transcription completed with %s transcript segments.", len(segments))
+        return segments
+    except error.URLError as exc:
+        raise RuntimeError(f"Deepgram transcription failed: {exc.reason}") from exc
+    except TimeoutError as exc:
+        raise RuntimeError("Deepgram transcription request timed out.") from exc
     finally:
         if should_cleanup:
             transcription_source.unlink(missing_ok=True)
@@ -96,6 +122,7 @@ def extracted_audio_track(source_path: Path) -> Path:
         str(output_path),
     ]
     try:
+        logger.info("Extracting audio track for transcription from %s.", source_path.name)
         subprocess.run(
             command,
             check=True,
@@ -111,6 +138,7 @@ def extracted_audio_track(source_path: Path) -> Path:
     except subprocess.CalledProcessError as exc:
         output_path.unlink(missing_ok=True)
         raise RuntimeError("Audio preparation for transcription failed.") from exc
+    logger.info("Prepared audio track for transcription at %s.", output_path.name)
     return output_path
 
 
