@@ -10,6 +10,9 @@ MAX_CLIP_DURATION_SECONDS = 3.4
 MERGE_GAP_SECONDS = 0.18
 MIN_ACTION_REEL_SECONDS = 12.0
 MIN_SOURCE_COVERAGE_RATIO = 0.6
+MIN_WALKTHROUGH_CLIP_SECONDS = 1.2
+WALKTHROUGH_PRE_ACTION_SECONDS = 0.45
+WALKTHROUGH_POST_ACTION_SECONDS = 1.35
 
 
 @dataclass(frozen=True)
@@ -22,10 +25,20 @@ class RenderClip:
 def highlight_clips(project: ProjectRecord) -> list[RenderClip]:
     if project.edit_plan is None:
         return []
+    if prefer_walkthrough_clips(project):
+        return walkthrough_clips(project)
     clips = action_highlight_clips(project)
     if should_use_contextual_clips(project, clips):
-        return contextual_highlight_clips(project)
+        return walkthrough_clips(project)
     return clips
+
+
+def prefer_walkthrough_clips(project: ProjectRecord) -> bool:
+    if project.guide is not None and project.guide.steps:
+        return True
+    if project.voiceover is not None and project.voiceover.mode == "voiceover":
+        return True
+    return False
 
 
 def action_highlight_clips(project: ProjectRecord) -> list[RenderClip]:
@@ -74,6 +87,44 @@ def contextual_highlight_clips(project: ProjectRecord) -> list[RenderClip]:
         clips.append(RenderClip(scene=scene, start=round(clip_start, 2), end=round(clip_end, 2)))
         previous_end = clip_end
     return clips
+
+
+def walkthrough_clips(project: ProjectRecord) -> list[RenderClip]:
+    if project.edit_plan is None:
+        return []
+    scenes = sorted(project.edit_plan.scenes, key=lambda scene: scene.start)
+    source_start, source_end = project_source_bounds(project)
+    if not scenes or source_end - source_start <= 0:
+        return []
+    clips: list[RenderClip] = []
+    previous_end = source_start
+    for index, scene in enumerate(scenes):
+        next_scene = scenes[index + 1] if index + 1 < len(scenes) else None
+        clip_start, clip_end = walkthrough_bounds(scene, next_scene, previous_end, source_start, source_end)
+        if clip_end - clip_start < MIN_WALKTHROUGH_CLIP_SECONDS:
+            clip_end = min(source_end, max(clip_end, clip_start + MIN_WALKTHROUGH_CLIP_SECONDS))
+        if clip_end - clip_start < MIN_CLIP_DURATION_SECONDS:
+            continue
+        clips.append(RenderClip(scene=scene, start=round(clip_start, 2), end=round(clip_end, 2)))
+        previous_end = clip_end
+    return clips or contextual_highlight_clips(project)
+
+
+def walkthrough_bounds(
+    scene: EditPlanScene,
+    next_scene: EditPlanScene | None,
+    previous_end: float,
+    source_start: float,
+    source_end: float,
+) -> tuple[float, float]:
+    clip_start = max(previous_end, source_start, scene.start)
+    clip_end = min(source_end, max(scene.end, clip_start + MIN_WALKTHROUGH_CLIP_SECONDS))
+    if scene.action_timestamp is not None:
+        clip_start = max(previous_end, source_start, min(scene.start, scene.action_timestamp - WALKTHROUGH_PRE_ACTION_SECONDS))
+        clip_end = min(source_end, max(scene.end, scene.action_timestamp + WALKTHROUGH_POST_ACTION_SECONDS))
+    if next_scene is not None:
+        clip_end = min(clip_end, contextual_scene_end(scene, next_scene, source_end))
+    return clip_start, clip_end
 
 
 def contextual_scene_end(

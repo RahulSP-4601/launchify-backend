@@ -156,7 +156,12 @@ def build_grounded_scene(
     start = round(step.start, 2)
     end = round(max(step.end, start + 0.8), 2)
     transcript_slice = slice_transcript(project.transcript, start, end)
-    primary_event = primary_event_for_window(project.recording_session, start, end, step.focus_label or step.title)
+    primary_event = primary_event_for_window(
+        project.recording_session,
+        start,
+        end,
+        " ".join(part for part in (step.focus_label, step.title, step.instruction, step.narration) if part),
+    )
     scene_number = int(primary_event.metadata.get("scene_number", "0")) if primary_event is not None else step.step_index
     visual_analysis = analyses_by_scene.get(scene_number) or analyses_by_scene.get(step.step_index)
     synthetic_scene = LaunchScriptScene(

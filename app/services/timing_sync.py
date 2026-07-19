@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.models.projects import EditPlanHighlight, EditPlanRecord, EditPlanScene, EditPlanZoom, VisualSceneAnalysisRecord
+from app.services.inferred_recording_support import box_area
 
 PRE_ZOOM_LEAD = 0.28
 HIGHLIGHT_DURATION = 1.2
@@ -35,11 +36,22 @@ def synced_scene(
 def action_timestamp(scene: EditPlanScene, analysis: VisualSceneAnalysisRecord | None) -> float | None:
     if analysis is None or not analysis.frames:
         return None
-    scored_frames = sorted(analysis.frames, key=lambda frame: frame.importance_score + frame.click_confidence + frame.diff_score, reverse=True)
+    scored_frames = sorted(analysis.frames, key=lambda frame: action_frame_score(frame), reverse=True)
     if not scored_frames:
         return None
     best_time = max(scene.start, min(scene.end, scored_frames[0].timestamp))
     return round(best_time, 2)
+
+
+def action_frame_score(frame: object) -> float:
+    click_target_box = getattr(frame, "click_target_box", None)
+    compact_focus = max(0.0, 0.14 - box_area(click_target_box)) if click_target_box is not None else 0.0
+    return (
+        getattr(frame, "click_confidence", 0.0) * 0.44
+        + getattr(frame, "importance_score", 0.0) * 0.24
+        + getattr(frame, "diff_score", 0.0) * 0.16
+        + compact_focus
+    )
 
 
 def synced_zooms(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.models.projects import FocusBox, RecordingSessionRecord, SessionEventRecord
+from app.services.inferred_recording_support import intent_overlap_score, intent_tokens, label_quality_score, normalize_label
 
 DEFAULT_BOX_SIZE = 0.18
 MIN_BOX_SIZE = 0.08
@@ -25,20 +26,49 @@ def primary_event_for_window(
     preferred = preferred_label.strip().lower()
     ranked = sorted(
         candidates,
-        key=lambda event: event_rank(event, preferred, end),
+        key=lambda event: event_rank(event, preferred, end, recording_session),
         reverse=True,
     )
     return ranked[0]
 
 
-def event_rank(event: SessionEventRecord, preferred_label: str, target_time: float) -> tuple[float, float, float, float]:
-    label = (event.target.label or event.target.text or event.target.selector).strip().lower()
+def event_rank(
+    event: SessionEventRecord,
+    preferred_label: str,
+    target_time: float,
+    recording_session: RecordingSessionRecord | None,
+) -> tuple[float, float, float, float, float]:
+    label = event_label(event)
+    preferred_tokens = intent_tokens(preferred_label)
     return (
         1.0 if event.type == "click" else 0.92 if event.type == "input" else 0.8,
-        1.0 if preferred_label and preferred_label in label else 0.0,
+        intent_overlap_score(label, preferred_tokens),
+        label_quality_score(label),
         -abs(normalize_event_timestamp(event.timestamp) - target_time),
-        float(len(label)),
+        compact_focus_bonus(event, recording_session),
     )
+
+
+def event_label(event: SessionEventRecord) -> str:
+    return normalize_label(event.target.label or event.target.text or event.target.selector)
+
+
+def compact_focus_bonus(
+    event: SessionEventRecord,
+    recording_session: RecordingSessionRecord | None,
+) -> float:
+    width = event.target.bbox_width
+    height = event.target.bbox_height
+    if width is None or height is None or width <= 0 or height <= 0:
+        return 0.0
+    viewport_width = max(getattr(recording_session, "viewport_width", 0), 1)
+    viewport_height = max(getattr(recording_session, "viewport_height", 0), 1)
+    normalized_area = (float(width) / viewport_width) * (float(height) / viewport_height)
+    if normalized_area <= 0.012:
+        return 0.14
+    if normalized_area <= 0.05:
+        return 0.08
+    return 0.0
 
 
 def normalize_event_timestamp(value: float) -> float:

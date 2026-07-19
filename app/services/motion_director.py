@@ -91,10 +91,11 @@ def build_highlights(
     if not policy.should_highlight:
         return []
     focus_box = policy.anchor_box or policy.click_target_box or policy.cursor_box or policy.focus_box
+    highlight_start, highlight_end = highlight_window(start, end)
     return [
         EditPlanHighlight(
-            start=round(start, 2),
-            end=round(min(end, start + 1.35), 2),
+            start=highlight_start,
+            end=highlight_end,
             label=highlight_label(policy, scene),
             style=policy.highlight_style,
             anchor_region=policy.anchor_region,
@@ -104,6 +105,14 @@ def build_highlights(
             ui_label=policy.target_label,
         )
     ]
+
+
+def highlight_window(start: float, end: float) -> tuple[float, float]:
+    duration = max(end - start, 0.8)
+    lead = min(0.42, duration * 0.18)
+    highlight_start = round(min(max(start + lead, start), end), 2)
+    highlight_end = round(min(end, highlight_start + min(1.35, duration * 0.42 + 0.35)), 2)
+    return highlight_start, highlight_end
 
 
 def motion_profile(template_config: TemplateConfigRecord | None) -> str:

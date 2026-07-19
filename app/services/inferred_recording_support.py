@@ -67,6 +67,8 @@ def low_signal_label(label: str) -> bool:
     normalized = normalize_label(label)
     if not normalized or normalized in GENERIC_LABELS or normalized.startswith("continue "):
         return True
+    if sentence_like_label(label):
+        return True
     tokens = normalized.split()
     if len(tokens) == 1 and (tokens[0] in LOW_SIGNAL_TOKENS or len(tokens[0]) <= 3):
         return True
@@ -108,6 +110,13 @@ def intent_overlap_score(label: str, intent_tokens_set: set[str]) -> float:
     return overlap / max(len(label_tokens), 1)
 
 
+def sentence_like_label(label: str) -> bool:
+    tokens = normalize_label(label).split()
+    if len(tokens) >= 8:
+        return True
+    return any(mark in label for mark in (".", "!", "?"))
+
+
 def intent_tokens(*texts: str) -> set[str]:
     tokens: set[str] = set()
     for text in texts:
@@ -119,6 +128,16 @@ def intent_tokens(*texts: str) -> set[str]:
 
 def normalize_label(label: str) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", label.lower()))
+
+
+def label_quality_score(label: str) -> float:
+    normalized = normalize_label(label)
+    if not normalized or low_signal_label(label):
+        return 0.0
+    tokens = normalized.split()
+    density = min(len(tokens) / 4.0, 1.0)
+    compactness = 0.0 if len(normalized) > 48 else 0.2
+    return round(min(density + compactness, 1.0), 3)
 
 
 def merge_windows(windows: list[InteractionWindow]) -> list[InteractionWindow]:
@@ -275,6 +294,12 @@ def box_center_delta(left: FocusBox | None, right: FocusBox | None) -> float:
     left_center = (left.x + left.width / 2, left.y + left.height / 2)
     right_center = (right.x + right.width / 2, right.y + right.height / 2)
     return abs(left_center[0] - right_center[0]) + abs(left_center[1] - right_center[1])
+
+
+def box_area(box: FocusBox | None) -> float:
+    if box is None:
+        return 1.0
+    return round(max(box.width * box.height, 0.0), 4)
 
 
 def contains_any(text: str, words: frozenset[str]) -> bool:
