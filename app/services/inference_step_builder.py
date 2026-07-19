@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 
 from app.models.projects import LaunchScriptRecord, LaunchScriptScene, ProjectRecord, TranscriptSegment
+from app.services.coarse_inference_steps import backfill_coverage_steps, coarse_transcript_steps
 from app.services.inference_step_semantics import semantic_merge_steps
 
 ACTION_HINTS = frozenset({
@@ -44,6 +45,8 @@ class InferenceStep:
     start: float
     end: float
     text: str
+
+
 def build_inference_script(
     project: ProjectRecord,
     transcript: list[TranscriptSegment],
@@ -71,11 +74,15 @@ def build_inference_script(
     return script, [(step.start, step.end) for step in steps]
 
 def focused_steps(transcript: list[TranscriptSegment]) -> list[InferenceStep]:
-    steps = bounded_steps(normalize_step_durations(transcript_steps(transcript)))
+    coarse = coarse_transcript(transcript)
+    seed_steps = coarse_transcript_steps(transcript) if coarse else transcript_steps(transcript)
+    steps = bounded_steps(normalize_step_durations(seed_steps))
     compacted = prune_noise_steps(steps)
     compacted = semantic_merge_steps(compacted)
     action_focused = prioritize_action_steps(compacted)
-    if coarse_transcript(transcript) and len(compacted) > FOCUSED_MAX_STEPS:
+    if coarse:
+        action_focused = backfill_coverage_steps(action_focused, compacted, min(max(len(compacted), 4), FOCUSED_MAX_STEPS))
+    if coarse and len(compacted) > FOCUSED_MAX_STEPS:
         return coverage_bounded_steps(action_focused, FOCUSED_MAX_STEPS)
     return action_focused
 
@@ -216,14 +223,6 @@ def bounded_steps(steps: list[InferenceStep]) -> list[InferenceStep]:
             return rebalance_timeline_steps(steps, MAX_STEPS)
         steps = merge_adjacent_steps(steps, merge_index)
     return steps
-
-
-def lowest_signal_index(steps: list[InferenceStep]) -> int:
-    ranked = [
-        (index, signal_score(steps[index]) + signal_score(steps[index + 1]))
-        for index in range(len(steps) - 1)
-    ]
-    return min(ranked, key=lambda item: item[1])[0]
 
 
 def mergeable_step_index(steps: list[InferenceStep]) -> int | None:

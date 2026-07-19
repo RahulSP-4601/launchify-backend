@@ -54,6 +54,7 @@ from app.services.inferred_label_selection import inferred_target_selection
 from app.services.action_sequence_metrics import focused_excerpt, sequence_action_score, valid_action_outcome
 from app.services.event_flow_refinement import refine_event_flow
 from app.services.flow_chain_selector import select_flow_chains
+from app.services.inferred_timeline_recovery import preserve_sparse_timeline
 from app.services.visual_analysis import analysis_map
 
 DEFAULT_VIEWPORT = (1280, 720)
@@ -119,6 +120,12 @@ def build_inferred_events(
         retried = dedupe_events(sorted([*deduped, *strict_recovered], key=lambda item: item.timestamp))
         retried = select_flow_chains(retried, launch_script.scenes, analyses_by_scene)
         selected = select_global_event_candidates(retried)
+        return refine_event_flow(
+            preserve_sparse_timeline(selected, retried, transcript),
+            launch_script.scenes,
+            analyses_by_scene,
+        )
+    selected = preserve_sparse_timeline(selected, deduped, transcript)
     return refine_event_flow(selected, launch_script.scenes, analyses_by_scene)
 
 

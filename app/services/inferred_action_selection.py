@@ -29,6 +29,7 @@ def select_global_events(candidates: list[SceneEventCandidate]) -> list[SessionE
         selected.append(candidate)
         if len(selected) >= MAX_GLOBAL_EVENTS:
             break
+    selected = ensure_timeline_coverage(ranked, selected)
     return sorted((candidate.event for candidate in selected), key=lambda item: item.timestamp)
 
 
@@ -89,3 +90,62 @@ def action_class_priority(candidate: SceneEventCandidate) -> float:
 
 def action_class(candidate: SceneEventCandidate) -> str:
     return candidate.event.metadata.get("action_class", "generic_action").strip() or "generic_action"
+
+
+def ensure_timeline_coverage(
+    ranked: list[SceneEventCandidate],
+    selected: list[SceneEventCandidate],
+) -> list[SceneEventCandidate]:
+    supplemented = selected[:]
+    for bucket in missing_timeline_buckets(ranked, supplemented):
+        candidate = next((item for item in ranked if timeline_bucket(item, ranked) == bucket and can_supplement(item, supplemented)), None)
+        if candidate is not None:
+            supplemented.append(candidate)
+    target_count = minimum_selected_count(ranked)
+    for candidate in ranked:
+        if len(supplemented) >= target_count:
+            break
+        if can_supplement(candidate, supplemented):
+            supplemented.append(candidate)
+    return supplemented[:MAX_GLOBAL_EVENTS]
+
+
+def minimum_selected_count(ranked: list[SceneEventCandidate]) -> int:
+    if not ranked:
+        return 0
+    distinct_scenes = len({candidate.scene_number for candidate in ranked if candidate.scene_number > 0})
+    max_timestamp = max((candidate.event.timestamp for candidate in ranked), default=0.0)
+    expected = 4 if max_timestamp >= 30.0 else 3 if max_timestamp >= 18.0 else 2
+    return min(max(expected, 1), max(distinct_scenes, 1), MAX_GLOBAL_EVENTS)
+
+
+def missing_timeline_buckets(
+    ranked: list[SceneEventCandidate],
+    selected: list[SceneEventCandidate],
+) -> list[int]:
+    available = {timeline_bucket(candidate, ranked) for candidate in ranked}
+    covered = {timeline_bucket(candidate, ranked) for candidate in selected}
+    return sorted(bucket for bucket in available if bucket not in covered)
+
+
+def timeline_bucket(candidate: SceneEventCandidate, ranked: list[SceneEventCandidate]) -> int:
+    max_timestamp = max((item.event.timestamp for item in ranked), default=0.0)
+    if max_timestamp <= 0:
+        return 0
+    normalized = min(max(candidate.event.timestamp / max_timestamp, 0.0), 0.999)
+    return min(int(normalized * 3), 2)
+
+
+def can_supplement(candidate: SceneEventCandidate, selected: list[SceneEventCandidate]) -> bool:
+    if duplicate_selected_index(candidate, selected) is not None:
+        return False
+    transcript_excerpt = normalize_label(candidate.event.metadata.get("transcript_excerpt", ""))
+    same_excerpt = sum(
+        1 for item in selected if transcript_excerpt and normalize_label(item.event.metadata.get("transcript_excerpt", "")) == transcript_excerpt
+    )
+    if same_excerpt >= 2:
+        return False
+    same_class = sum(1 for item in selected if action_class(candidate) == action_class(item))
+    if action_class(candidate) == "auth_action" and same_class >= 2 and candidate.scene_number in {item.scene_number for item in selected}:
+        return False
+    return True

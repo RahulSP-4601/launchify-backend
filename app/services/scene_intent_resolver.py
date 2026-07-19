@@ -15,6 +15,7 @@ NEGATIVE_WORDS = frozenset({"coming", "other", "others", "remaining", "rest", "s
 class SceneIntentResolution:
     intent: IntentKind
     focus_tokens: set[str]
+    focus_phrase: str
     context_tokens: set[str]
     negative_tokens: set[str]
     preferred_clause: str
@@ -35,6 +36,7 @@ def resolve_scene_intent(
     return SceneIntentResolution(
         intent=infer_intent(preferred_tokens),
         focus_tokens=focus_tokens(preferred),
+        focus_phrase=matched_focus_phrase(preferred),
         context_tokens=context_tokens(clauses),
         negative_tokens=negative_tokens(clauses),
         preferred_clause=preferred,
@@ -96,6 +98,19 @@ def infer_intent(tokens: set[str]) -> IntentKind:
 def focus_tokens(clause: str) -> set[str]:
     matched = matched_phrase_tokens(clause)
     return matched or content_tokens(clause)
+
+
+def matched_focus_phrase(clause: str) -> str:
+    patterns = (
+        r"(?:click|select|open|choose|tap|press)\s+(?:on\s+|the\s+|to\s+|under\s+)*([a-z0-9 ]{3,40})",
+        r"(?:log in with|sign in with)\s+([a-z0-9 ]{3,30})",
+        r"(?:log in to|login to)\s+(?:the\s+|your\s+)*([a-z0-9 ]{3,30})",
+    )
+    for pattern in patterns:
+        match = re.search(pattern, clause)
+        if match:
+            return " ".join(match.group(1).split())
+    return ""
 
 
 def matched_phrase_tokens(clause: str) -> set[str]:

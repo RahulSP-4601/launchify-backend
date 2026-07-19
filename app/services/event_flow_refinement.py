@@ -5,9 +5,11 @@ from dataclasses import dataclass
 from app.models.projects import LaunchScriptScene, SessionEventRecord, VisualSceneAnalysisRecord
 from app.services.action_classifier import event_action_class
 from app.services.auth_flow_refinement import refine_auth_flow_events
+from app.services.generic_target_labeling import promoted_target_label, should_promote_generic_label
 from app.services.inferred_recording_support import normalize_label
 from app.services.semantic_event_normalizer import semantic_event
 from app.services.scene_intent_resolver import resolve_scene_intent
+from app.services.visual_target_context import contextual_target_label
 
 AUTH_BRANCH_CLASSES = frozenset({"auth_action", "button_click"})
 COURSE_EVENT_CLASSES = frozenset({"card_selection", "button_click", "navigation"})
@@ -192,6 +194,10 @@ def promote_entity_labels(
             replacement = replacement_entity_label(event, events, scenes_by_number, analyses_by_scene)
             if replacement:
                 event = relabel_event(event, replacement)
+        elif should_promote_generic_label(event.target.label):
+            replacement = replacement_focus_label(event, scenes_by_number, analyses_by_scene)
+            if replacement:
+                event = relabel_event(event, replacement)
         promoted.append(event)
     return promoted
 
@@ -222,9 +228,45 @@ def replacement_entity_label(
     return f"{entity.capitalize()} course".strip() if entity else ""
 
 
+def replacement_focus_label(
+    event: SessionEventRecord,
+    scenes_by_number: dict[int, LaunchScriptScene],
+    analyses_by_scene: dict[int, VisualSceneAnalysisRecord],
+) -> str:
+    scene = scenes_by_number.get(scene_number(event))
+    if scene is None:
+        return ""
+    analysis = analyses_by_scene.get(scene_number(event))
+    resolution = resolve_scene_intent(
+        scene.source_excerpt,
+        scene.spoken_line,
+        scene_frame_progress(event, analysis),
+    )
+    visual_context = contextual_target_label(
+        event.target.label,
+        analysis,
+        resolution,
+        event.timestamp,
+    )
+    if visual_context:
+        return visual_context
+    return promoted_target_label(event.target.label, resolution)
+
+
 def relabel_event(event: SessionEventRecord, label: str) -> SessionEventRecord:
     target = event.target.model_copy(update={"label": label, "text": label})
     return event.model_copy(update={"target": target})
+
+
+def scene_frame_progress(
+    event: SessionEventRecord,
+    analysis: VisualSceneAnalysisRecord | None,
+) -> float:
+    if analysis is None:
+        return 0.5
+    duration = max(analysis.end - analysis.start, 0.01)
+    relative_time = event.timestamp - analysis.start
+    return min(max(relative_time / duration, 0.0), 1.0)
 
 
 def dominant_auth_decision(

@@ -86,6 +86,7 @@ def build_ranked_candidate(
         + proximity_score(candidate_box, focus_box) * 0.12
         + compactness_score(candidate_box) * 0.08
         + sibling_preference(tokens, candidates, families, semantics) * 0.12
+        - auth_branch_conflict_penalty(tokens, semantics) * 0.24
         - state_penalty(tokens, semantics) * 0.3
         - context_penalty(tokens, semantics) * 0.18
     )
@@ -242,6 +243,14 @@ def auth_branch_bonus(tokens: set[str], semantics: SceneSemantics) -> float:
     branch_overlap = len(relevant & semantics.branch_tokens)
     alternate_overlap = len(relevant & semantics.alternate_branch_tokens)
     return min(branch_overlap * 0.42, 0.84) - min(alternate_overlap * 0.34, 0.68)
+
+
+def auth_branch_conflict_penalty(tokens: set[str], semantics: SceneSemantics) -> float:
+    if semantics.intent == "account_existing" and {"create", "signup", "sign"} & tokens and not {"login", "log", "existing"} & tokens:
+        return 1.0
+    if semantics.intent == "account_create" and {"existing", "login", "log"} & tokens and not {"create", "signup", "sign"} & tokens:
+        return 0.9
+    return 0.0
 
 
 def sibling_preference(
