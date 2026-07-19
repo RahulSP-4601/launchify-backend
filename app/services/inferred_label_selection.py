@@ -13,6 +13,7 @@ from app.services.inferred_recording_support import (
     normalize_label,
     state_like_label,
 )
+from app.services.ui_structure_insights import compact_action_target, frame_local_labels, prefers_state_event, structure_state_label
 from app.services.inferred_target_ranking import candidate_role, select_ranked_target
 from app.services.structured_visual_candidates import structured_visual_candidates
 
@@ -23,16 +24,26 @@ def inferred_target_selection(
     transcript_excerpt: str,
     source_excerpt: str,
     focus_box: FocusBox | None,
+    has_click_signal: bool = True,
 ) -> tuple[str, FocusBox | None] | None:
+    local_labels = frame_local_labels(frame, visible_labels)
+    if prefers_state_event(frame, local_labels) and (not has_click_signal or not compact_action_target(frame)):
+        stable = structure_state_label(frame, local_labels) or stable_scene_label(frame, local_labels)
+        if stable:
+            return stable, focus_box
+    if not has_click_signal:
+        stable = stable_scene_label(frame, local_labels)
+        if stable:
+            return stable, focus_box
     ranked_target = select_ranked_target(
-        unique_label_candidates(label_candidates(frame, visible_labels, transcript_excerpt, source_excerpt)),
+        unique_label_candidates(label_candidates(frame, local_labels, transcript_excerpt, source_excerpt)),
         transcript_excerpt,
         source_excerpt,
         focus_box,
     )
     if ranked_target is not None:
         return ranked_target.label, ranked_target.focus_box
-    label = inferred_label(frame, visible_labels, transcript_excerpt, source_excerpt, focus_box)
+    label = inferred_label(frame, local_labels, transcript_excerpt, source_excerpt, focus_box, has_click_signal)
     if not label or low_signal_label(label):
         return None
     role = candidate_role(label, transcript_excerpt, source_excerpt)
@@ -47,6 +58,7 @@ def inferred_label(
     transcript_excerpt: str,
     source_excerpt: str,
     focus_box: FocusBox | None,
+    has_click_signal: bool,
 ) -> str:
     preferred = ranked_candidate_labels(frame, visible_labels, transcript_excerpt, source_excerpt, focus_box)
     fallback = fallback_intent_label(transcript_excerpt, source_excerpt)
@@ -62,6 +74,35 @@ def inferred_label(
     if fallback and fallback_supported and lead_intent < 0.26:
         return fallback
     return lead
+
+
+def stable_scene_label(
+    frame: FrameSignalRecord,
+    visible_labels: list[str],
+) -> str:
+    candidates = [
+        (element.label.strip(), element.role)
+        for element in frame.ui_elements
+        if element.label.strip() and not auth_context_state_label(element.label)
+    ]
+    candidates.extend((label.strip(), "visible") for label in visible_labels if label.strip() and not auth_context_state_label(label))
+    ranked = sorted(candidates, key=lambda item: stable_scene_rank(item[0], item[1]), reverse=True)
+    return ranked[0][0] if ranked and stable_scene_rank(ranked[0][0], ranked[0][1]) >= 0.55 else ""
+
+
+def stable_scene_rank(label: str, role: str) -> float:
+    normalized = normalize_label(label)
+    if not normalized or low_signal_label(label):
+        return 0.0
+    role_bonus = 0.34 if role in {"header", "heading", "instruction", "text"} else 0.12 if role == "visible" else 0.08
+    state_bonus = 0.3 if any(phrase in normalized for phrase in ("select a course", "pick your", "choose your", "before you start")) else 0.0
+    entity_bonus = 0.12 if normalized in {"japanese", "english", "german", "spanish", "french"} else 0.0
+    return round(role_bonus + state_bonus + entity_bonus + label_quality_score(label) * 0.24, 3)
+
+
+def auth_context_state_label(label: str) -> bool:
+    tokens = set(normalize_label(label).split())
+    return bool(tokens & {"google", "login", "log", "account", "sign"}) and "course" not in tokens
 
 
 def frame_supports_fallback_label(

@@ -124,7 +124,7 @@ def timeline_coverage_ratio(events: Sequence[SessionEventRecord], duration_secon
 def auth_state_ratio(events: Sequence[SessionEventRecord]) -> float:
     if not events:
         return 1.0
-    auth_or_state = sum(1 for event in events if event_action_class(event) in {"auth_action", "result_state"})
+    auth_or_state = sum(1 for event in events if auth_related_event(event))
     return round(auth_or_state / len(events), 3)
 
 
@@ -157,6 +157,7 @@ def event_is_meaningful(event: SessionEventRecord) -> bool:
         "button_click",
         "input_entry",
         "navigation",
+        "result_state",
         "tab_switch",
         "menu_open",
     }
@@ -171,6 +172,20 @@ def event_has_strong_label_signal(event: SessionEventRecord) -> bool:
         "button_click",
         "input_entry",
         "navigation",
+        "result_state",
         "tab_switch",
         "menu_open",
     }
+
+
+def auth_related_event(event: SessionEventRecord) -> bool:
+    if event_action_class(event) == "auth_action":
+        return True
+    if event_action_class(event) != "result_state":
+        return False
+    label = normalize_label(event_label(event))
+    return any(token in label for token in ("account", "login", "google", "sign"))
+
+
+def normalize_label(value: str) -> str:
+    return " ".join(value.lower().split())

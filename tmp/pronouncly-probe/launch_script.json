@@ -1,0 +1,61 @@
+{
+  "hook": "Pronouncly grounded walkthrough",
+  "summary": "Step-by-step inferred walkthrough for Pronouncly.",
+  "title_options": [
+    "Pronouncly walkthrough"
+  ],
+  "scenes": [
+    {
+      "scene_number": 1,
+      "purpose": "Capture the product action around need to go on the.",
+      "spoken_line": "you need to go on the Google login button that's on the top right",
+      "on_screen_text": "Need To Go On The",
+      "source_excerpt": "you need to go on the Google login button that's on the top right",
+      "estimated_duration_seconds": 3.57
+    },
+    {
+      "scene_number": 2,
+      "purpose": "Capture the product action around click it need to create.",
+      "spoken_line": "you click it, just you you need to create an account",
+      "on_screen_text": "Click It Need To Create",
+      "source_excerpt": "you click it, just you you need to create an account",
+      "estimated_duration_seconds": 4.38
+    },
+    {
+      "scene_number": 3,
+      "purpose": "Capture the product action around log in with the existing.",
+      "spoken_line": "log in with the existing one Since I've already created the account",
+      "on_screen_text": "Log In With The Existing",
+      "source_excerpt": "log in with the existing one Since I've already created the account",
+      "estimated_duration_seconds": 5.11
+    },
+    {
+      "scene_number": 4,
+      "purpose": "Capture the product action around log in can see the.",
+      "spoken_line": "log in, you can see the five courses",
+      "on_screen_text": "Log In Can See The",
+      "source_excerpt": "log in, you can see the five courses",
+      "estimated_duration_seconds": 3.36
+    },
+    {
+      "scene_number": 5,
+      "purpose": "Capture the product action around under japan click on the.",
+      "spoken_line": "under Japan click on the Japan courses And",
+      "on_screen_text": "Under Japan Click On The",
+      "source_excerpt": "under Japan click on the Japan courses And",
+      "estimated_duration_seconds": 4.2
+    },
+    {
+      "scene_number": 6,
+      "purpose": "Capture the product action around the japan course has been.",
+      "spoken_line": "the Japan course has been opened officially, there are five",
+      "on_screen_text": "The Japan Course Has Been",
+      "source_excerpt": "the Japan course has been opened officially, there are five",
+      "estimated_duration_seconds": 4.2
+    }
+  ],
+  "cta": "Turn rough recordings into polished product walkthroughs.",
+  "notes": [
+    "Manual-upload inference uses short transcript-aligned action steps before grounded guide synthesis."
+  ]
+}

@@ -82,7 +82,7 @@ def best_cluster_chain(
     scenes_by_number: dict[int, LaunchScriptScene],
     analyses_by_scene: dict[int, VisualSceneAnalysisRecord],
 ) -> list[SessionEventRecord]:
-    choices = cluster_choices(cluster, events)
+    choices = cluster_choice_variants(cluster, events)
     chains = candidate_chains(choices)
     expected = cluster_expectation(cluster, scenes_by_number, analyses_by_scene)
     ranked = sorted(
@@ -93,18 +93,49 @@ def best_cluster_chain(
     return ranked[0] if ranked else []
 
 
-def cluster_choices(
+def cluster_choice_variants(
     cluster: FlowCluster,
     events: list[SessionEventRecord],
-) -> list[list[SessionEventRecord | None]]:
+) -> list[list[list[SessionEventRecord]]]:
     by_scene: dict[int, list[SessionEventRecord]] = {scene_id: [] for scene_id in cluster.scene_numbers}
     for event in events:
         by_scene.setdefault(scene_number(event), []).append(event)
-    choices: list[list[SessionEventRecord | None]] = []
+    choices: list[list[list[SessionEventRecord]]] = []
     for scene_id in cluster.scene_numbers:
         scene_events = scene_choice_candidates(cluster.scene_type, by_scene.get(scene_id, []))
-        choices.append([None, *scene_events])
+        choices.append(scene_choice_variants(cluster.scene_type, scene_events))
     return choices
+
+
+def scene_choice_variants(
+    scene_type: SceneType,
+    events: list[SessionEventRecord],
+) -> list[list[SessionEventRecord]]:
+    variants: list[list[SessionEventRecord]] = [[]]
+    variants.extend([[event] for event in events])
+    bundled = bundled_scene_events(scene_type, events)
+    if bundled:
+        variants.append(bundled)
+    return variants
+
+
+def bundled_scene_events(
+    scene_type: SceneType,
+    events: list[SessionEventRecord],
+) -> list[SessionEventRecord]:
+    semantics = {event_key(event): semantic_for_choice(event) for event in events}
+    ranked = sorted(events, key=lambda item: item.timestamp)
+    if scene_type == "auth_provider":
+        login = next((event for event in ranked if semantics[event_key(event)].semantic_action == "auth_login_google"), None)
+        picker = next((event for event in ranked if semantics[event_key(event)].semantic_action == "auth_choose_account"), None)
+        if login is not None and picker is not None and picker.timestamp > login.timestamp:
+            return [login, picker]
+    if scene_type == "course_catalog":
+        state = next((event for event in ranked if semantics[event_key(event)].scene_type == "course_catalog" and event.type == "focus"), None)
+        action = next((event for event in ranked if semantics[event_key(event)].entity and event.type == "click"), None)
+        if state is not None and action is not None and action.timestamp > state.timestamp:
+            return [state, action]
+    return []
 
 
 def scene_choice_candidates(
@@ -176,11 +207,11 @@ def semantic_for_choice(event: SessionEventRecord) -> SemanticEvent:
 
 
 def candidate_chains(
-    choices: list[list[SessionEventRecord | None]],
+    choices: list[list[list[SessionEventRecord]]],
 ) -> list[list[SessionEventRecord]]:
     chains: list[list[SessionEventRecord]] = []
     for combination in product(*choices):
-        chain = [event for event in combination if event is not None]
+        chain = sorted((event for bundle in combination for event in bundle), key=lambda item: item.timestamp)
         if chain:
             chains.append(chain)
     return chains

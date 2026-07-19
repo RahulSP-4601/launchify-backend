@@ -51,10 +51,13 @@ from app.services.inferred_grounding_policy import (
 )
 from app.services.grounding_diagnostics import recording_diagnostics
 from app.services.inferred_label_selection import inferred_target_selection
+from app.services.inference_scoring import action_frame_bonus, result_state_penalty
 from app.services.action_sequence_metrics import focused_excerpt, sequence_action_score, valid_action_outcome
 from app.services.event_flow_refinement import refine_event_flow
 from app.services.flow_chain_selector import select_flow_chains
 from app.services.inferred_timeline_recovery import preserve_sparse_timeline
+from app.services.result_state_selection import supplement_result_state_events
+from app.services.ui_structure_insights import compact_action_target, prefers_state_event
 from app.services.visual_analysis import analysis_map
 
 DEFAULT_VIEWPORT = (1280, 720)
@@ -120,13 +123,37 @@ def build_inferred_events(
         retried = dedupe_events(sorted([*deduped, *strict_recovered], key=lambda item: item.timestamp))
         retried = select_flow_chains(retried, launch_script.scenes, analyses_by_scene)
         selected = select_global_event_candidates(retried)
-        return refine_event_flow(
+        return finalize_inferred_events(
             preserve_sparse_timeline(selected, retried, transcript),
-            launch_script.scenes,
+            launch_script,
             analyses_by_scene,
+            viewport_width,
+            viewport_height,
         )
-    selected = preserve_sparse_timeline(selected, deduped, transcript)
-    return refine_event_flow(selected, launch_script.scenes, analyses_by_scene)
+    return finalize_inferred_events(
+        preserve_sparse_timeline(selected, deduped, transcript),
+        launch_script,
+        analyses_by_scene,
+        viewport_width,
+        viewport_height,
+    )
+
+
+def finalize_inferred_events(
+    selected: list[SessionEventRecord],
+    launch_script: LaunchScriptRecord,
+    analyses_by_scene: dict[int, VisualSceneAnalysisRecord],
+    viewport_width: int,
+    viewport_height: int,
+) -> list[SessionEventRecord]:
+    supplemented = supplement_result_state_events(
+        selected,
+        launch_script.scenes,
+        analyses_by_scene,
+        viewport_width,
+        viewport_height,
+    )
+    return refine_event_flow(supplemented, launch_script.scenes, analyses_by_scene)
 
 
 def infer_scene_windows(
@@ -136,7 +163,7 @@ def infer_scene_windows(
 ) -> list[InteractionWindow]:
     windows: list[InteractionWindow] = []
     for index in range(len(analysis.frames)):
-        transcript_excerpt = local_transcript_excerpt(transcript, analysis, index)
+        transcript_excerpt = local_transcript_excerpt(transcript, analysis, index, source_excerpt)
         if not frame_is_candidate(analysis.frames, index, transcript_excerpt, source_excerpt):
             continue
         window = build_window(analysis, index, transcript_excerpt, source_excerpt)
@@ -151,12 +178,43 @@ def local_transcript_excerpt(
     transcript: list[TranscriptSegment],
     analysis: VisualSceneAnalysisRecord,
     index: int,
+    source_excerpt: str,
 ) -> str:
     timestamp = analysis.frames[index].timestamp
     start = max(analysis.start, timestamp - LOCAL_TRANSCRIPT_PADDING_SECONDS)
     end = min(analysis.end, timestamp + LOCAL_TRANSCRIPT_PADDING_SECONDS)
     excerpt = transcript_window(transcript, start, end) or transcript_window(transcript, analysis.start, analysis.end)
-    return focused_excerpt(excerpt, analysis, index)
+    focused = focused_excerpt(excerpt, analysis, index)
+    return grounded_scene_excerpt(focused, source_excerpt, analysis.summary)
+
+
+def grounded_scene_excerpt(
+    transcript_excerpt: str,
+    source_excerpt: str,
+    summary: str,
+) -> str:
+    clean_transcript = transcript_excerpt.strip()
+    clean_source = source_excerpt.strip()
+    if not clean_transcript:
+        return clean_source or summary
+    if not clean_source:
+        return clean_transcript
+    source_tokens = intent_tokens(clean_source, summary)
+    if not source_tokens:
+        return clean_transcript
+    transcript_overlap = token_overlap_ratio(intent_tokens(clean_transcript), source_tokens)
+    if transcript_overlap >= 0.18:
+        return clean_transcript
+    return clean_source
+
+
+def token_overlap_ratio(
+    observed_tokens: set[str],
+    expected_tokens: set[str],
+) -> float:
+    if not observed_tokens or not expected_tokens:
+        return 0.0
+    return round(len(observed_tokens & expected_tokens) / max(len(expected_tokens), 1), 3)
 
 
 def frame_is_candidate(
@@ -195,11 +253,16 @@ def build_window(
     base_focus_box = inferred_focus_box(frame, transcript_excerpt, source_excerpt) or analysis.click_target_box or analysis.anchor_box or analysis.primary_focus_box
     if base_focus_box is None:
         return None
-    selection = inferred_target_selection(frame, analysis.visible_labels, transcript_excerpt, source_excerpt, base_focus_box)
+    has_click_signal = analysis.click_detected or frame.click_target_box is not None or frame.click_confidence >= 0.42
+    selection = inferred_target_selection(frame, analysis.visible_labels, transcript_excerpt, source_excerpt, base_focus_box, has_click_signal)
     if selection is None:
         return None
     label, focus_box = selection
     event_type = inferred_event_type(transcript_excerpt, source_excerpt, label, frame)
+    if prefers_state_event(frame, analysis.visible_labels) and not compact_action_target(frame):
+        event_type = "focus"
+    elif event_type == "click" and not has_click_signal:
+        event_type = "focus"
     score = interaction_score(analysis.frames, index, transcript_excerpt, source_excerpt)
     if not valid_action_outcome(analysis.frames, index, label, focus_box, transcript_excerpt, source_excerpt):
         return None
@@ -230,7 +293,9 @@ def interaction_score(
         + sequence_action_score(frames, index, frame.click_target_box or frame.dominant_box) * 0.08
         + transcript_intent_score(transcript_excerpt, source_excerpt, frame) * 0.14
     )
-    return round(min(max(score + semantic_bonus(transcript_excerpt, source_excerpt, frame), 0.0), 1.0), 3)
+    adjusted = score + semantic_bonus(transcript_excerpt, source_excerpt, frame) + action_frame_bonus(frame)
+    adjusted -= result_state_penalty(frame, transcript_excerpt, source_excerpt, frame_label_set(frame))
+    return round(min(max(adjusted, 0.0), 1.0), 3)
 
 
 def semantic_bonus(

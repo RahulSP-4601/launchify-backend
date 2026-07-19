@@ -41,4 +41,4 @@ def candidate_signal_count(
 
 
 def plausible_focus_box(focus_box: FocusBox) -> bool:
-    return 0.0 < box_area(focus_box) <= 0.2
+    return 0.0 < box_area(focus_box) <= 0.18

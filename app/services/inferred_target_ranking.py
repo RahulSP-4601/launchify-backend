@@ -160,6 +160,8 @@ def clean_semantic_tokens(text: str) -> set[str]:
 
 
 def role_for_candidate(tokens: set[str], semantics: SceneSemantics) -> UIRole:
+    if auth_context_label(tokens, semantics):
+        return "supporting_context"
     if state_like_tokens(tokens) and not semantics.focus_tokens.intersection(tokens):
         return "state_only"
     if semantics.intent == "course" and state_like_tokens(tokens) and not has_affordance(tokens):
@@ -183,6 +185,16 @@ def role_for_candidate(tokens: set[str], semantics: SceneSemantics) -> UIRole:
     if actionable_candidate(tokens, semantics.intent):
         return "primary_action"
     return "ambiguous"
+
+
+def auth_context_label(tokens: set[str], semantics: SceneSemantics) -> bool:
+    if semantics.intent not in {"auth", "account_existing", "account_create"}:
+        return False
+    if tokens <= {"account"} or tokens <= {"account", "list"}:
+        return True
+    if tokens <= {"choose", "account"} and not semantics.focus_tokens.intersection({"choose", "account"}):
+        return True
+    return False
 
 
 def focus_match_score(tokens: set[str], semantics: SceneSemantics) -> float:

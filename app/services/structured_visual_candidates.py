@@ -6,6 +6,7 @@ from app.models.projects import FocusBox, FrameSignalRecord, UiElementRecord
 from app.services.inferred_recording_support import box_area, box_center_delta, intent_overlap_score, intent_tokens, normalize_label, state_like_label
 
 AFFORDANCE_WORDS = frozenset({"continue", "enter", "login", "log", "open", "select", "sign", "start"})
+AFFORDANCE_ACTION_WORDS = frozenset({"continue", "enter", "login", "log", "open", "select", "sign", "start"})
 
 
 @dataclass(frozen=True)
@@ -76,7 +77,7 @@ def group_label(group: list[UiElementRecord], tokens: set[str]) -> str:
     affordance = next((label for label in labels if has_affordance(label)), "")
     matched = sorted(labels, key=lambda label: intent_overlap_score(label, tokens), reverse=True)
     primary = next((label for label in matched if not state_like_label(label) and not has_affordance(label)), matched[0])
-    if affordance and primary and normalize_label(affordance) != normalize_label(primary):
+    if affordance and primary and should_merge_affordance_label(primary, affordance, tokens):
         return f"{primary} {affordance}".strip()
     return primary or affordance
 
@@ -93,3 +94,20 @@ def merged_group_box(group: list[UiElementRecord]) -> FocusBox | None:
 
 def has_affordance(label: str) -> bool:
     return bool(set(normalize_label(label).split()) & AFFORDANCE_WORDS)
+
+
+def should_merge_affordance_label(
+    primary: str,
+    affordance: str,
+    tokens: set[str],
+) -> bool:
+    primary_tokens = set(normalize_label(primary).split())
+    affordance_tokens = set(normalize_label(affordance).split())
+    if not primary_tokens or not affordance_tokens:
+        return False
+    if primary_tokens == affordance_tokens:
+        return False
+    affordance_action_tokens = affordance_tokens & AFFORDANCE_ACTION_WORDS
+    if not affordance_action_tokens:
+        return False
+    return bool(tokens & primary_tokens) and bool(tokens & affordance_action_tokens)

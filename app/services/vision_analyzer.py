@@ -1,25 +1,22 @@
 from __future__ import annotations
-
 import base64
 import json
 import logging
 from pathlib import Path
 import re
+from time import sleep
 from urllib import error, request
-
 from pydantic import ValidationError
-
 from app.core.config import get_settings
 from app.models.projects import FocusBox, FrameSignalRecord, LaunchScriptScene, VisualSceneAnalysisRecord
 from app.services.frame_signal_analyzer import FrameDiffResult, frame_diff_scores
 from app.services.ocr_pipeline import OcrFrameResult
-from app.services.script_writer import describe_transport_error, openai_headers
+from app.services.script_writer import openai_headers
 from app.services.vision_candidate_hints import candidate_hint_text
+from app.services.vision_retry import retry_delay_seconds, retryable_visual_failure, retryable_visual_payload_error, retryable_visual_transport, visual_error_message, visual_failure_detail
 from app.services.video_frames import ExtractedFrame
 from app.services.vision_response_schema import visual_response_format
-
 logger = logging.getLogger(__name__)
-
 
 def analyze_scene_frames(
     scene: LaunchScriptScene,
@@ -45,10 +42,9 @@ def analyze_scene_frames(
             VisualSceneAnalysisRecord.model_validate(normalize_visual_payload(payload)),
             diff_result,
             ocr_labels_by_timestamp,
-        )
+    )
     except ValidationError as exc:
         raise RuntimeError("OpenAI returned an invalid visual analysis payload.") from exc
-
 
 def request_openai_vision(
     scene: LaunchScriptScene,
@@ -59,7 +55,7 @@ def request_openai_vision(
 ) -> dict[str, object]:
     settings = get_settings()
     try:
-        return request_openai_vision_once(
+        return request_openai_vision_mode(
             scene,
             scene_range,
             extracted_frames,
@@ -67,33 +63,54 @@ def request_openai_vision(
             ocr_labels_by_timestamp,
             reduced=False,
             timeout_seconds=settings.visual_analysis_scene_timeout_seconds,
+            max_attempts=3,
         )
-    except error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="ignore")
-        raise RuntimeError(f"OpenAI visual analysis failed: {detail}") from exc
-    except (error.URLError, TimeoutError, RuntimeError) as exc:
-        if isinstance(exc, RuntimeError) and not retryable_visual_payload_error(exc):
+    except RuntimeError as exc:
+        if not retryable_visual_failure(exc):
             raise
         logger.warning(
             "OpenAI visual analysis retrying scene %s with a reduced payload after: %s",
             scene.scene_number,
             exc,
         )
+        return request_openai_vision_mode(
+            scene,
+            scene_range,
+            reduced_frames(extracted_frames),
+            diff_result,
+            ocr_labels_by_timestamp,
+            reduced=True,
+            timeout_seconds=reduced_timeout_seconds(settings.visual_analysis_scene_timeout_seconds),
+            max_attempts=2,
+        )
+
+
+def request_openai_vision_mode(
+    scene: LaunchScriptScene,
+    scene_range: tuple[float, float],
+    extracted_frames: list[ExtractedFrame],
+    diff_result: FrameDiffResult,
+    ocr_labels_by_timestamp: dict[float, OcrFrameResult],
+    *,
+    reduced: bool,
+    timeout_seconds: int,
+    max_attempts: int,
+) -> dict[str, object]:
+    last_exc: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
         try:
             return request_openai_vision_once(
-                scene,
-                scene_range,
-                reduced_frames(extracted_frames),
-                diff_result,
-                ocr_labels_by_timestamp,
-                reduced=True,
-                timeout_seconds=reduced_timeout_seconds(settings.visual_analysis_scene_timeout_seconds),
+                scene, scene_range, extracted_frames, diff_result, ocr_labels_by_timestamp, reduced=reduced, timeout_seconds=timeout_seconds,
             )
-        except error.HTTPError as retry_exc:
-            detail = retry_exc.read().decode("utf-8", errors="ignore")
-            raise RuntimeError(f"OpenAI visual analysis failed after reduced retry: {detail}") from retry_exc
-        except (error.URLError, TimeoutError) as retry_exc:
-            raise RuntimeError(f"OpenAI visual analysis failed after reduced retry: {describe_transport_error(retry_exc)}") from retry_exc
+        except (error.HTTPError, error.URLError, TimeoutError, RuntimeError) as exc:
+            if not retryable_visual_transport(exc, retryable_visual_payload_error(exc) if isinstance(exc, RuntimeError) else False):
+                raise RuntimeError(visual_error_message(exc, reduced)) from exc
+            last_exc = exc
+            if attempt >= max_attempts:
+                break
+            logger.warning("OpenAI visual analysis retry %s for scene %s after: %s", attempt + 1, scene.scene_number, visual_failure_detail(exc))
+            sleep(retry_delay_seconds(attempt, reduced))
+    raise RuntimeError(visual_error_message(last_exc or RuntimeError("unknown visual analysis error"), reduced)) from last_exc
 def request_openai_vision_once(
     scene: LaunchScriptScene,
     scene_range: tuple[float, float],
@@ -127,9 +144,6 @@ def request_openai_vision_once(
     with request.urlopen(api_request, timeout=timeout_seconds) as response:
         payload = json.loads(response.read().decode("utf-8"))
     return parse_visual_payload(payload)
-def retryable_visual_payload_error(exc: RuntimeError) -> bool:
-    message = str(exc)
-    return "invalid visual analysis JSON" in message or "invalid visual analysis payload shape" in message or "empty visual analysis response" in message
 def vision_system_prompt() -> str:
     return (
         "You analyze product UI video frames for an AI video editor. "

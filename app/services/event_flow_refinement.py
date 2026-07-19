@@ -7,9 +7,9 @@ from app.services.action_classifier import event_action_class
 from app.services.auth_flow_refinement import refine_auth_flow_events
 from app.services.generic_target_labeling import promoted_target_label, should_promote_generic_label
 from app.services.inferred_recording_support import normalize_label
-from app.services.semantic_event_normalizer import semantic_event
+from app.services.semantic_event_normalizer import SemanticEvent, semantic_event
 from app.services.scene_intent_resolver import resolve_scene_intent
-from app.services.visual_target_context import contextual_target_label
+from app.services.visual_target_context import contextual_target_label, exact_visual_target_label
 
 AUTH_BRANCH_CLASSES = frozenset({"auth_action", "button_click"})
 COURSE_EVENT_CLASSES = frozenset({"card_selection", "button_click", "navigation"})
@@ -88,20 +88,23 @@ def prune_course_cluster(
     analyses_by_scene: dict[int, VisualSceneAnalysisRecord],
 ) -> list[SessionEventRecord]:
     selected: list[SessionEventRecord] = []
-    best_specific: dict[int, SessionEventRecord] = {}
+    best_actions: dict[int, SessionEventRecord] = {}
+    best_results: dict[int, SessionEventRecord] = {}
     for event in events:
         semantic = semantic_event(event, scenes_by_number.get(scene_number(event)), analyses_by_scene.get(scene_number(event)))
         if semantic.scene_type != "course_catalog":
             selected.append(event)
             continue
         cluster = course_cluster_key(event)
-        current = best_specific.get(cluster)
+        bucket = best_results if event_action_class(event) == "result_state" else best_actions
+        current = bucket.get(cluster)
         if current is None:
-            best_specific[cluster] = event
+            bucket[cluster] = event
             continue
         if stronger_course_event(event, current, scenes_by_number, analyses_by_scene):
-            best_specific[cluster] = event
-    selected.extend(best_specific.values())
+            bucket[cluster] = event
+    selected.extend(best_actions.values())
+    selected.extend(best_results.values())
     return sorted(selected, key=lambda item: item.timestamp)
 
 
@@ -189,17 +192,33 @@ def promote_entity_labels(
 ) -> list[SessionEventRecord]:
     promoted: list[SessionEventRecord] = []
     for event in events:
-        semantic = semantic_event(event, scenes_by_number.get(scene_number(event)), analyses_by_scene.get(scene_number(event)))
-        if semantic.semantic_action in {"course_open", "course_select"} and not semantic.entity:
-            replacement = replacement_entity_label(event, events, scenes_by_number, analyses_by_scene)
+        analysis = analyses_by_scene.get(scene_number(event))
+        semantic = semantic_event(event, scenes_by_number.get(scene_number(event)), analysis)
+        if preserve_focus_state_label(event):
+            event.metadata["action_class"] = "result_state"
+            promoted.append(event)
+            continue
+        if semantic.semantic_action in {"course_open", "course_select"}:
+            replacement = exact_visual_target_label(analysis, event.timestamp, semantic.entity)
             if replacement:
                 event = relabel_event(event, replacement)
-        elif should_promote_generic_label(event.target.label):
+            elif not semantic.entity:
+                replacement = replacement_entity_label(event, events, scenes_by_number, analyses_by_scene)
+                if replacement:
+                    event = relabel_event(event, replacement)
+        elif should_promote_generic_label(event.target.label) and not preserve_focus_state_label(event):
             replacement = replacement_focus_label(event, scenes_by_number, analyses_by_scene)
             if replacement:
                 event = relabel_event(event, replacement)
         promoted.append(event)
     return promoted
+
+
+def preserve_focus_state_label(event: SessionEventRecord) -> bool:
+    label = normalize_label(event.target.label)
+    if event.type != "focus":
+        return False
+    return any(phrase in label for phrase in ("select a course", "pick your", "choose your", "before you start"))
 
 
 def replacement_entity_label(
@@ -209,6 +228,7 @@ def replacement_entity_label(
     analyses_by_scene: dict[int, VisualSceneAnalysisRecord],
 ) -> str:
     target_scene = scene_number(event)
+    target_semantic = semantic_event(event, scenes_by_number.get(target_scene), analyses_by_scene.get(target_scene))
     neighbors = [
         other
         for other in events
@@ -222,10 +242,18 @@ def replacement_entity_label(
         key=lambda item: (1.0 if item.entity else 0.0, item.score),
         reverse=True,
     )
-    entity = next((item.entity for item in ranked if item.entity), "")
-    if entity == "japan":
-        return "Japanese course"
-    return f"{entity.capitalize()} course".strip() if entity else ""
+    entity = next((item.entity for item in ranked if compatible_entity(item.entity, target_semantic.semantic_action)), "")
+    if entity in {"japan", "japanese"}:
+        return "Japanese"
+    return entity.capitalize().strip() if entity else ""
+
+
+def compatible_entity(entity: str, semantic_action: str) -> bool:
+    if not entity:
+        return False
+    if semantic_action in {"course_open", "course_select"}:
+        return entity in {"japan", "japanese", "english", "german", "spanish", "french"}
+    return True
 
 
 def replacement_focus_label(

@@ -28,6 +28,8 @@ GENERIC_LABELS = frozenset(
         "continue",
         "course",
         "courses",
+        "account",
+        "account list",
         "next",
         "one",
         "two",
@@ -83,6 +85,8 @@ def low_signal_label(label: str) -> bool:
     if sentence_like_label(label):
         return True
     tokens = normalized.split()
+    if tokens == ["account"] or tokens == ["list"]:
+        return True
     if any(token.isdigit() for token in tokens):
         return True
     if len(tokens) == 1 and (tokens[0] in LOW_SIGNAL_TOKENS or len(tokens[0]) <= 3):

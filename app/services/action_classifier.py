@@ -34,8 +34,11 @@ def classify_action(
 ) -> str:
     primary_text = " ".join(part for part in (label, summary) if part).lower()
     primary_tokens = set(normalize_label(primary_text).split())
+    label_tokens = set(normalize_label(label).split())
     transcript_tokens = set(normalize_label(transcript_excerpt).split())
     tokens = primary_tokens | transcript_tokens
+    if event_type == "focus" and state_structure_label(label) and not label_tokens.intersection(BUTTON_WORDS | CARD_WORDS | MENU_WORDS):
+        return "result_state"
     if event_type == "input":
         return "input_entry"
     if event_type == "navigation":
@@ -83,3 +86,8 @@ def is_result_state(primary_tokens: set[str], transcript_tokens: set[str]) -> bo
     if primary_tokens.intersection(BUTTON_WORDS | CARD_WORDS | MENU_WORDS):
         return False
     return result_hits >= 1 and bool(explanation_hits)
+
+
+def state_structure_label(primary_text: str) -> bool:
+    normalized = normalize_label(primary_text)
+    return any(phrase in normalized for phrase in ("choose an account", "account list", "select a course", "learning dashboard", "pick your", "before you start"))

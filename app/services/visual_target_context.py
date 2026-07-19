@@ -27,6 +27,27 @@ def contextual_target_label(
     return title_case_phrase(entity)
 
 
+def exact_visual_target_label(
+    analysis: VisualSceneAnalysisRecord | None,
+    action_timestamp: float | None,
+    entity: str,
+) -> str:
+    if analysis is None or not entity:
+        return ""
+    frame_pool = relevant_frames(analysis, action_timestamp)
+    ranked = sorted(
+        (
+            element
+            for frame in frame_pool
+            for element in frame.ui_elements
+            if exact_target_candidate(element.label, entity)
+        ),
+        key=lambda element: exact_target_rank(element.label, entity),
+        reverse=True,
+    )
+    return ranked[0].label.strip() if ranked else ""
+
+
 def best_matching_entity_label(
     analysis: VisualSceneAnalysisRecord,
     resolution: SceneIntentResolution,
@@ -115,3 +136,20 @@ def action_verb(label: str) -> str:
 
 def has_focus_intent(resolution: SceneIntentResolution) -> bool:
     return bool(resolution.focus_phrase.strip() or resolution.focus_tokens)
+
+
+def exact_target_candidate(label: str, entity: str) -> bool:
+    normalized = normalize_label(label)
+    if not normalized or low_signal_label(label):
+        return False
+    tokens = set(normalized.split())
+    if entity in {"japan", "japanese"}:
+        return "japanese" in tokens
+    return entity in tokens
+
+
+def exact_target_rank(label: str, entity: str) -> tuple[float, float]:
+    tokens = set(normalize_label(label).split())
+    entity_match = 1.0 if (entity in {"japan", "japanese"} and "japanese" in tokens) or entity in tokens else 0.0
+    exactness = 1.0 if len(tokens) == 1 else 0.6 if "course" in tokens else 0.4
+    return (entity_match, exactness)

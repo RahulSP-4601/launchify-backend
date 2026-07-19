@@ -1,0 +1,169 @@
+{
+  "source": "manual_upload_inferred",
+  "started_at": "0.0",
+  "ended_at": "45.54",
+  "viewport_width": 2850,
+  "viewport_height": 1552,
+  "page_title": "Pronouncly",
+  "page_url": "",
+  "grounding_diagnostics": {
+    "source_duration_seconds": "45.54",
+    "inferred_event_count": "5",
+    "meaningful_event_count": "5",
+    "average_event_score": "0.74",
+    "timeline_coverage_ratio": "0.61",
+    "weak_label_ratio": "0.00",
+    "low_confidence_ratio": "0.00",
+    "auth_state_ratio": "0.00",
+    "repeated_transcript_ratio": "0.20",
+    "visual_scene_count": "6",
+    "fallback_scene_count": "0",
+    "under_grounded": "false"
+  },
+  "events": [
+    {
+      "type": "click",
+      "timestamp": 13.8,
+      "x": 2636.25,
+      "y": 69.84,
+      "value": "",
+      "url": "",
+      "title": "",
+      "target": {
+        "selector": "",
+        "label": "Google Login",
+        "role": "control",
+        "text": "User moves cursor to the Google Login button at the top right corner of the interface, highlighting it as the intended click target.",
+        "href": "",
+        "bbox_x": 2479.5,
+        "bbox_y": 31.040000000000006,
+        "bbox_width": 313.5,
+        "bbox_height": 77.6
+      },
+      "metadata": {
+        "inferred": "true",
+        "scene_number": "1",
+        "synthetic_selector": "[data-launchify-scene='1']",
+        "score": "0.75",
+        "action_class": "button_click",
+        "transcript_excerpt": "user moves cursor to the google login button at the top right corner of the interface"
+      }
+    },
+    {
+      "type": "click",
+      "timestamp": 20.93,
+      "x": 2137.5,
+      "y": 1218.32,
+      "value": "",
+      "url": "",
+      "title": "",
+      "target": {
+        "selector": "",
+        "label": "Log in with Google",
+        "role": "control",
+        "text": "User is shown a login screen with options to sign up or log in with Google. The cursor moves to and clicks the 'Log in with Google' button, then the UI transitions to an account selection screen.",
+        "href": "",
+        "bbox_x": 1567.5,
+        "bbox_y": 1164.0,
+        "bbox_width": 1140.0,
+        "bbox_height": 108.64
+      },
+      "metadata": {
+        "inferred": "true",
+        "scene_number": "3",
+        "synthetic_selector": "[data-launchify-scene='3']",
+        "score": "0.59",
+        "action_class": "button_click",
+        "transcript_excerpt": "log in with the existing one Since I've already created the account"
+      }
+    },
+    {
+      "type": "focus",
+      "timestamp": 27.9,
+      "x": 1425.0,
+      "y": 776.0,
+      "value": "",
+      "url": "",
+      "title": "",
+      "target": {
+        "selector": "",
+        "label": "Select a course",
+        "role": "control",
+        "text": "Select a course",
+        "href": "",
+        "bbox_x": 142.5,
+        "bbox_y": 232.79999999999995,
+        "bbox_width": 2565.0,
+        "bbox_height": 1086.4
+      },
+      "metadata": {
+        "inferred": "true",
+        "scene_number": "4",
+        "synthetic_selector": "[data-launchify-scene='4']",
+        "score": "1.00",
+        "action_class": "result_state",
+        "transcript_excerpt": "log in, you can see the five courses",
+        "scene_state": "result_state",
+        "result_label": "Select a course"
+      }
+    },
+    {
+      "type": "click",
+      "timestamp": 37.34,
+      "x": 356.25,
+      "y": 1140.72,
+      "value": "",
+      "url": "",
+      "title": "",
+      "target": {
+        "selector": "",
+        "label": "Japanese",
+        "role": "control",
+        "text": "Japanese",
+        "href": "",
+        "bbox_x": 142.5,
+        "bbox_y": 1086.4,
+        "bbox_width": 427.5,
+        "bbox_height": 108.64
+      },
+      "metadata": {
+        "inferred": "true",
+        "scene_number": "5",
+        "synthetic_selector": "[data-launchify-scene='5']",
+        "score": "0.50",
+        "action_class": "button_click",
+        "transcript_excerpt": "under Japan click on the Japan courses And"
+      }
+    },
+    {
+      "type": "focus",
+      "timestamp": 41.54,
+      "x": 1425.0,
+      "y": 776.0,
+      "value": "",
+      "url": "",
+      "title": "",
+      "target": {
+        "selector": "",
+        "label": "Pick your Japanese level before you start learning.",
+        "role": "control",
+        "text": "Pick your Japanese level before you start learning.",
+        "href": "",
+        "bbox_x": 142.5,
+        "bbox_y": 232.79999999999995,
+        "bbox_width": 2565.0,
+        "bbox_height": 1086.4
+      },
+      "metadata": {
+        "inferred": "true",
+        "scene_number": "6",
+        "synthetic_selector": "[data-launchify-scene='6']",
+        "score": "0.88",
+        "action_class": "result_state",
+        "transcript_excerpt": "the Japan course has been opened officially, there are five",
+        "scene_state": "result_state",
+        "result_label": "Pick your Japanese level before you start learning."
+      }
+    }
+  ]
+}

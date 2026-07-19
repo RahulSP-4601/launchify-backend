@@ -63,9 +63,11 @@ def recovered_event(
     transcript_excerpt = transcript_window(transcript, analysis.start, analysis.end)
     if not transcript_excerpt and not analysis.visible_labels:
         return None
-    label = recovered_label(analysis, transcript_excerpt)
     frame = best_recovery_frame(analysis)
-    if not label or frame is None:
+    if frame is None:
+        return None
+    label = recovered_label(analysis, transcript_excerpt, frame)
+    if not label:
         return None
     scene_state = recovery_scene_state(analysis, transcript_excerpt, label, frame)
     event_type = recovered_event_type(transcript_excerpt, label, scene_state)
@@ -86,9 +88,17 @@ def transcript_window(
     return " ".join(parts)
 
 
-def recovered_label(analysis: VisualSceneAnalysisRecord, transcript_excerpt: str) -> str:
+def recovered_label(
+    analysis: VisualSceneAnalysisRecord,
+    transcript_excerpt: str,
+    frame: FrameSignalRecord,
+) -> str:
     labels = label_pool(analysis)
-    resolution = resolve_scene_intent(transcript_excerpt, analysis.summary)
+    resolution = resolve_scene_intent(
+        transcript_excerpt,
+        analysis.summary,
+        recovery_frame_progress(analysis, frame),
+    )
     tokens = resolution.focus_tokens or intent_tokens(transcript_excerpt)
     ranked = sorted(
         dict.fromkeys(labels),
@@ -138,6 +148,15 @@ def best_recovery_frame(analysis: VisualSceneAnalysisRecord) -> FrameSignalRecor
     if not analysis.frames:
         return None
     return max(analysis.frames, key=frame_recovery_score)
+
+
+def recovery_frame_progress(
+    analysis: VisualSceneAnalysisRecord,
+    frame: FrameSignalRecord,
+) -> float:
+    duration = max(analysis.end - analysis.start, 0.01)
+    relative_time = frame.timestamp - analysis.start
+    return min(max(relative_time / duration, 0.0), 1.0)
 
 
 def frame_recovery_score(frame: FrameSignalRecord) -> float:
@@ -258,7 +277,11 @@ def valid_action_recovery(
     min_score: float,
 ) -> bool:
     evidence_count = recovery_action_signal_count(analysis, transcript_excerpt, frame)
-    resolution = resolve_scene_intent(transcript_excerpt, analysis.summary)
+    resolution = resolve_scene_intent(
+        transcript_excerpt,
+        analysis.summary,
+        recovery_frame_progress(analysis, frame),
+    )
     if resolution.negative_tokens.intersection(set(normalize_label(label).split())) and transcript_match < 0.5:
         return False
     if not actionable_label(label) and transcript_match < 0.36:
