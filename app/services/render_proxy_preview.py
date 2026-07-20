@@ -12,7 +12,6 @@ from app.services.render_proxy_clips import RenderClip, highlight_clips
 from app.services.render_runtime_helpers import output_duration_seconds, run_process_with_heartbeat
 
 logger = logging.getLogger(__name__)
-
 PreviewReady = Callable[[RenderedVideoRecord], None]
 UploadPreview = Callable[[str, ProjectRecord, Path, Callable[[], None] | None], RenderedVideoRecord]
 Heartbeat = Callable[[], None]
@@ -28,6 +27,14 @@ def prepare_proxy_preview(
     quality: ExportQuality = "preview",
 ) -> None:
     clips = highlight_clips(project)
+    logger.info(
+        "Preview render plan for project %s: clip_count=%s, clip_duration_seconds=%.2f, voiceover_mode=%s, voiceover_audio=%s.",
+        project.id,
+        len(clips),
+        round(sum(clip.end - clip.start for clip in clips), 2),
+        resolved_voiceover_mode(project, voiceover_audio),
+        voiceover_audio is not None,
+    )
     if not clips:
         render_passthrough_video(project, source_video, output_path, voiceover_audio, heartbeat, quality)
         return

@@ -49,7 +49,21 @@ def prioritized_scene_inputs(
     transcript: list[TranscriptSegment],
 ) -> list[tuple[LaunchScriptScene, tuple[float, float]]]:
     paired = list(zip(scenes, ranges, strict=True))
-    return sorted(paired, key=lambda item: scene_priority(item[0], item[1], transcript), reverse=True)
+    ranked = sorted(
+        enumerate(paired),
+        key=lambda item: scene_priority(item[1][0], item[1][1], transcript),
+        reverse=True,
+    )
+    ordered = [item[1] for item in ranked]
+    if len(ordered) <= 2:
+        return ordered
+    coverage_first = [ordered[0]]
+    latest_scene = max(paired, key=lambda item: item[1][0])
+    if latest_scene not in coverage_first:
+        coverage_first.append(latest_scene)
+    middle = [item for item in paired if item not in coverage_first]
+    timeline_order = sorted(middle, key=lambda item: item[1][0])
+    return [*coverage_first, *timeline_order]
 
 
 def scene_priority(

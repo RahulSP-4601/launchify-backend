@@ -24,13 +24,13 @@ from app.models.projects import (
 )
 from app.services.action_classifier import classify_action, event_action_class
 from app.services.caption_designer import build_caption_track
+from app.services.edit_plan_guardrails import finalized_edit_plan
 from app.services.event_grounding import focus_box_for_event, normalize_event_timestamp, primary_event_for_window, region_for_box
 from app.services.motion_director import build_motion_track, offset_for_box
 from app.services.override_manager import apply_manual_overrides
 from app.services.scene_roles import scene_role_from_action_class
 from app.services.session_grounding import apply_session_grounding
 from app.services.scene_alignment import align_script_scenes
-from app.services.scene_trimming import trim_edit_plan
 from app.services.timing_sync import sync_edit_plan_timing
 from app.services.visual_analysis import analysis_map
 from app.services.visual_policy import ScenePolicy, build_scene_policy
@@ -76,7 +76,7 @@ def generate_edit_plan(
     synced_edit = sync_edit_plan_timing(planned_edit, visual_analyses)
     grounded_edit = apply_session_grounding(synced_edit, project.recording_session)
     overridden_edit = apply_manual_overrides(grounded_edit, normalized_overrides(project.manual_overrides))
-    return trim_edit_plan(overridden_edit)
+    return finalized_edit_plan(project, overridden_edit)
 
 
 def generate_grounded_edit_plan(
@@ -99,9 +99,7 @@ def generate_grounded_edit_plan(
         ),
     )
     overridden_edit = apply_manual_overrides(edit_plan, normalized_overrides(project.manual_overrides))
-    return trim_edit_plan(overridden_edit)
-
-
+    return finalized_edit_plan(project, overridden_edit)
 def require_launch_script(launch_script: LaunchScriptRecord | None) -> LaunchScriptRecord:
     if launch_script is None:
         raise RuntimeError("Launch script is required before generating the edit plan.")

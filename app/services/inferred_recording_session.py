@@ -28,7 +28,6 @@ from app.services.inferred_recording_support import (
     contains_any,
     dedupe_events,
     duplicate_event,
-    fallback_intent_label,
     intent_overlap_score,
     intent_tokens,
     label_quality_score,
@@ -52,9 +51,11 @@ from app.services.inferred_grounding_policy import (
 from app.services.grounding_diagnostics import recording_diagnostics
 from app.services.inferred_label_selection import inferred_target_selection
 from app.services.inference_scoring import action_frame_bonus, result_state_penalty
-from app.services.action_sequence_metrics import focused_excerpt, sequence_action_score, valid_action_outcome
+from app.services.action_sequence_metrics import sequence_action_score, valid_action_outcome
 from app.services.event_flow_refinement import refine_event_flow
 from app.services.flow_chain_selector import select_flow_chains
+from app.services.inferred_scene_excerpt import local_transcript_excerpt
+from app.services.inferred_transcript_fallback import backfill_transcript_scene_events
 from app.services.inferred_timeline_recovery import preserve_sparse_timeline
 from app.services.result_state_selection import supplement_result_state_events
 from app.services.ui_structure_insights import compact_action_target, prefers_state_event
@@ -64,10 +65,11 @@ DEFAULT_VIEWPORT = (1280, 720)
 MAX_EVENTS = 16
 MAX_EVENTS_PER_SCENE = 3
 CANDIDATE_EVIDENCE_THRESHOLD = 0.44
-LOCAL_TRANSCRIPT_PADDING_SECONDS = 2.2
 CLICK_WORDS = frozenset({"click", "tap", "press", "select", "choose", "continue", "open", "start", "launch", "login", "log in"})
 INPUT_WORDS = frozenset({"type", "enter", "write", "search", "email", "password", "name"})
 NAVIGATION_WORDS = frozenset({"page", "screen", "dashboard", "home", "next", "continue", "course"})
+
+
 def infer_recording_session(
     project: ProjectRecord,
     video_path: Path,
@@ -97,39 +99,14 @@ def build_inferred_events(
     viewport_width: int,
     viewport_height: int,
 ) -> list[SessionEventRecord]:
-    inferred_events: list[SceneEventCandidate] = []
-    source_excerpt_by_scene = {scene.scene_number: scene.source_excerpt for scene in launch_script.scenes}
-    for scene in launch_script.scenes:
-        analysis = analyses_by_scene.get(scene.scene_number)
-        if analysis is None:
-            continue
-        source_excerpt = source_excerpt_by_scene.get(scene.scene_number, scene.source_excerpt)
-        transcript_excerpt = transcript_window(transcript, analysis.start, analysis.end)
-        windows = infer_scene_windows(analysis, transcript, source_excerpt)
-        inferred_events.extend(
-            SceneEventCandidate(scene.scene_number, build_session_event(window, scene.scene_number, viewport_width, viewport_height))
-            for window in canonical_scene_windows(windows, analysis, transcript_excerpt, scene.source_excerpt)[:MAX_EVENTS_PER_SCENE]
-        )
-    deduped = dedupe_events(sorted((candidate.event for candidate in inferred_events), key=lambda item: item.timestamp))
+    deduped = deduped_scene_candidates(launch_script, transcript, analyses_by_scene, viewport_width, viewport_height)
     if needs_action_recovery(deduped, transcript):
-        recovered = recover_events_from_analyses(transcript, list(analyses_by_scene.values()), viewport_width, viewport_height)
-        deduped = dedupe_events(sorted([*deduped, *recovered], key=lambda item: item.timestamp))
+        deduped = recovered_candidate_events(deduped, transcript, analyses_by_scene, viewport_width, viewport_height)
     deduped = select_flow_chains(deduped, launch_script.scenes, analyses_by_scene)
     selected = select_global_event_candidates(deduped)
     if should_retry_strict_recovery(selected, transcript):
-        strict_recovered = recover_events_from_analyses(
-            transcript, list(analyses_by_scene.values()), viewport_width, viewport_height, strict=True,
-        )
-        retried = dedupe_events(sorted([*deduped, *strict_recovered], key=lambda item: item.timestamp))
-        retried = select_flow_chains(retried, launch_script.scenes, analyses_by_scene)
-        selected = select_global_event_candidates(retried)
-        return finalize_inferred_events(
-            preserve_sparse_timeline(selected, retried, transcript),
-            launch_script,
-            analyses_by_scene,
-            viewport_width,
-            viewport_height,
-        )
+        deduped = strict_recovery_candidates(deduped, launch_script, transcript, analyses_by_scene, viewport_width, viewport_height)
+        selected = select_global_event_candidates(deduped)
     return finalize_inferred_events(
         preserve_sparse_timeline(selected, deduped, transcript),
         launch_script,
@@ -153,7 +130,72 @@ def finalize_inferred_events(
         viewport_width,
         viewport_height,
     )
+    supplemented = backfill_transcript_scene_events(supplemented, launch_script, analyses_by_scene, dedupe_events)
     return refine_event_flow(supplemented, launch_script.scenes, analyses_by_scene)
+
+
+def deduped_scene_candidates(
+    launch_script: LaunchScriptRecord,
+    transcript: list[TranscriptSegment],
+    analyses_by_scene: dict[int, VisualSceneAnalysisRecord],
+    viewport_width: int,
+    viewport_height: int,
+) -> list[SessionEventRecord]:
+    inferred_events = collect_scene_event_candidates(launch_script, transcript, analyses_by_scene, viewport_width, viewport_height)
+    return dedupe_events(sorted((candidate.event for candidate in inferred_events), key=lambda item: item.timestamp))
+
+
+def collect_scene_event_candidates(
+    launch_script: LaunchScriptRecord,
+    transcript: list[TranscriptSegment],
+    analyses_by_scene: dict[int, VisualSceneAnalysisRecord],
+    viewport_width: int,
+    viewport_height: int,
+) -> list[SceneEventCandidate]:
+    inferred_events: list[SceneEventCandidate] = []
+    source_excerpt_by_scene = {scene.scene_number: scene.source_excerpt for scene in launch_script.scenes}
+    for scene in launch_script.scenes:
+        analysis = analyses_by_scene.get(scene.scene_number)
+        if analysis is None:
+            continue
+        source_excerpt = source_excerpt_by_scene.get(scene.scene_number, scene.source_excerpt)
+        transcript_excerpt = transcript_window(transcript, analysis.start, analysis.end)
+        windows = infer_scene_windows(analysis, transcript, source_excerpt)
+        inferred_events.extend(
+            SceneEventCandidate(scene.scene_number, build_session_event(window, scene.scene_number, viewport_width, viewport_height))
+            for window in canonical_scene_windows(windows, analysis, transcript_excerpt, scene.source_excerpt)[:MAX_EVENTS_PER_SCENE]
+        )
+    return inferred_events
+
+
+def recovered_candidate_events(
+    deduped: list[SessionEventRecord],
+    transcript: list[TranscriptSegment],
+    analyses_by_scene: dict[int, VisualSceneAnalysisRecord],
+    viewport_width: int,
+    viewport_height: int,
+) -> list[SessionEventRecord]:
+    recovered = recover_events_from_analyses(transcript, list(analyses_by_scene.values()), viewport_width, viewport_height)
+    return dedupe_events(sorted([*deduped, *recovered], key=lambda item: item.timestamp))
+
+
+def strict_recovery_candidates(
+    deduped: list[SessionEventRecord],
+    launch_script: LaunchScriptRecord,
+    transcript: list[TranscriptSegment],
+    analyses_by_scene: dict[int, VisualSceneAnalysisRecord],
+    viewport_width: int,
+    viewport_height: int,
+) -> list[SessionEventRecord]:
+    strict_recovered = recover_events_from_analyses(
+        transcript,
+        list(analyses_by_scene.values()),
+        viewport_width,
+        viewport_height,
+        strict=True,
+    )
+    retried = dedupe_events(sorted([*deduped, *strict_recovered], key=lambda item: item.timestamp))
+    return select_flow_chains(retried, launch_script.scenes, analyses_by_scene)
 
 
 def infer_scene_windows(
@@ -172,51 +214,6 @@ def infer_scene_windows(
     ranked = sorted((window for window in windows if window is not None), key=lambda item: item.score, reverse=True)
     merged = merge_windows(sorted(ranked, key=lambda item: item.timestamp))
     return select_distinct_windows(merged)
-
-
-def local_transcript_excerpt(
-    transcript: list[TranscriptSegment],
-    analysis: VisualSceneAnalysisRecord,
-    index: int,
-    source_excerpt: str,
-) -> str:
-    timestamp = analysis.frames[index].timestamp
-    start = max(analysis.start, timestamp - LOCAL_TRANSCRIPT_PADDING_SECONDS)
-    end = min(analysis.end, timestamp + LOCAL_TRANSCRIPT_PADDING_SECONDS)
-    excerpt = transcript_window(transcript, start, end) or transcript_window(transcript, analysis.start, analysis.end)
-    focused = focused_excerpt(excerpt, analysis, index)
-    return grounded_scene_excerpt(focused, source_excerpt, analysis.summary)
-
-
-def grounded_scene_excerpt(
-    transcript_excerpt: str,
-    source_excerpt: str,
-    summary: str,
-) -> str:
-    clean_transcript = transcript_excerpt.strip()
-    clean_source = source_excerpt.strip()
-    if not clean_transcript:
-        return clean_source or summary
-    if not clean_source:
-        return clean_transcript
-    source_tokens = intent_tokens(clean_source, summary)
-    if not source_tokens:
-        return clean_transcript
-    transcript_overlap = token_overlap_ratio(intent_tokens(clean_transcript), source_tokens)
-    if transcript_overlap >= 0.18:
-        return clean_transcript
-    return clean_source
-
-
-def token_overlap_ratio(
-    observed_tokens: set[str],
-    expected_tokens: set[str],
-) -> float:
-    if not observed_tokens or not expected_tokens:
-        return 0.0
-    return round(len(observed_tokens & expected_tokens) / max(len(expected_tokens), 1), 3)
-
-
 def frame_is_candidate(
     frames: list[FrameSignalRecord],
     index: int,

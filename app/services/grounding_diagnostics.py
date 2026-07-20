@@ -5,6 +5,7 @@ from typing import Sequence
 from app.models.projects import SessionEventRecord, TranscriptSegment, VisualSceneAnalysisRecord
 from app.services.walkthrough_guardrails import (
     auth_state_ratio,
+    grounding_evidence_events,
     meaningful_event_count,
     low_confidence_ratio,
     recording_duration_seconds,
@@ -23,6 +24,7 @@ def recording_diagnostics(
     duration_seconds = recording_duration_seconds(None, transcript)
     fallback_scene_count = sum(1 for analysis in analyses if analysis.confidence <= 0.2 or not analysis.frame_diff_available)
     average_score = average_event_score(events)
+    evidence_events = grounding_evidence_events(events)
     under_grounded = session_is_under_grounded(
         type("SessionSnapshot", (), {"events": list(events), "started_at": "0.0", "ended_at": f"{duration_seconds:.2f}"})(),
         transcript,
@@ -30,15 +32,16 @@ def recording_diagnostics(
     return {
         "source_duration_seconds": f"{duration_seconds:.2f}",
         "inferred_event_count": str(len(events)),
-        "meaningful_event_count": str(meaningful_event_count(events)),
+        "meaningful_event_count": str(meaningful_event_count(evidence_events)),
         "average_event_score": f"{average_score:.2f}",
-        "timeline_coverage_ratio": f"{timeline_coverage_ratio(events, duration_seconds):.2f}",
-        "weak_label_ratio": f"{weak_label_ratio(events):.2f}",
-        "low_confidence_ratio": f"{low_confidence_ratio(events):.2f}",
-        "auth_state_ratio": f"{auth_state_ratio(events):.2f}",
-        "repeated_transcript_ratio": f"{repeated_transcript_ratio(events):.2f}",
+        "timeline_coverage_ratio": f"{timeline_coverage_ratio(evidence_events, duration_seconds):.2f}",
+        "weak_label_ratio": f"{weak_label_ratio(evidence_events):.2f}",
+        "low_confidence_ratio": f"{low_confidence_ratio(evidence_events):.2f}",
+        "auth_state_ratio": f"{auth_state_ratio(evidence_events):.2f}",
+        "repeated_transcript_ratio": f"{repeated_transcript_ratio(evidence_events):.2f}",
         "visual_scene_count": str(len(analyses)),
         "fallback_scene_count": str(fallback_scene_count),
+        "transcript_fallback_event_count": str(max(len(events) - len(evidence_events), 0)),
         "under_grounded": "true" if under_grounded else "false",
     }
 

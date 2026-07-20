@@ -66,7 +66,15 @@ def build_voiceover(
     base_clips = clip_records(units)
     if mode == "original":
         return script_only_voiceover(mode, "disabled", script, base_clips)
-    degraded = degraded_voiceover(guide, launch_script, mode, source_duration_seconds, recording_session, transcript or [])
+    degraded = degraded_voiceover(
+        guide,
+        launch_script,
+        edit_plan,
+        mode,
+        source_duration_seconds,
+        recording_session,
+        transcript or [],
+    )
     if degraded is not None:
         return degraded
     if not script:
@@ -95,11 +103,14 @@ def build_voiceover(
 def degraded_voiceover(
     guide: GuideRecord | None,
     launch_script: LaunchScriptRecord | None,
+    edit_plan: EditPlanRecord | None,
     mode: VoiceoverMode,
     source_duration_seconds: float,
     recording_session: RecordingSessionRecord | None,
     transcript: list[TranscriptSegment],
 ) -> VoiceoverRecord | None:
+    if edit_plan is not None and edit_plan.scenes:
+        return None
     weak_session = session_is_under_grounded(recording_session, transcript)
     missing_grounded_session = (
         guide is None

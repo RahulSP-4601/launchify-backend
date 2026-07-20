@@ -67,19 +67,26 @@ def session_is_under_grounded(
     duration_seconds = recording_duration_seconds(recording_session, transcript)
     if duration_seconds < LONG_WALKTHROUGH_SECONDS:
         return False
-    meaningful_count = meaningful_event_count(recording_session.events)
+    evidence_events = grounding_evidence_events(recording_session.events)
+    if not evidence_events:
+        return True
+    meaningful_count = meaningful_event_count(evidence_events)
     if meaningful_count < minimum_action_count(duration_seconds):
         return True
-    coverage_ratio = timeline_coverage_ratio(recording_session.events, duration_seconds)
+    coverage_ratio = timeline_coverage_ratio(evidence_events, duration_seconds)
     if coverage_ratio < MIN_TIMELINE_COVERAGE_RATIO:
         return True
-    if weak_label_ratio(recording_session.events) > MAX_WEAK_LABEL_RATIO:
+    if weak_label_ratio(evidence_events) > MAX_WEAK_LABEL_RATIO:
         return True
-    if low_confidence_ratio(recording_session.events) > MAX_LOW_CONFIDENCE_RATIO:
+    if low_confidence_ratio(evidence_events) > MAX_LOW_CONFIDENCE_RATIO:
         return True
-    if auth_state_ratio(recording_session.events) > MAX_AUTH_STATE_RATIO:
+    if auth_state_ratio(evidence_events) > MAX_AUTH_STATE_RATIO:
         return True
-    return repeated_transcript_ratio(recording_session.events) >= MAX_REPEATED_TRANSCRIPT_RATIO
+    return repeated_transcript_ratio(evidence_events) >= MAX_REPEATED_TRANSCRIPT_RATIO
+
+
+def grounding_evidence_events(events: Sequence[SessionEventRecord]) -> list[SessionEventRecord]:
+    return [event for event in events if event.metadata.get("grounding_source") != "transcript_fallback"]
 
 
 def meaningful_event_count(events: Sequence[SessionEventRecord]) -> int:

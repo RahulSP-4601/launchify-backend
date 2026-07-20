@@ -39,6 +39,11 @@ class ScriptingArtifacts:
     visual_analyses: list[VisualSceneAnalysisRecord] | None = None
 
 
+def pipeline_log(project_id: str, stage: str, **details: object) -> None:
+    payload = ", ".join(f"{key}={details[key]!r}" for key in sorted(details))
+    logger.info("Pipeline stage [%s] for project %s: %s", stage, project_id, payload or "ok")
+
+
 def process_job(job_id: str) -> None:
     job = job_store.get_job(job_id)
     if job is None:
@@ -90,11 +95,19 @@ def transcript_is_usable(transcript: Sequence[TranscriptSegment]) -> bool:
 
 def run_processing_pipeline(job: ProcessingJobRecord, asset_file: Path) -> None:
     settings = get_settings()
+    pipeline_log(job.project_id, "asset_downloaded", asset_file=asset_file.name, asset_path=job.asset_path, content_type=job.content_type)
     job_store.heartbeat(job.id)
     with timed_stage("transcription", settings.transcription_warn_seconds):
         logger.info("Processing job %s: transcription started for %s.", job.id, asset_file.name)
         transcript = transcribe_media_file(asset_file, job.content_type, heartbeat=lambda: job_store.heartbeat(job.id))
         logger.info("Processing job %s: transcription finished with %s segments.", job.id, len(transcript))
+    pipeline_log(
+        job.project_id,
+        "transcription_complete",
+        usable=transcript_is_usable(transcript),
+        segments=len(transcript),
+        transcript_end=max((segment.end for segment in transcript), default=0.0),
+    )
     if stale_asset_detected(job.user_id, job.project_id, job.asset_path, job.id):
         return
     if not transcript_is_usable(transcript):
@@ -116,6 +129,7 @@ def run_processing_pipeline(job: ProcessingJobRecord, asset_file: Path) -> None:
 
 
 def mark_transcript_failure(job: ProcessingJobRecord, transcript: Sequence[TranscriptSegment]) -> None:
+    pipeline_log(job.project_id, "transcription_failed", reason="transcript_too_short", segments=len(transcript))
     project_store.save_transcript(
         job.user_id,
         job.project_id,
@@ -149,6 +163,14 @@ def save_scripting_step(
         guide = None
     launch_script = persist_guide_or_script(current_project, job, guide, fallback_script)
     project_store.save_launch_script(job.user_id, job.project_id, launch_script, asset_path=job.asset_path)
+    pipeline_log(
+        job.project_id,
+        "scripting_complete",
+        launch_script_scenes=len(launch_script.scenes),
+        visual_analyses=0 if visual_analyses is None else len(visual_analyses),
+        guide_saved=bool(guide and guide[0].steps),
+        fallback_used=guide is None,
+    )
     return ScriptingArtifacts(launch_script=launch_script, visual_analyses=visual_analyses)
 
 
@@ -162,12 +184,14 @@ def acceptable_grounded_guide(
         return None
     duration_seconds = recording_duration_seconds(project.recording_session, transcript)
     if not guide_is_under_grounded(guide[0], duration_seconds):
+        pipeline_log(project_id, "guide_grounding", accepted=True, steps=len(guide[0].steps), duration_seconds=duration_seconds)
         return guide
     logger.warning(
         "Grounded guide for project %s is under-grounded for a %.2fs walkthrough; falling back to inferred multi-scene script.",
         project_id,
         duration_seconds,
     )
+    pipeline_log(project_id, "guide_grounding", accepted=False, steps=len(guide[0].steps), duration_seconds=duration_seconds, reason="under_grounded")
     return None
 
 
@@ -200,11 +224,32 @@ def generate_inferred_grounded_guide(
     transcript: list[TranscriptSegment],
 ) -> tuple[tuple[GuideRecord, LaunchScriptRecord] | None, list[VisualSceneAnalysisRecord] | None]:
     inference_script, scene_ranges = build_inference_script(project, transcript)
+    pipeline_log(
+        job.project_id,
+        "inference_script_built",
+        scenes=len(inference_script.scenes),
+        scene_ranges=len(scene_ranges),
+    )
     visual_analyses = maybe_analyze_video_scenes(asset_file, inference_script, transcript, scene_ranges)
     recording_session = infer_recording_session(project, asset_file, inference_script, transcript, visual_analyses)
     if recording_session is None or not recording_session.events:
+        pipeline_log(
+            job.project_id,
+            "recording_session_inference",
+            recovered=False,
+            events=0 if recording_session is None else len(recording_session.events),
+            visual_analyses=0 if visual_analyses is None else len(visual_analyses),
+        )
         return None, visual_analyses
     project_store.save_recording_session(job.user_id, job.project_id, recording_session, asset_path=job.asset_path)
+    pipeline_log(
+        job.project_id,
+        "recording_session_inference",
+        recovered=True,
+        events=len(recording_session.events),
+        under_grounded=recording_session.grounding_diagnostics.get("under_grounded", ""),
+        timeline_coverage_ratio=recording_session.grounding_diagnostics.get("timeline_coverage_ratio", ""),
+    )
     grounded_project = require_project(job.user_id, job.project_id)
     return synthesize_grounded_guide(grounded_project, transcript), visual_analyses
 
@@ -247,6 +292,18 @@ def save_planning_step(
         manual_overrides,
         asset_path=job.asset_path,
     )
+    pipeline_log(
+        job.project_id,
+        "planning_complete",
+        edit_plan_scenes=len(edit_plan.scenes),
+        total_duration_seconds=edit_plan.total_duration_seconds,
+        zoom_scenes=sum(1 for scene in edit_plan.scenes if scene.zooms),
+        highlight_scenes=sum(1 for scene in edit_plan.scenes if scene.highlights),
+        voiceover_status=voiceover.status,
+        voiceover_mode=voiceover.mode,
+        quality_score=quality_report.score,
+        ready_for_export=quality_report.ready_for_export,
+    )
     logger.info("Planning completed for project %s.", job.project_id)
 
 
@@ -255,6 +312,14 @@ def save_render_step(job: ProcessingJobRecord, _asset_file: Path) -> None:
     logger.info("Publishing grounded preview render for project %s.", job.project_id)
     preview_video = publish_grounded_preview(job.user_id, project, _asset_file, heartbeat=lambda: job_store.heartbeat(job.id))
     project_store.save_render_outputs(job.user_id, job.project_id, preview_video, asset_path=job.asset_path)
+    pipeline_log(
+        job.project_id,
+        "preview_stored",
+        variant=preview_video.variant,
+        duration_seconds=preview_video.duration_seconds,
+        size_bytes=preview_video.size_bytes,
+        storage_path=preview_video.storage_path,
+    )
     job_store.mark_completed(job.id)
     logger.info("Walkthrough preview completed for project %s.", job.project_id)
 
@@ -283,7 +348,16 @@ def maybe_analyze_video_scenes(
     if not settings.blocking_visual_analysis_enabled or not visual_analysis_available():
         return None
     try:
-        return analyze_video_scenes(asset_file, launch_script, transcript, scene_ranges)
+        analyses = analyze_video_scenes(asset_file, launch_script, transcript, scene_ranges)
+        logger.info(
+            "Visual analysis summary for %s: scenes=%s, with_frames=%s, with_visible_labels=%s, with_click_signal=%s.",
+            asset_file.name,
+            len(analyses),
+            sum(1 for analysis in analyses if analysis.frames),
+            sum(1 for analysis in analyses if analysis.visible_labels),
+            sum(1 for analysis in analyses if analysis.click_detected),
+        )
+        return analyses
     except Exception:
         logger.exception("Visual analysis failed for %s. Falling back to script-led planning.", asset_file.name)
         return None

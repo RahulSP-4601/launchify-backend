@@ -19,7 +19,7 @@ def refine_edit_plan(project: ProjectRecord, edit_plan: EditPlanRecord) -> tuple
     refined_plan = edit_plan
     report = build_quality_report(project, refined_plan)
     if should_defer_export(report):
-        return simplify_under_grounded_plan(refined_plan), report
+        return refined_plan, report
     for _ in range(REFINEMENT_ROUNDS):
         if report.ready_for_export:
             break
@@ -37,14 +37,6 @@ def refine_edit_plan(project: ProjectRecord, edit_plan: EditPlanRecord) -> tuple
 
 def should_defer_export(report: QualityReportRecord) -> bool:
     return any(issue.code == "under-grounded-walkthrough" for issue in report.issues)
-
-
-def simplify_under_grounded_plan(edit_plan: EditPlanRecord) -> EditPlanRecord:
-    scenes = [
-        scene.model_copy(update={"camera_mode": "static", "zooms": [], "highlights": []})
-        for scene in edit_plan.scenes
-    ]
-    return edit_plan.model_copy(update={"scenes": scenes})
 
 
 def issues_for_scene(report: QualityReportRecord, scene_number: int) -> list[QualityIssueRecord]:

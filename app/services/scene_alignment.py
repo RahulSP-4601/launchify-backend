@@ -14,6 +14,8 @@ def align_script_scenes(
 ) -> list[tuple[float, float]]:
     if not transcript:
         raise RuntimeError("Transcript is required before generating the edit plan.")
+    if use_weighted_alignment(scenes, transcript):
+        return weighted_scene_ranges(scenes, transcript)
     total_weight = sum(scene_weight(scene) for scene in scenes) or 1.0
     transcript_start = transcript[0].start
     transcript_end = transcript[-1].end
@@ -127,3 +129,40 @@ def normalize_ranges(ranges: list[tuple[float, float]], max_end: float) -> list[
         normalized_reversed.append((bounded_start, bounded_end))
         next_start = bounded_start
     return list(reversed(normalized_reversed))
+
+
+def use_weighted_alignment(
+    scenes: list[LaunchScriptScene],
+    transcript: list[TranscriptSegment],
+) -> bool:
+    return len(transcript) <= 3 and len(scenes) > len(transcript) and low_overlap_transcript(scenes, transcript)
+
+
+def weighted_scene_ranges(
+    scenes: list[LaunchScriptScene],
+    transcript: list[TranscriptSegment],
+) -> list[tuple[float, float]]:
+    total_weight = sum(scene_weight(scene) for scene in scenes) or 1.0
+    start = transcript[0].start
+    end = transcript[-1].end
+    cursor = start
+    ranges: list[tuple[float, float]] = []
+    for index, scene in enumerate(scenes):
+        span = max((end - start) * (scene_weight(scene) / total_weight), 0.8)
+        next_end = end if index == len(scenes) - 1 else min(cursor + span, end)
+        ranges.append((round(cursor, 2), round(max(next_end, cursor + 0.8), 2)))
+        cursor = next_end
+    return normalize_ranges(ranges, end)
+
+
+def low_overlap_transcript(
+    scenes: list[LaunchScriptScene],
+    transcript: list[TranscriptSegment],
+) -> bool:
+    segment_texts = [[segment] for segment in transcript]
+    scene_scores = [
+        max((score_window(scene_text_for_matching(scene), window) for window in segment_texts), default=0.0)
+        for scene in scenes
+    ]
+    average_best_score = sum(scene_scores) / max(len(scene_scores), 1)
+    return average_best_score < 0.32

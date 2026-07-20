@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Callable, Literal
@@ -9,6 +10,7 @@ from app.services.render_proxy_preview import prepare_proxy_preview
 from app.services.render_runtime_helpers import download_voiceover_audio, output_duration_seconds, upload_variant
 
 Heartbeat = Callable[[], None]
+logger = logging.getLogger(__name__)
 
 
 def publish_grounded_preview(
@@ -22,12 +24,26 @@ def publish_grounded_preview(
         temp_dir = Path(temp_dir_name)
         output_path = temp_dir / f"{variant}.mp4"
         voiceover_audio = download_voiceover_audio(project)
+        logger.info(
+            "Preview publish started for project %s: variant=%s, source_video=%s, voiceover_audio=%s.",
+            project.id,
+            variant,
+            source_video.name,
+            voiceover_audio is not None,
+        )
         try:
             prepare_proxy_preview(project, source_video, output_path, voiceover_audio, heartbeat, quality="final")
         finally:
             if voiceover_audio is not None:
                 voiceover_audio.unlink(missing_ok=True)
         video = upload_variant(user_id, project, output_path, variant, heartbeat=heartbeat)
+        logger.info(
+            "Preview publish finished for project %s: variant=%s, output_duration_seconds=%.2f, stored_path=%s.",
+            project.id,
+            variant,
+            preview_duration_seconds(project, output_path),
+            video.storage_path,
+        )
         return video.model_copy(update={"duration_seconds": preview_duration_seconds(project, output_path)})
 
 
