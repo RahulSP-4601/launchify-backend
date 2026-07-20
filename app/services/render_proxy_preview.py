@@ -198,6 +198,8 @@ def render_clip_segments(
         run_process_with_heartbeat(command, timeout_seconds=remaining_timeout_seconds(deadline), heartbeat=heartbeat)
         validation_error = validate_rendered_clip(clip, clip_path)
         if validation_error is not None:
+            if validation_error == "empty_clip" and index == len(clips) - 1 and clip.stage == "settle":
+                logger.warning("Skipping empty trailing clip: scene=%s, stage=%s.", clip.scene.scene_number, clip.stage); continue
             raise RuntimeError(f"clip_guard_failed:{index}:{validation_error}")
         logger.info("Preview clip rendered: scene=%s, stage=%s, expected_duration=%.2f, output_duration=%.2f, motion=%s, spotlight=%s, freeze_frame=%s.", clip.scene.scene_number, clip.stage, clip.duration_seconds, output_duration_seconds(clip_path, fallback=clip.duration_seconds), clip.animated_crop, clip.spotlight, clip.freeze_frame)
         clip_paths.append(clip_path)

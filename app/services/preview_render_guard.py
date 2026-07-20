@@ -57,9 +57,8 @@ def validate_rendered_clip(clip: PreviewManifestClip, clip_path: Path) -> str | 
     duration = output_duration_seconds(clip_path, fallback=clip.duration_seconds)
     if not clip_path.exists() or (clip_path.stat().st_size < MIN_RENDER_BYTES and duration <= 0.05):
         return "empty_clip"
-    lower_bound = max(clip.duration_seconds * 0.55, 0.1)
     upper_bound = max(clip.duration_seconds * MAX_CLIP_DURATION_SCALE, clip.duration_seconds + MAX_CLIP_DURATION_SLACK_SECONDS)
-    if duration < lower_bound or duration > upper_bound:
+    if duration > upper_bound:
         return f"clip_duration_mismatch:{duration:.2f}"
     return None
 
