@@ -10,7 +10,7 @@ from typing import Callable, Literal
 from app.core.config import get_settings
 from app.models.projects import EditPlanScene, FocusBox, ProjectRecord, RenderedVideoRecord, VoiceoverMode
 from app.services.preview_manifest import PreviewManifest, PreviewManifestClip, build_preview_manifest
-from app.services.preview_render_guard import render_profiles, validate_rendered_preview
+from app.services.preview_render_guard import render_profiles, validate_rendered_clip, validate_rendered_preview
 from app.services.render_focus_effects import rebased_highlight_box, scene_crop_plan, spotlight_filters
 from app.services.render_runtime_helpers import output_duration_seconds, require_duration, run_process_with_heartbeat
 
@@ -37,9 +37,11 @@ def prepare_proxy_preview(
     last_error: RuntimeError | None = None
     for profile_name, candidate in render_profiles(manifest, quality):
         try:
+            logger.info("Preview profile start for project %s: profile=%s, clips=%s.", project.id, profile_name, len(candidate.clips))
             render_highlight_reel(project, source_video, output_path, candidate.clips, voiceover_audio, heartbeat, quality)
             validation_error = validate_rendered_preview(candidate, output_path, voiceover_mode, voiceover_audio)
             if validation_error is None:
+                logger.info("Preview profile selected for project %s: profile=%s.", project.id, profile_name)
                 return
             logger.warning("Preview validation failed for project %s: profile=%s, reason=%s.", project.id, profile_name, validation_error)
         except RuntimeError as exc:
@@ -72,15 +74,7 @@ def log_preview_manifest(
     voiceover_mode: VoiceoverMode,
     voiceover_audio: Path | None,
 ) -> None:
-    logger.info(
-        "Preview render plan for project %s: clip_count=%s, clip_duration_seconds=%.2f, stage_counts=%s, voiceover_mode=%s, voiceover_audio=%s.",
-        project.id,
-        len(manifest.clips),
-        manifest.total_duration_seconds,
-        manifest.stage_counts,
-        voiceover_mode,
-        voiceover_audio is not None,
-    )
+    logger.info("Preview render plan for project %s: clip_count=%s, clip_duration_seconds=%.2f, stage_counts=%s, voiceover_mode=%s, voiceover_audio=%s.", project.id, len(manifest.clips), manifest.total_duration_seconds, manifest.stage_counts, voiceover_mode, voiceover_audio is not None)
     for payload in manifest.diagnostic_payloads(project.voiceover is not None and project.voiceover.status == "ready"):
         logger.info("Preview render scene for project %s: %s", project.id, payload)
 def render_passthrough_video(
@@ -202,6 +196,10 @@ def render_clip_segments(
         clip_path = working_dir / f"clip-{index:02d}.mp4"
         command = build_clip_command(source_video, clip, clip_path, render_audio, quality, working_dir)
         run_process_with_heartbeat(command, timeout_seconds=remaining_timeout_seconds(deadline), heartbeat=heartbeat)
+        validation_error = validate_rendered_clip(clip, clip_path)
+        if validation_error is not None:
+            raise RuntimeError(f"clip_guard_failed:{index}:{validation_error}")
+        logger.info("Preview clip rendered: scene=%s, stage=%s, expected_duration=%.2f, output_duration=%.2f, motion=%s, spotlight=%s, freeze_frame=%s.", clip.scene.scene_number, clip.stage, clip.duration_seconds, output_duration_seconds(clip_path, fallback=clip.duration_seconds), clip.animated_crop, clip.spotlight, clip.freeze_frame)
         clip_paths.append(clip_path)
     return clip_paths
 def build_clip_command(

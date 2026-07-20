@@ -10,6 +10,8 @@ from app.services.render_runtime_helpers import output_duration_seconds
 
 RenderProfile = Literal["balanced", "no_motion", "no_spotlight", "simple_crop", "static_frame"]
 MIN_RENDER_BYTES = 4096
+MAX_CLIP_DURATION_SLACK_SECONDS = 0.9
+MAX_CLIP_DURATION_SCALE = 1.8
 
 
 def render_profiles(manifest: PreviewManifest, quality: str) -> list[tuple[RenderProfile, PreviewManifest]]:
@@ -48,6 +50,17 @@ def validate_rendered_preview(
         return "scene_inflation"
     if any(clip.scene.confidence < 0.18 for clip in manifest.clips):
         return "low_visible_confidence"
+    return None
+
+
+def validate_rendered_clip(clip: PreviewManifestClip, clip_path: Path) -> str | None:
+    if not clip_path.exists() or clip_path.stat().st_size < MIN_RENDER_BYTES:
+        return "empty_clip"
+    duration = output_duration_seconds(clip_path, fallback=clip.duration_seconds)
+    lower_bound = max(clip.duration_seconds * 0.55, 0.1)
+    upper_bound = max(clip.duration_seconds * MAX_CLIP_DURATION_SCALE, clip.duration_seconds + MAX_CLIP_DURATION_SLACK_SECONDS)
+    if duration < lower_bound or duration > upper_bound:
+        return f"clip_duration_mismatch:{duration:.2f}"
     return None
 
 

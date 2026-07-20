@@ -27,6 +27,7 @@ from app.services.render_preview_stage import (
     execute_preview_pipeline,
 )
 from app.services.render_proxy_preview import (
+    persist_proxy_preview,
     persist_proxy_preview_after_final,
     persist_proxy_preview_on_failure,
     prepare_proxy_preview,
@@ -81,9 +82,11 @@ def prepare_preview_source(
     settings: Settings,
     heartbeat: Callable[[], None] | None,
 ) -> Path:
-    if settings.fast_pipeline_enabled and not render_worker_required(settings):
-        logger.info("Fast pipeline enabled for project %s; preview highlight reel will be cut directly from the upload.", project.id)
-        return source_video
+    if not render_worker_required(settings):
+        logger.info(
+            "Render pipeline using prepared preview source for project %s to keep Standard preview renders stable.",
+            project.id,
+        )
     return prepare_preview_render_source(source_video, temp_dir, heartbeat)
 def announce_render_pipeline(project: ProjectRecord) -> Settings:
     settings = get_settings()
@@ -211,7 +214,7 @@ def execute_final_outputs(
     preview_output: Path,
 ) -> tuple[RenderedVideoRecord | None, RenderedVideoRecord]:
     final_render_source = choose_final_render_source(settings, source_video, preview_render_source, temp_dir, heartbeat)
-    final_video = execute_final_pipeline_with_preview_fallback(
+    preview_video, final_video = execute_final_pipeline_with_preview_fallback(
         user_id, project, final_render_source, voiceover_audio, temp_dir, settings,
         heartbeat, stage_update, preview_video, preview_output, preview_ready, final_ready,
     )
@@ -267,12 +270,31 @@ def execute_final_pipeline_with_preview_fallback(
     preview_output: Path,
     preview_ready: Callable[[RenderedVideoRecord], None] | None,
     final_ready: Callable[[RenderedVideoRecord], None] | None,
-) -> RenderedVideoRecord:
+) -> tuple[RenderedVideoRecord | None, RenderedVideoRecord]:
     enforce_final_render_limit(user_id, project)
     if use_proxy_final_output(settings):
-        return upload_proxy_final_variant(user_id, project, preview_output, heartbeat, stage_update, final_ready)
+        if preview_video is None and settings.preview_render_mode == "proxy":
+            preview_video = persist_proxy_preview(
+                user_id,
+                project,
+                preview_output,
+                heartbeat,
+                preview_ready,
+                upload_proxy_preview_variant,
+            )
+        return preview_video, upload_proxy_final_variant(user_id, project, preview_output, heartbeat, stage_update, final_ready)
     try:
-        return execute_final_pipeline(user_id, project, render_source, voiceover_audio, temp_dir, settings, heartbeat, stage_update, final_ready)
+        return preview_video, execute_final_pipeline(
+            user_id,
+            project,
+            render_source,
+            voiceover_audio,
+            temp_dir,
+            settings,
+            heartbeat,
+            stage_update,
+            final_ready,
+        )
     except Exception:
         if preview_video is None and settings.preview_render_mode == "proxy":
             persist_proxy_preview_on_failure(user_id, project, preview_output, heartbeat, preview_ready, upload_proxy_preview_variant)

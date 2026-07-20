@@ -8,6 +8,7 @@ INTRO_LEAD_SECONDS = 0.18
 LOOKAHEAD_SECONDS = 1.25
 LOOKBACK_SECONDS = 0.75
 MIN_DYNAMIC_CROP_SECONDS = 0.9
+MIN_ANIMATED_CROP_FPS = 24
 
 
 @dataclass(frozen=True)
@@ -39,7 +40,7 @@ def scene_crop_plan(
     end_state = staged_state(end_state, stage, "end")
     if start_state is None or end_state is None or neutral_crop(start_state, end_state):
         return None, end_state.focus_box if end_state is not None else None, None
-    animated = clip_end - clip_start > MIN_DYNAMIC_CROP_SECONDS
+    animated = clip_end - clip_start > MIN_DYNAMIC_CROP_SECONDS and fps >= MIN_ANIMATED_CROP_FPS
     crop_bounds = (end_state.origin_x, end_state.origin_y, end_state.crop_width, end_state.crop_height)
     filter_text = animated_crop_filter(start_state, end_state, clip_end - clip_start, target_width, target_height, fps)
     if animated:

@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     blocking_visual_analysis_enabled: bool = True
     render_worker_dir: str = str(Path(__file__).resolve().parents[2] / "render-worker")
     render_timeout_seconds: int = 900
-    preview_render_mode: Literal["proxy", "styled"] = "styled"
+    preview_render_mode: Literal["proxy", "styled"] = "proxy"
     low_memory_final_mode: Literal["proxy", "render"] = "proxy"
     fast_pipeline_enabled: bool = True
     preview_proxy_width: int = 854
