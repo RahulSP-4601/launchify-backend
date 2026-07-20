@@ -191,8 +191,9 @@ def execute_render_pipeline(
         preview_video,
         preview_output,
     )
-    polished_preview = final_video.model_copy(update={"variant": "preview"})
-    return polished_preview, require_edit_plan(reviewed_project), quality_report
+    if preview_video is None:
+        raise RuntimeError("Preview render completed but no preview video was persisted.")
+    return preview_video, require_edit_plan(reviewed_project), quality_report
 
 def execute_final_outputs(
     user_id: str,

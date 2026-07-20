@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
@@ -20,6 +21,7 @@ from app.services.inference_step_builder import build_inference_script
 from app.services.inferred_recording_session import infer_recording_session
 from app.services.job_store import job_store
 from app.services.phase_four import apply_phase_four_defaults
+from app.services.playback_preview import publish_grounded_preview
 from app.services.project_store import StaleProjectAssetError, project_store
 from app.services.script_writer import combine_transcript, generate_launch_script
 from app.services.storage import download_asset_to_file
@@ -29,6 +31,12 @@ from app.services.visual_analysis import analyze_video_scenes, visual_analysis_a
 from app.services.walkthrough_guardrails import guide_is_under_grounded, recording_duration_seconds
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ScriptingArtifacts:
+    launch_script: LaunchScriptRecord
+    visual_analyses: list[VisualSceneAnalysisRecord] | None = None
 
 
 def process_job(job_id: str) -> None:
@@ -94,12 +102,12 @@ def run_processing_pipeline(job: ProcessingJobRecord, asset_file: Path) -> None:
         return
     job_store.heartbeat(job.id)
     with timed_stage("script_generation", settings.script_generation_warn_seconds):
-        launch_script = save_scripting_step(job, asset_file, transcript)
+        scripting = save_scripting_step(job, asset_file, transcript)
     if stale_asset_detected(job.user_id, job.project_id, job.asset_path, job.id):
         return
     job_store.heartbeat(job.id)
     with timed_stage("planning", settings.planning_warn_seconds):
-        save_planning_step(job, asset_file, launch_script, transcript)
+        save_planning_step(job, asset_file, scripting, transcript)
     if stale_asset_detected(job.user_id, job.project_id, job.asset_path, job.id):
         return
     job_store.heartbeat(job.id)
@@ -123,14 +131,15 @@ def save_scripting_step(
     job: ProcessingJobRecord,
     asset_file: Path,
     transcript: list[TranscriptSegment],
-) -> LaunchScriptRecord:
+) -> ScriptingArtifacts:
     project_store.save_transcript(job.user_id, job.project_id, transcript, "scripting", asset_path=job.asset_path)
     current_project = require_project(job.user_id, job.project_id)
     fallback_script = inferred_walkthrough_fallback(current_project, transcript)
+    visual_analyses: list[VisualSceneAnalysisRecord] | None = None
     try:
-        guide = generate_grounded_guide_if_available(current_project, transcript)
+        guide, visual_analyses = generate_grounded_guide_if_available(current_project, transcript)
         if guide is None:
-            guide = generate_inferred_grounded_guide(current_project, job, asset_file, transcript)
+            guide, visual_analyses = generate_inferred_grounded_guide(current_project, job, asset_file, transcript)
         guide = acceptable_grounded_guide(guide, require_project(job.user_id, job.project_id), transcript, job.project_id)
     except Exception:
         logger.exception(
@@ -140,7 +149,7 @@ def save_scripting_step(
         guide = None
     launch_script = persist_guide_or_script(current_project, job, guide, fallback_script)
     project_store.save_launch_script(job.user_id, job.project_id, launch_script, asset_path=job.asset_path)
-    return launch_script
+    return ScriptingArtifacts(launch_script=launch_script, visual_analyses=visual_analyses)
 
 
 def acceptable_grounded_guide(
@@ -178,10 +187,10 @@ def persist_guide_or_script(
 def generate_grounded_guide_if_available(
     project: ProjectRecord,
     transcript: list[TranscriptSegment],
-) -> tuple[GuideRecord, LaunchScriptRecord] | None:
+) -> tuple[tuple[GuideRecord, LaunchScriptRecord] | None, list[VisualSceneAnalysisRecord] | None]:
     if project.recording_session is None or not project.recording_session.events:
-        return None
-    return synthesize_grounded_guide(project, transcript)
+        return None, None
+    return synthesize_grounded_guide(project, transcript), None
 
 
 def generate_inferred_grounded_guide(
@@ -189,15 +198,15 @@ def generate_inferred_grounded_guide(
     job: ProcessingJobRecord,
     asset_file: Path,
     transcript: list[TranscriptSegment],
-) -> tuple[GuideRecord, LaunchScriptRecord] | None:
+) -> tuple[tuple[GuideRecord, LaunchScriptRecord] | None, list[VisualSceneAnalysisRecord] | None]:
     inference_script, scene_ranges = build_inference_script(project, transcript)
     visual_analyses = maybe_analyze_video_scenes(asset_file, inference_script, transcript, scene_ranges)
     recording_session = infer_recording_session(project, asset_file, inference_script, transcript, visual_analyses)
     if recording_session is None or not recording_session.events:
-        return None
+        return None, visual_analyses
     project_store.save_recording_session(job.user_id, job.project_id, recording_session, asset_path=job.asset_path)
     grounded_project = require_project(job.user_id, job.project_id)
-    return synthesize_grounded_guide(grounded_project, transcript)
+    return synthesize_grounded_guide(grounded_project, transcript), visual_analyses
 
 
 def inferred_walkthrough_fallback(
@@ -211,12 +220,16 @@ def inferred_walkthrough_fallback(
 def save_planning_step(
     job: ProcessingJobRecord,
     asset_file: Path,
-    launch_script: LaunchScriptRecord,
+    scripting: ScriptingArtifacts,
     transcript: list[TranscriptSegment],
 ) -> None:
     logger.info("Planning started for project %s.", job.project_id)
     current_project = require_project(job.user_id, job.project_id)
-    visual_analyses = maybe_analyze_video_scenes(asset_file, launch_script, transcript)
+    visual_analyses = scripting.visual_analyses
+    if visual_analyses is None:
+        visual_analyses = maybe_analyze_video_scenes(asset_file, scripting.launch_script, transcript)
+    else:
+        logger.info("Planning reused %s cached scene analyses from grounded extraction for project %s.", len(visual_analyses), job.project_id)
     edit_plan = generate_edit_plan(current_project, visual_analyses)
     edit_plan, quality_report, benchmark_report, voiceover, template_config, manual_overrides = apply_phase_four_defaults(
         job.user_id,
@@ -238,8 +251,10 @@ def save_planning_step(
 
 
 def save_render_step(job: ProcessingJobRecord, _asset_file: Path) -> None:
-    logger.info("Walkthrough preview ready without proxy rendering for project %s.", job.project_id)
-    project_store.update_status_for_asset(job.user_id, job.project_id, job.asset_path, "ready")
+    project = require_project(job.user_id, job.project_id)
+    logger.info("Publishing grounded preview render for project %s.", job.project_id)
+    preview_video = publish_grounded_preview(job.user_id, project, _asset_file, heartbeat=lambda: job_store.heartbeat(job.id))
+    project_store.save_render_outputs(job.user_id, job.project_id, preview_video, asset_path=job.asset_path)
     job_store.mark_completed(job.id)
     logger.info("Walkthrough preview completed for project %s.", job.project_id)
 
