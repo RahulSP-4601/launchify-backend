@@ -6,6 +6,7 @@ from app.models.projects import EditPlanCaption, EditPlanHighlight, EditPlanReco
 from app.services.render_proxy_clips import RenderClip, highlight_clips
 
 MIN_PREVIEW_CLIP_SECONDS = 0.45
+MAX_PREVIEW_CLIP_SECONDS = 8.0
 VOICEOVER_TAIL_SECONDS = 0.18
 
 
@@ -164,7 +165,7 @@ def build_manifest_clip(
 ) -> PreviewManifestClip:
     source_start = round(clip.start, 2)
     source_end = round(max(clip.end, clip.start + MIN_PREVIEW_CLIP_SECONDS), 2)
-    trim_end = extended_trim_end(source_start, source_end, voiceover_segment)
+    trim_end = bounded_trim_end(source_start, source_end, voiceover_segment, quality)
     scene_priority = preview_priority(clip)
     filtered_caption_events = filtered_captions(clip.scene.captions, source_start, trim_end, quality, voiceover_segment)
     filtered_highlight_events = filtered_highlights(clip.scene.highlights, source_start, trim_end, quality)
@@ -319,6 +320,18 @@ def extended_trim_end(
     if voiceover_segment is None:
         return source_end
     return round(max(source_end, source_start + voiceover_segment.duration_seconds + VOICEOVER_TAIL_SECONDS), 2)
+
+
+def bounded_trim_end(
+    source_start: float,
+    source_end: float,
+    voiceover_segment: PreviewVoiceoverSegment | None,
+    quality: str,
+) -> float:
+    trim_end = extended_trim_end(source_start, source_end, voiceover_segment)
+    if quality != "preview":
+        return trim_end
+    return round(min(trim_end, source_start + MAX_PREVIEW_CLIP_SECONDS), 2)
 
 
 def voiceover_text(voiceover_segment: PreviewVoiceoverSegment | None, fallback: str) -> str:
