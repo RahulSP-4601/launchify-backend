@@ -243,11 +243,11 @@ def spotlight_filters(box: FocusBox, start: float, end: float, style: str) -> li
         draw_mask(left, 0.0, max(right - left, 0.02), top, alpha, enable),
         draw_mask(left, bottom, max(right - left, 0.02), max(1.0 - bottom, 0.02), alpha, enable),
         "drawbox="
-        f"x=iw*{max(left - 0.01, 0.0)}:y=ih*{max(top - 0.01, 0.0)}:w=iw*{min(max(right - left, 0.04) + 0.02, 1.0)}:h=ih*{min(max(bottom - top, 0.04) + 0.02, 1.0)}:"
-        f"color=0xFDE7A7@{max(border - 0.26, 0.22)}:t=2:enable='{enable}'",
+        f"x=iw*{max(left - 0.012, 0.0)}:y=ih*{max(top - 0.012, 0.0)}:w=iw*{min(max(right - left, 0.04) + 0.024, 1.0)}:h=ih*{min(max(bottom - top, 0.04) + 0.024, 1.0)}:"
+        f"color=0xFFF4C2@{max(border - 0.3, 0.18)}:t=1:enable='{enable}'",
         "drawbox="
         f"x=iw*{left}:y=ih*{top}:w=iw*{max(right - left, 0.04)}:h=ih*{max(bottom - top, 0.04)}:"
-        f"color=0xF8D27A@{border}:t=3:enable='{enable}'",
+        f"color=0xFFD36E@{border}:t=2:enable='{enable}'",
     ]
 
 
@@ -261,20 +261,20 @@ def draw_mask(x: float, y: float, width: float, height: float, alpha: float, ena
 
 def highlight_alpha(style: str) -> float:
     if style == "ambient":
-        return 0.18
+        return 0.15
     if style == "ambient-lift":
-        return 0.22
+        return 0.18
     if style == "soft-glow":
-        return 0.2
-    return 0.28
+        return 0.16
+    return 0.22
 
 
 def highlight_border(style: str) -> float:
     if style == "ambient":
-        return 0.55
+        return 0.48
     if style == "ambient-lift":
-        return 0.62
-    return 0.78
+        return 0.54
+    return 0.64
 
 
 def clamp(value: float, minimum: float, maximum: float) -> float:

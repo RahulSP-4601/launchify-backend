@@ -9,9 +9,9 @@ from typing import Callable, Literal
 
 from app.core.config import get_settings
 from app.models.projects import EditPlanScene, FocusBox, ProjectRecord, RenderedVideoRecord, VoiceoverMode
+from app.services.preview_manifest import PreviewManifest, PreviewManifestClip, build_preview_manifest
+from app.services.preview_render_guard import render_profiles, validate_rendered_preview
 from app.services.render_focus_effects import rebased_highlight_box, scene_crop_plan, spotlight_filters
-from app.services.render_proxy_clips import RenderClip, highlight_clips
-from app.services.render_scene_diagnostics import diagnostic_payloads
 from app.services.render_runtime_helpers import output_duration_seconds, require_duration, run_process_with_heartbeat
 
 logger = logging.getLogger(__name__)
@@ -20,8 +20,6 @@ UploadPreview = Callable[[str, ProjectRecord, Path, Callable[[], None] | None], 
 Heartbeat = Callable[[], None]
 ExportQuality = Literal["preview", "final"]
 SEEK_SLACK_SECONDS = 1.0
-
-
 def prepare_proxy_preview(
     project: ProjectRecord,
     source_video: Path,
@@ -30,31 +28,30 @@ def prepare_proxy_preview(
     heartbeat: Heartbeat | None = None,
     quality: ExportQuality = "preview",
 ) -> None:
-    clips = highlight_clips(project)
-    stage_counts = {stage: sum(1 for clip in clips if clip.stage == stage) for stage in ("establish", "focus", "settle")}
-    scene_payloads = diagnostic_payloads(project, clips)
-    logger.info(
-        "Preview render plan for project %s: clip_count=%s, clip_duration_seconds=%.2f, stage_counts=%s, voiceover_mode=%s, voiceover_audio=%s.",
-        project.id,
-        len(clips),
-        round(sum(clip.end - clip.start for clip in clips), 2),
-        stage_counts,
-        resolved_voiceover_mode(project, voiceover_audio),
-        voiceover_audio is not None,
-    )
-    for payload in scene_payloads:
-        logger.info("Preview render scene for project %s: %s", project.id, payload)
-    if not clips:
+    voiceover_mode = resolved_voiceover_mode(project, voiceover_audio)
+    manifest = build_preview_manifest(project, voiceover_mode, quality)
+    log_preview_manifest(project, manifest, voiceover_mode, voiceover_audio)
+    if not manifest.clips:
         render_passthrough_video(project, source_video, output_path, voiceover_audio, heartbeat, quality)
         return
-    render_highlight_reel(project, source_video, output_path, clips, voiceover_audio, heartbeat, quality)
-
+    last_error: RuntimeError | None = None
+    for profile_name, candidate in render_profiles(manifest, quality):
+        try:
+            render_highlight_reel(project, source_video, output_path, candidate.clips, voiceover_audio, heartbeat, quality)
+            validation_error = validate_rendered_preview(candidate, output_path, voiceover_mode, voiceover_audio)
+            if validation_error is None:
+                return
+            logger.warning("Preview validation failed for project %s: profile=%s, reason=%s.", project.id, profile_name, validation_error)
+        except RuntimeError as exc:
+            last_error = exc
+            logger.warning("Preview profile failed for project %s: profile=%s, error=%s.", project.id, profile_name, exc)
+    raise last_error or RuntimeError("Preview rendering failed validation for every fallback profile.")
 
 def render_highlight_reel(
     project: ProjectRecord,
     source_video: Path,
     output_path: Path,
-    clips: list[RenderClip],
+    clips: list[PreviewManifestClip],
     voiceover_audio: Path | None,
     heartbeat: Heartbeat | None,
     quality: ExportQuality,
@@ -69,7 +66,23 @@ def render_highlight_reel(
         logger.warning("Preview render failed for project %s: rendered_clips=%s, voiceover_mode=%s, error=%s.", project.id, len(clips), resolved_voiceover_mode(project, voiceover_audio), exc)
         raise RuntimeError("Proxy highlight rendering failed before the final export step.") from exc
 
-
+def log_preview_manifest(
+    project: ProjectRecord,
+    manifest: PreviewManifest,
+    voiceover_mode: VoiceoverMode,
+    voiceover_audio: Path | None,
+) -> None:
+    logger.info(
+        "Preview render plan for project %s: clip_count=%s, clip_duration_seconds=%.2f, stage_counts=%s, voiceover_mode=%s, voiceover_audio=%s.",
+        project.id,
+        len(manifest.clips),
+        manifest.total_duration_seconds,
+        manifest.stage_counts,
+        voiceover_mode,
+        voiceover_audio is not None,
+    )
+    for payload in manifest.diagnostic_payloads(project.voiceover is not None and project.voiceover.status == "ready"):
+        logger.info("Preview render scene for project %s: %s", project.id, payload)
 def render_passthrough_video(
     project: ProjectRecord,
     source_video: Path,
@@ -87,8 +100,6 @@ def render_passthrough_video(
         raise RuntimeError("FFmpeg is required for final video export. Configure FFMPEG_BINARY in the backend env.") from exc
     except (subprocess.CalledProcessError, TimeoutError) as exc:
         raise RuntimeError("Final video export failed while processing the raw recording.") from exc
-
-
 def source_has_audio(source_video: Path) -> bool:
     settings = get_settings()
     command = [
@@ -114,13 +125,11 @@ def source_has_audio(source_video: Path) -> bool:
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return False
     return bool(result.stdout.strip())
-
-
 def render_sequential_reel(
     project: ProjectRecord,
     source_video: Path,
     output_path: Path,
-    clips: list[RenderClip],
+    clips: list[PreviewManifestClip],
     has_audio: bool,
     voiceover_audio: Path | None,
     heartbeat: Heartbeat | None,
@@ -133,8 +142,6 @@ def render_sequential_reel(
     joined_output = output_path.parent / "preview-joined.mp4"
     concat_clip_segments(clip_paths, joined_output, heartbeat, deadline)
     finalize_preview_audio(project, joined_output, output_path, has_audio, voiceover_audio, voiceover_mode, heartbeat, deadline)
-
-
 def build_passthrough_command(
     project: ProjectRecord,
     source_video: Path,
@@ -181,11 +188,9 @@ def build_passthrough_command(
         command.append("-an")
     command.append(str(output_path))
     return command
-
-
 def render_clip_segments(
     source_video: Path,
-    clips: list[RenderClip],
+    clips: list[PreviewManifestClip],
     render_audio: bool,
     quality: ExportQuality,
     working_dir: Path,
@@ -199,28 +204,27 @@ def render_clip_segments(
         run_process_with_heartbeat(command, timeout_seconds=remaining_timeout_seconds(deadline), heartbeat=heartbeat)
         clip_paths.append(clip_path)
     return clip_paths
-
-
 def build_clip_command(
     source_video: Path,
-    clip: RenderClip,
+    clip: PreviewManifestClip,
     clip_path: Path,
     render_audio: bool,
     quality: ExportQuality,
     working_dir: Path,
 ) -> list[str]:
     settings = get_settings()
-    clip_duration = max(round(clip.end - clip.start, 2), 0.1)
-    coarse_start = max(round(clip.start - SEEK_SLACK_SECONDS, 2), 0.0)
-    precise_start = round(clip.start - coarse_start, 2)
-    filters = segment_filters(0, clip, render_audio, quality, working_dir, precise_start, clip_duration)
+    source_duration = source_clip_duration(clip)
+    clip_duration = max(round(clip.trim_end - clip.trim_start, 2), source_duration)
+    coarse_start = max(round(clip.source_start - SEEK_SLACK_SECONDS, 2), 0.0)
+    precise_start = round(max(clip.source_start - coarse_start, 0.0), 2)
+    filters = segment_filters(0, clip, render_audio, quality, working_dir, precise_start, source_duration, clip_duration)
     command = [
         settings.ffmpeg_binary,
         "-y",
         "-ss",
         str(coarse_start),
         "-t",
-        str(round(precise_start + clip_duration, 2)),
+        str(round(precise_start + source_duration, 2)),
         "-i",
         str(source_video),
         "-filter_complex",
@@ -235,8 +239,6 @@ def build_clip_command(
         command.append("-an")
     command.append(str(clip_path))
     return command
-
-
 def concat_clip_segments(
     clip_paths: list[Path],
     output_path: Path,
@@ -260,8 +262,6 @@ def concat_clip_segments(
         str(output_path),
     ]
     run_process_with_heartbeat(command, timeout_seconds=remaining_timeout_seconds(deadline), heartbeat=heartbeat, cwd=output_path.parent)
-
-
 def finalize_preview_audio(
     project: ProjectRecord,
     joined_output: Path,
@@ -279,41 +279,40 @@ def finalize_preview_audio(
     duration_seconds = preview_audio_duration(project, output_duration_seconds(joined_output, fallback=require_duration(project)), voiceover_mode)
     command = [settings.ffmpeg_binary, "-y", "-i", str(joined_output), "-i", str(voiceover_audio), "-filter_complex", passthrough_audio_filter(has_audio, voiceover_mode, duration_seconds), "-map", "0:v:0", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-movflags", "+faststart", str(output_path)]
     run_process_with_heartbeat(command, timeout_seconds=remaining_timeout_seconds(deadline), heartbeat=heartbeat)
-
-
 def segment_filters(
     index: int,
-    clip: RenderClip,
+    clip: PreviewManifestClip,
     concat_audio: bool,
     quality: ExportQuality,
     working_dir: Path,
     precise_start: float,
+    source_duration: float,
     clip_duration: float,
 ) -> list[str]:
     scene = clip.scene
-    chain = [f"[0:v]trim=start={precise_start}:end={round(precise_start + clip_duration, 2)}", "setpts=PTS-STARTPTS"]
-    crop_filter, crop_box, crop_bounds = scene_crop_filter(scene, clip.start, clip.end, quality, clip.stage)
+    chain = [f"[0:v]trim=start={precise_start}:end={round(precise_start + source_duration, 2)}", "setpts=PTS-STARTPTS"]
+    if clip.freeze_frame:
+        chain.extend(["select='eq(n,0)'", freeze_frame_filter(source_duration, clip_duration)])
+    crop_filter, crop_box, crop_bounds = scene_crop_filter(scene, clip.source_start, clip.source_end, quality, clip.stage)
     animated_crop = animated_crop_filter_text(crop_filter)
     if animated_crop:
-        chain.extend(highlight_draw_filters(scene, clip.start, clip.end, crop_box, None))
+        chain.extend(highlight_draw_filters(scene, clip.source_start, clip.source_end, crop_box, None))
     if crop_filter:
         chain.append(crop_filter)
     if not animated_crop:
-        chain.extend(highlight_draw_filters(scene, clip.start, clip.end, crop_box, crop_bounds))
-    chain.extend(caption_draw_filters(scene, clip.start, clip.end, quality, working_dir))
+        chain.extend(highlight_draw_filters(scene, clip.source_start, clip.source_end, crop_box, crop_bounds))
+    chain.extend(caption_draw_filters(scene, clip.source_start, clip.source_end, quality, working_dir))
     chain.extend(video_finish_filters(clip))
     chain.append(f"fps={target_fps(quality)}")
     chain.append(passthrough_scale_filter(quality))
     chain.append(f"[v{index}]")
     filters = [",".join(chain[:-1]) + chain[-1]]
     if concat_audio:
-        filters.append(f"[0:a]atrim=start={precise_start}:end={round(precise_start + clip_duration, 2)},asetpts=PTS-STARTPTS[a{index}]")
+        filters.append(f"[0:a]atrim=start={precise_start}:end={round(precise_start + source_duration, 2)},asetpts=PTS-STARTPTS[a{index}]")
     return filters
-
 
 def remaining_timeout_seconds(deadline: float) -> int:
     return max(int(deadline - time.monotonic()), 1)
-
 
 def scene_crop_filter(
     scene: EditPlanScene | None,
@@ -384,14 +383,23 @@ def caption_draw_filters(
     return filters
 
 
-def video_finish_filters(clip: RenderClip) -> list[str]:
-    duration = round(max(clip.end - clip.start, 0.1), 2)
+def video_finish_filters(clip: PreviewManifestClip) -> list[str]:
+    duration = round(max(clip.trim_end - clip.trim_start, 0.1), 2)
     fade_in = min(0.12, max(duration * 0.08, 0.04))
     fade_out = min(0.16, max(duration * 0.1, 0.05))
     filters = [f"fade=t=in:st=0:d={fade_in}"]
     if clip.stage != "focus" and duration > fade_out + 0.08:
         filters.append(f"fade=t=out:st={round(duration - fade_out, 2)}:d={fade_out}")
     return filters
+
+
+def source_clip_duration(clip: PreviewManifestClip) -> float:
+    return max(round(clip.source_end - clip.source_start, 2), 0.1)
+
+
+def freeze_frame_filter(source_duration: float, clip_duration: float) -> str:
+    hold_duration = round(max(clip_duration - source_duration, 0.0), 2)
+    return f"tpad=stop_mode=clone:stop_duration={hold_duration}" if hold_duration > 0 else "null"
 
 
 def passthrough_scale_filter(quality: ExportQuality) -> str:

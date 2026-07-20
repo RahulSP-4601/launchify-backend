@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.core.config import get_settings
 from app.models.projects import EditPlanRecord, ProjectRecord, TemplateConfigRecord, VoiceoverRecord
+from app.services.preview_manifest import manifest_edit_plan
 
 PREVIEW_DIMENSIONS = {"width": 512, "height": 288, "fps": 12}
 FINAL_DIMENSIONS = {"width": 1280, "height": 720, "fps": 30}
@@ -14,7 +15,7 @@ def build_render_payload(
     quality: str,
     voiceover_audio_path: str = "",
 ) -> dict[str, object]:
-    edit_plan = require_edit_plan(project.edit_plan)
+    edit_plan = manifest_edit_plan(project, quality) if quality == "preview" else require_edit_plan(project.edit_plan)
     dimensions = render_dimensions(quality)
     return {
         "projectId": project.id,

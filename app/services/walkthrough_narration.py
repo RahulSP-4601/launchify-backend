@@ -47,7 +47,7 @@ def result_line(scene: EditPlanScene, label: str) -> str:
     if scene.action_class in {"navigation", "auth_action", "tab_switch"}:
         return sentence(f"You'll land on {focus}")
     if scene.purpose and not transcript_like_label(scene.purpose):
-        return sentence(f"This brings up {compact_phrase(scene.purpose)}")
+        return sentence(f"This opens {compact_phrase(scene.purpose)}")
     return sentence(f"You'll see {article_label(focus)}")
 
 
@@ -114,7 +114,7 @@ def compact_phrase(value: str) -> str:
     if not cleaned:
         return ""
     words = cleaned.split()
-    short = " ".join(words[:10]).strip().rstrip(" ,")
+    short = " ".join(words[:8]).strip().rstrip(" ,")
     return short[:88]
 
 
