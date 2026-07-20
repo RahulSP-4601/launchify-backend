@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 from app.models.projects import EditPlanScene, ProjectRecord
+from app.services.render_motion_staging import stage_motion_clips
 from app.services.walkthrough_guardrails import guide_is_under_grounded, recording_duration_seconds, session_is_under_grounded
 from app.services.walkthrough_windows import step_clip_window
 
@@ -22,19 +24,20 @@ class RenderClip:
     scene: EditPlanScene
     start: float
     end: float
+    stage: Literal["establish", "focus", "settle"] = "focus"
 
 
 def highlight_clips(project: ProjectRecord) -> list[RenderClip]:
     if project.edit_plan is None:
         return []
     if under_grounded_walkthrough(project):
-        return contextual_highlight_clips(project)
+        return stage_motion_clips(contextual_highlight_clips(project))
     if prefer_walkthrough_clips(project):
-        return walkthrough_clips(project)
+        return stage_motion_clips(walkthrough_clips(project))
     clips = action_highlight_clips(project)
     if should_use_contextual_clips(project, clips):
-        return walkthrough_clips(project)
-    return clips
+        return stage_motion_clips(walkthrough_clips(project))
+    return stage_motion_clips(clips)
 
 
 def prefer_walkthrough_clips(project: ProjectRecord) -> bool:

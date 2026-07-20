@@ -5,6 +5,7 @@ from app.services.scene_roles import scene_role_from_scene
 
 MAX_LABEL_WORDS = 8
 MAX_LABEL_CHARACTERS = 72
+LEADING_ACTION_WORDS = ("click ", "tap ", "select ", "open ", "choose ", "pick ", "press ")
 
 
 def scene_voice_line(scene: EditPlanScene) -> str:
@@ -28,26 +29,55 @@ def preferred_label(scene: EditPlanScene, role: str) -> str:
 def action_line(scene: EditPlanScene, label: str) -> str:
     if not label:
         return explanation_line(scene, label)
+    focus = target_phrase(label)
     action_class = scene.action_class
     if action_class == "input_entry":
-        return sentence(f"Enter {label}")
+        return sentence(f"Enter details in {focus}")
     if action_class in {"navigation", "tab_switch"}:
-        return sentence(f"Open {label}")
+        return sentence(f"Open {focus}")
     if action_class == "auth_action":
-        return sentence(f"Click {label}")
-    return sentence(f"Select {label}" if action_class == "card_selection" else f"Click {label}")
+        return auth_line(focus)
+    return sentence(f"Choose {focus}" if action_class == "card_selection" else f"Select {focus}")
 
 
 def result_line(scene: EditPlanScene, label: str) -> str:
     if not label:
         return explanation_line(scene, label)
-    return sentence(f"Now you'll see {article_label(label)}")
+    focus = target_phrase(label)
+    if scene.action_class in {"navigation", "auth_action", "tab_switch"}:
+        return sentence(f"You'll land on {focus}")
+    if scene.purpose and not transcript_like_label(scene.purpose):
+        return sentence(f"This brings up {compact_phrase(scene.purpose)}")
+    return sentence(f"You'll see {article_label(focus)}")
 
 
 def explanation_line(scene: EditPlanScene, label: str) -> str:
     if label and label.lower() not in scene.title.lower():
-        return sentence(f"Here you can review {article_label(label)}")
-    return sentence(scene.spoken_line or scene.purpose or scene.title)
+        return sentence(f"Review {article_label(target_phrase(label))}")
+    return sentence(compact_phrase(scene.spoken_line or scene.purpose or scene.title))
+
+
+def auth_line(label: str) -> str:
+    lowered = label.lower()
+    if "google" in lowered:
+        return "Continue with Google to sign in."
+    if "sign up" in lowered and "google" not in lowered:
+        return sentence(f"Use {label} to create the account")
+    return sentence(f"Use {label} to sign in")
+
+
+def target_phrase(label: str) -> str:
+    cleaned = article_label(trim_leading_action(label))
+    return cleaned if cleaned else "this step"
+
+
+def trim_leading_action(label: str) -> str:
+    cleaned = " ".join(label.split()).strip().rstrip(".")
+    lowered = cleaned.lower()
+    for prefix in LEADING_ACTION_WORDS:
+        if lowered.startswith(prefix):
+            return cleaned[len(prefix) :].strip()
+    return cleaned
 
 
 def article_label(label: str) -> str:
@@ -77,6 +107,15 @@ def compact_label(*candidates: str) -> str:
         compact = " ".join(words[:MAX_LABEL_WORDS]).strip()
         return compact[:MAX_LABEL_CHARACTERS].rstrip(" ,")
     return ""
+
+
+def compact_phrase(value: str) -> str:
+    cleaned = first_text(value)
+    if not cleaned:
+        return ""
+    words = cleaned.split()
+    short = " ".join(words[:10]).strip().rstrip(" ,")
+    return short[:88]
 
 
 def transcript_like_label(value: str) -> bool:

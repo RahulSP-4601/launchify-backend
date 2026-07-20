@@ -22,6 +22,7 @@ from app.services.inferred_recording_session import infer_recording_session
 from app.services.job_store import job_store
 from app.services.phase_four import apply_phase_four_defaults
 from app.services.playback_preview import publish_grounded_preview
+from app.services.preview_delivery import preview_delivery_diagnostics
 from app.services.project_store import StaleProjectAssetError, project_store
 from app.services.script_writer import combine_transcript, generate_launch_script
 from app.services.storage import download_asset_to_file
@@ -295,6 +296,7 @@ def save_planning_step(
         manual_overrides,
         asset_path=job.asset_path,
     )
+    delivery = preview_delivery_diagnostics(edit_plan, voiceover)
     pipeline_log(
         job.project_id,
         "planning_complete",
@@ -306,6 +308,11 @@ def save_planning_step(
         voiceover_mode=voiceover.mode,
         quality_score=quality_report.score,
         ready_for_export=quality_report.ready_for_export,
+        dynamic_scene_ratio=delivery.dynamic_scene_ratio,
+        highlight_scene_ratio=delivery.highlight_scene_ratio,
+        voiced_scene_ratio=delivery.voiced_scene_ratio,
+        avg_voice_words=delivery.avg_voice_words,
+        delivery_issues=list(delivery.issues),
     )
     logger.info("Planning completed for project %s.", job.project_id)
 

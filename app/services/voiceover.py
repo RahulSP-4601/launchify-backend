@@ -29,6 +29,7 @@ from app.models.projects import (
 )
 from app.services.storage import download_asset_to_file, upload_audio_file
 from app.services.walkthrough_narration import scene_voice_line
+from app.services.voiceover_pacing import estimated_duration, fit_voice_line, normalize
 from app.services.walkthrough_guardrails import guide_is_under_grounded, session_is_under_grounded
 
 logger = logging.getLogger(__name__)
@@ -158,15 +159,15 @@ def voiceover_units(
 
 
 def unit_from_edit_scene(scene: EditPlanScene) -> VoiceoverUnit:
-    text = normalized_voice_line(scene_voice_line(scene))
     start = round(scene.start, 2)
     end = round(start + max(scene.render_duration_seconds or (scene.end - scene.start), 0.8), 2)
+    text = fit_voice_line(scene_voice_line(scene), end - start)
     return VoiceoverUnit(scene_number=scene.scene_number, start=start, end=end, text=text)
 
 def unit_from_step(step: GuideStepRecord) -> VoiceoverUnit:
-    text = normalized_voice_line(step.narration)
     start = round(step.start, 2)
     end = round(max(step.end, start + 0.8), 2)
+    text = fit_voice_line(step.narration, end - start)
     return VoiceoverUnit(scene_number=step.step_index, start=start, end=end, text=text)
 
 
@@ -184,7 +185,7 @@ def units_from_script(launch_script: LaunchScriptRecord) -> list[VoiceoverUnit]:
 
 
 def unit_from_scene(scene: LaunchScriptScene, start: float, duration: float) -> VoiceoverUnit:
-    text = normalized_voice_line(scene.spoken_line)
+    text = fit_voice_line(scene.spoken_line, duration)
     end = round(start + duration, 2)
     return VoiceoverUnit(scene_number=scene.scene_number, start=start, end=end, text=text)
 
@@ -480,12 +481,8 @@ def scheduled_voiceover_track(
 
 
 def normalized_voice_line(value: str) -> str:
-    cleaned = " ".join(value.split()).strip()
-    if not cleaned:
-        return ""
-    return cleaned if cleaned.endswith((".", "!", "?")) else f"{cleaned}."
+    return normalize(value)
 
 
 def estimated_voice_duration_seconds(text: str) -> float:
-    words = max(1, len(text.split()))
-    return round(max(2.8, min(10.0, words / 2.6)), 2)
+    return estimated_duration(text)

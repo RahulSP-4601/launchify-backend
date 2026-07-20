@@ -15,6 +15,7 @@ from app.models.projects import (
 )
 from app.services.benchmarking import build_benchmark_report
 from app.services.override_manager import apply_manual_overrides
+from app.services.preview_delivery import preview_delivery_diagnostics
 from app.services.refinement_loop import refine_edit_plan
 from app.services.voiceover import build_voiceover, refresh_voiceover_asset
 from app.services.voiceover_timeline import reconcile_edit_plan_to_voiceover
@@ -36,8 +37,9 @@ def apply_phase_four_defaults(
     reconciled_edit_plan, reconciled_voiceover = reconcile_edit_plan_to_voiceover(refined_edit_plan, voiceover)
     reconciled_voiceover = finalized_voiceover(user_id, project.id, reconciled_voiceover)
     benchmark_report = build_benchmark_report(project, reconciled_edit_plan, quality_report)
+    diagnostics = preview_delivery_diagnostics(reconciled_edit_plan, reconciled_voiceover)
     logger.info(
-        "Phase 4 summary for project %s: voiceover_status=%s, voiceover_audio=%s, zoom_scenes=%s, highlight_scenes=%s, quality_score=%s, benchmark_score=%s.",
+        "Phase 4 summary for project %s: voiceover_status=%s, voiceover_audio=%s, zoom_scenes=%s, highlight_scenes=%s, quality_score=%s, benchmark_score=%s, dynamic_scene_ratio=%.2f, highlight_scene_ratio=%.2f, voiced_scene_ratio=%.2f, avg_voice_words=%.2f, delivery_issues=%s.",
         project.id,
         reconciled_voiceover.status,
         bool(reconciled_voiceover.audio_storage_path or any(clip.audio_storage_path for clip in reconciled_voiceover.clips)),
@@ -45,6 +47,11 @@ def apply_phase_four_defaults(
         sum(1 for scene in reconciled_edit_plan.scenes if scene.highlights),
         quality_report.score,
         benchmark_report.overall_score,
+        diagnostics.dynamic_scene_ratio,
+        diagnostics.highlight_scene_ratio,
+        diagnostics.voiced_scene_ratio,
+        diagnostics.avg_voice_words,
+        list(diagnostics.issues),
     )
     return reconciled_edit_plan, quality_report, benchmark_report, reconciled_voiceover, template_config, manual_overrides
 

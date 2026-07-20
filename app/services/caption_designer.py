@@ -86,7 +86,11 @@ def caption_variant(template_config: TemplateConfigRecord | None) -> str:
 
 def caption_text(text: str, template_config: TemplateConfigRecord | None) -> str:
     normalized = " ".join(text.split())
-    if template_config is None or template_config.caption_profile == "minimal":
+    if template_config is None:
+        return balanced_break(normalized)
+    if template_config.caption_profile == "minimal":
+        return balanced_break(normalized) if len(normalized) > 26 else normalized
+    if template_config.caption_profile == "product":
         return normalized
     return balanced_break(normalized)
 

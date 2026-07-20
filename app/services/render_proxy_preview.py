@@ -7,8 +7,10 @@ from pathlib import Path
 from typing import Callable, Literal
 
 from app.core.config import get_settings
-from app.models.projects import EditPlanHighlight, EditPlanScene, EditPlanZoom, FocusBox, ProjectRecord, RenderedVideoRecord, VoiceoverMode
+from app.models.projects import EditPlanScene, FocusBox, ProjectRecord, RenderedVideoRecord, VoiceoverMode
+from app.services.render_focus_effects import rebased_highlight_box, scene_crop_plan, spotlight_filters
 from app.services.render_proxy_clips import RenderClip, highlight_clips
+from app.services.render_scene_diagnostics import diagnostic_payloads
 from app.services.render_runtime_helpers import output_duration_seconds, run_process_with_heartbeat
 
 logger = logging.getLogger(__name__)
@@ -27,14 +29,19 @@ def prepare_proxy_preview(
     quality: ExportQuality = "preview",
 ) -> None:
     clips = highlight_clips(project)
+    stage_counts = {stage: sum(1 for clip in clips if clip.stage == stage) for stage in ("establish", "focus", "settle")}
+    scene_payloads = diagnostic_payloads(project, clips)
     logger.info(
-        "Preview render plan for project %s: clip_count=%s, clip_duration_seconds=%.2f, voiceover_mode=%s, voiceover_audio=%s.",
+        "Preview render plan for project %s: clip_count=%s, clip_duration_seconds=%.2f, stage_counts=%s, voiceover_mode=%s, voiceover_audio=%s.",
         project.id,
         len(clips),
         round(sum(clip.end - clip.start for clip in clips), 2),
+        stage_counts,
         resolved_voiceover_mode(project, voiceover_audio),
         voiceover_audio is not None,
     )
+    for payload in scene_payloads:
+        logger.info("Preview render scene for project %s: %s", project.id, payload)
     if not clips:
         render_passthrough_video(project, source_video, output_path, voiceover_audio, heartbeat, quality)
         return
@@ -55,9 +62,11 @@ def render_highlight_reel(
     command = build_highlight_command(project, source_video, output_path, clips, has_audio, voiceover_audio, quality)
     try:
         run_process_with_heartbeat(command, timeout_seconds=settings.render_timeout_seconds, heartbeat=heartbeat)
+        logger.info("Preview render succeeded for project %s: rendered_clips=%s, voiceover_mode=%s.", project.id, len(clips), resolved_voiceover_mode(project, voiceover_audio))
     except FileNotFoundError as exc:
         raise RuntimeError("FFmpeg is required for proxy highlight rendering. Configure FFMPEG_BINARY in the backend env.") from exc
     except (subprocess.CalledProcessError, TimeoutError) as exc:
+        logger.warning("Preview render failed for project %s: rendered_clips=%s, voiceover_mode=%s, error=%s.", project.id, len(clips), resolved_voiceover_mode(project, voiceover_audio), exc)
         raise RuntimeError("Proxy highlight rendering failed before the final export step.") from exc
 
 
@@ -236,10 +245,16 @@ def segment_filters(
     start, end = clip.start, clip.end
     scene = clip.scene
     chain = [f"[0:v]trim=start={start}:end={end}", "setpts=PTS-STARTPTS"]
-    crop_filter, crop_box, crop_bounds = scene_crop_filter(scene, start, end, quality)
+    crop_filter, crop_box, crop_bounds = scene_crop_filter(scene, start, end, quality, clip.stage)
+    animated_crop = animated_crop_filter_text(crop_filter)
+    if animated_crop:
+        chain.extend(highlight_draw_filters(scene, start, end, crop_box, None))
     if crop_filter:
         chain.append(crop_filter)
-    chain.extend(scene_overlay_filters(scene, start, end, crop_box, crop_bounds, quality, working_dir))
+    if not animated_crop:
+        chain.extend(highlight_draw_filters(scene, start, end, crop_box, crop_bounds))
+    chain.extend(caption_draw_filters(scene, start, end, quality, working_dir))
+    chain.extend(video_finish_filters(clip))
     chain.append(f"fps={target_fps(quality)}")
     chain.append(passthrough_scale_filter(quality))
     chain.append(f"[v{index}]")
@@ -254,67 +269,17 @@ def scene_crop_filter(
     clip_start: float,
     clip_end: float,
     quality: ExportQuality,
+    stage: str,
 ) -> tuple[str | None, FocusBox | None, tuple[float, float, float, float] | None]:
-    if scene is None:
-        return None, None, None
-    focus_box = representative_focus_box(scene, clip_start, clip_end)
-    zoom_scale = representative_zoom_scale(scene, clip_start, clip_end)
-    if focus_box is None or zoom_scale <= 1.02:
-        return None, focus_box, None
-    crop_width = max(min(round(1 / min(zoom_scale, 1.28), 4), 0.98), 0.7)
-    crop_height = crop_width
-    origin_x = clamp((focus_box.x + focus_box.width / 2) - crop_width / 2, 0.0, 1.0 - crop_width)
-    origin_y = clamp((focus_box.y + focus_box.height / 2) - crop_height / 2, 0.0, 1.0 - crop_height)
-    filter_text = (
-        f"crop=w=iw*{crop_width}:h=ih*{crop_height}:x=iw*{origin_x}:y=ih*{origin_y}"
+    return scene_crop_plan(
+        scene,
+        clip_start,
+        clip_end,
+        stage,
+        target_width(quality),
+        target_height(quality),
+        target_fps(quality),
     )
-    return (
-        filter_text,
-        rebased_box(focus_box, origin_x, origin_y, crop_width, crop_height),
-        (origin_x, origin_y, crop_width, crop_height),
-    )
-
-
-def representative_focus_box(scene: EditPlanScene, clip_start: float, clip_end: float) -> FocusBox | None:
-    for highlight in overlapping_highlights(scene, clip_start, clip_end):
-        if highlight.focus_box is not None:
-            return highlight.focus_box
-    for zoom in overlapping_zooms(scene, clip_start, clip_end):
-        if zoom.focus_box is not None:
-            return zoom.focus_box
-    return None
-
-
-def representative_zoom_scale(scene: EditPlanScene, clip_start: float, clip_end: float) -> float:
-    active_zooms = overlapping_zooms(scene, clip_start, clip_end)
-    if not active_zooms:
-        return 1.0
-    return max(zoom.scale for zoom in active_zooms)
-
-
-def overlapping_zooms(scene: EditPlanScene, clip_start: float, clip_end: float) -> list[EditPlanZoom]:
-    return [zoom for zoom in scene.zooms if zoom.end > clip_start and zoom.start < clip_end]
-def overlapping_highlights(scene: EditPlanScene, clip_start: float, clip_end: float) -> list[EditPlanHighlight]:
-    return [highlight for highlight in scene.highlights if highlight.end > clip_start and highlight.start < clip_end]
-
-
-def rebased_box(box: FocusBox, origin_x: float, origin_y: float, crop_width: float, crop_height: float) -> FocusBox:
-    return FocusBox(
-        x=clamp((box.x - origin_x) / crop_width, 0.0, 1.0),
-        y=clamp((box.y - origin_y) / crop_height, 0.0, 1.0),
-        width=clamp(box.width / crop_width, 0.04, 1.0),
-        height=clamp(box.height / crop_height, 0.04, 1.0),
-    )
-
-
-def rebased_highlight_box(
-    box: FocusBox | None,
-    crop_bounds: tuple[float, float, float, float] | None,
-) -> FocusBox | None:
-    if box is None or crop_bounds is None:
-        return box
-    origin_x, origin_y, crop_width, crop_height = crop_bounds
-    return rebased_box(box, origin_x, origin_y, crop_width, crop_height)
 
 
 def scene_overlay_filters(
@@ -334,6 +299,10 @@ def scene_overlay_filters(
     return filters
 
 
+def animated_crop_filter_text(filter_text: str | None) -> bool:
+    return bool(filter_text and filter_text.startswith("zoompan="))
+
+
 def highlight_draw_filters(
     scene: EditPlanScene,
     clip_start: float,
@@ -350,12 +319,7 @@ def highlight_draw_filters(
         box = rebased_highlight_box(highlight.focus_box, crop_bounds) or focus_box
         if box is None:
             continue
-        filters.append(
-            "drawbox="
-            f"x=iw*{box.x}:y=ih*{box.y}:w=iw*{box.width}:h=ih*{box.height}:"
-            "color=0xF59E0B@0.95:t=4:"
-            f"enable='between(t,{round(start, 2)},{round(end, 2)})'"
-        )
+        filters.extend(spotlight_filters(box, start, end, highlight.style))
     return filters
 
 
@@ -379,23 +343,37 @@ def caption_draw_filters(
             f"textfile='{escape_drawtext_path(caption_file)}':"
             "expansion=none:"
             f"fontsize={font_size}:fontcolor=white:"
-            "box=1:boxcolor=black@0.42:boxborderw=18:"
+            "line_spacing=8:box=1:boxcolor=black@0.34:boxborderw=20:borderw=1:bordercolor=white@0.08:"
             "x=(w-text_w)/2:y=h-(h*0.15):"
             f"enable='between(t,{round(start, 2)},{round(end, 2)})'"
         )
     return filters
 
 
+def video_finish_filters(clip: RenderClip) -> list[str]:
+    duration = round(max(clip.end - clip.start, 0.1), 2)
+    fade_in = min(0.12, max(duration * 0.08, 0.04))
+    fade_out = min(0.16, max(duration * 0.1, 0.05))
+    filters = [f"fade=t=in:st=0:d={fade_in}"]
+    if clip.stage != "focus" and duration > fade_out + 0.08:
+        filters.append(f"fade=t=out:st={round(duration - fade_out, 2)}:d={fade_out}")
+    return filters
+
+
 def output_scale_filter(quality: ExportQuality) -> str:
-    settings = get_settings()
-    width = settings.final_render_width if quality == "final" else settings.preview_proxy_width
-    height = settings.final_render_height if quality == "final" else settings.preview_proxy_height
+    width = target_width(quality)
+    height = target_height(quality)
     return f"[joinedv]scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,setsar=1[vout]"
 def passthrough_scale_filter(quality: ExportQuality) -> str:
-    settings = get_settings()
-    width = settings.final_render_width if quality == "final" else settings.preview_proxy_width
-    height = settings.final_render_height if quality == "final" else settings.preview_proxy_height
+    width = target_width(quality)
+    height = target_height(quality)
     return f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,setsar=1"
+def target_width(quality: ExportQuality) -> int:
+    settings = get_settings()
+    return settings.final_render_width if quality == "final" else settings.preview_proxy_width
+def target_height(quality: ExportQuality) -> int:
+    settings = get_settings()
+    return settings.final_render_height if quality == "final" else settings.preview_proxy_height
 def target_fps(quality: ExportQuality) -> int:
     settings = get_settings()
     return settings.final_render_fps if quality == "final" else settings.preview_proxy_fps
@@ -457,8 +435,6 @@ def normalized_caption_text(text: str) -> str:
     return preserved or " "
 def escape_drawtext_path(path: Path) -> str:
     return str(path).replace("\\", "\\\\").replace("'", r"\'")
-def clamp(value: float, minimum: float, maximum: float) -> float:
-    return max(minimum, min(value, maximum))
 def persist_proxy_preview(
     user_id: str,
     project: ProjectRecord,
