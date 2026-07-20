@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 import subprocess
+import time
 from pathlib import Path
 from typing import Callable, Literal
 
@@ -11,13 +12,14 @@ from app.models.projects import EditPlanScene, FocusBox, ProjectRecord, Rendered
 from app.services.render_focus_effects import rebased_highlight_box, scene_crop_plan, spotlight_filters
 from app.services.render_proxy_clips import RenderClip, highlight_clips
 from app.services.render_scene_diagnostics import diagnostic_payloads
-from app.services.render_runtime_helpers import output_duration_seconds, run_process_with_heartbeat
+from app.services.render_runtime_helpers import output_duration_seconds, require_duration, run_process_with_heartbeat
 
 logger = logging.getLogger(__name__)
 PreviewReady = Callable[[RenderedVideoRecord], None]
 UploadPreview = Callable[[str, ProjectRecord, Path, Callable[[], None] | None], RenderedVideoRecord]
 Heartbeat = Callable[[], None]
 ExportQuality = Literal["preview", "final"]
+SEEK_SLACK_SECONDS = 1.0
 
 
 def prepare_proxy_preview(
@@ -57,11 +59,9 @@ def render_highlight_reel(
     heartbeat: Heartbeat | None,
     quality: ExportQuality,
 ) -> None:
-    settings = get_settings()
     has_audio = source_has_audio(source_video)
-    command = build_highlight_command(project, source_video, output_path, clips, has_audio, voiceover_audio, quality)
     try:
-        run_process_with_heartbeat(command, timeout_seconds=settings.render_timeout_seconds, heartbeat=heartbeat)
+        render_sequential_reel(project, source_video, output_path, clips, has_audio, voiceover_audio, heartbeat, quality)
         logger.info("Preview render succeeded for project %s: rendered_clips=%s, voiceover_mode=%s.", project.id, len(clips), resolved_voiceover_mode(project, voiceover_audio))
     except FileNotFoundError as exc:
         raise RuntimeError("FFmpeg is required for proxy highlight rendering. Configure FFMPEG_BINARY in the backend env.") from exc
@@ -116,45 +116,23 @@ def source_has_audio(source_video: Path) -> bool:
     return bool(result.stdout.strip())
 
 
-def build_highlight_command(
+def render_sequential_reel(
     project: ProjectRecord,
     source_video: Path,
     output_path: Path,
     clips: list[RenderClip],
     has_audio: bool,
     voiceover_audio: Path | None,
+    heartbeat: Heartbeat | None,
     quality: ExportQuality,
-) -> list[str]:
-    settings = get_settings()
+) -> None:
+    deadline = time.monotonic() + get_settings().render_timeout_seconds
     voiceover_mode = resolved_voiceover_mode(project, voiceover_audio)
-    filter_complex = build_highlight_filter(project, clips, has_audio, voiceover_mode, quality, output_path.parent)
-    command = [settings.ffmpeg_binary, "-y", "-i", str(source_video)]
-    if voiceover_mode != "original" and voiceover_audio is not None:
-        command.extend(["-i", str(voiceover_audio)])
-    command.extend([
-        "-filter_complex",
-        filter_complex,
-        "-map",
-        "[vout]",
-        "-threads",
-        "1",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-crf",
-        "20" if quality == "final" else "24",
-        "-pix_fmt",
-        "yuv420p",
-        "-movflags",
-        "+faststart",
-    ])
-    if voiceover_mode != "original" or has_audio:
-        command.extend(["-map", "[aout]", "-c:a", "aac", "-b:a", "128k", "-ar", "48000"])
-    else:
-        command.append("-an")
-    command.append(str(output_path))
-    return command
+    render_audio = has_audio and voiceover_mode != "voiceover"
+    clip_paths = render_clip_segments(source_video, clips, render_audio, quality, output_path.parent, heartbeat, deadline)
+    joined_output = output_path.parent / "preview-joined.mp4"
+    concat_clip_segments(clip_paths, joined_output, heartbeat, deadline)
+    finalize_preview_audio(project, joined_output, output_path, has_audio, voiceover_audio, voiceover_mode, heartbeat, deadline)
 
 
 def build_passthrough_command(
@@ -205,34 +183,102 @@ def build_passthrough_command(
     return command
 
 
-def build_highlight_filter(
-    project: ProjectRecord,
+def render_clip_segments(
+    source_video: Path,
     clips: list[RenderClip],
-    has_audio: bool,
-    voiceover_mode: VoiceoverMode,
+    render_audio: bool,
     quality: ExportQuality,
     working_dir: Path,
-) -> str:
-    filters: list[str] = []
-    concat_inputs: list[str] = []
-    concat_audio = has_audio and voiceover_mode != "voiceover"
+    heartbeat: Heartbeat | None,
+    deadline: float,
+) -> list[Path]:
+    clip_paths: list[Path] = []
     for index, clip in enumerate(clips):
-        filters.extend(segment_filters(index, clip, concat_audio, quality, working_dir))
-        concat_inputs.append(f"[v{index}]")
-        if concat_audio:
-            concat_inputs.append(f"[a{index}]")
-    concat_labels = "[joinedv][aorig]" if concat_audio else "[joinedv]"
-    filters.append(f"{''.join(concat_inputs)}concat=n={len(clips)}:v=1:a={1 if concat_audio else 0}{concat_labels}")
-    filters.append(output_scale_filter(quality))
-    visual_duration = round(sum(clip.end - clip.start for clip in clips), 2)
-    audio_output = audio_mix_filter(
-        has_audio,
-        voiceover_mode,
-        preview_audio_duration(project, visual_duration, voiceover_mode),
-    )
-    if audio_output:
-        filters.append(audio_output)
-    return ";".join(filters)
+        clip_path = working_dir / f"clip-{index:02d}.mp4"
+        command = build_clip_command(source_video, clip, clip_path, render_audio, quality, working_dir)
+        run_process_with_heartbeat(command, timeout_seconds=remaining_timeout_seconds(deadline), heartbeat=heartbeat)
+        clip_paths.append(clip_path)
+    return clip_paths
+
+
+def build_clip_command(
+    source_video: Path,
+    clip: RenderClip,
+    clip_path: Path,
+    render_audio: bool,
+    quality: ExportQuality,
+    working_dir: Path,
+) -> list[str]:
+    settings = get_settings()
+    clip_duration = max(round(clip.end - clip.start, 2), 0.1)
+    coarse_start = max(round(clip.start - SEEK_SLACK_SECONDS, 2), 0.0)
+    precise_start = round(clip.start - coarse_start, 2)
+    filters = segment_filters(0, clip, render_audio, quality, working_dir, precise_start, clip_duration)
+    command = [
+        settings.ffmpeg_binary,
+        "-y",
+        "-ss",
+        str(coarse_start),
+        "-t",
+        str(round(precise_start + clip_duration, 2)),
+        "-i",
+        str(source_video),
+        "-filter_complex",
+        ";".join(filters),
+        "-map",
+        "[v0]",
+    ]
+    command.extend(["-threads", "1", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20" if quality == "final" else "24", "-pix_fmt", "yuv420p", "-movflags", "+faststart"])
+    if render_audio:
+        command.extend(["-map", "[a0]", "-c:a", "aac", "-b:a", "128k", "-ar", "48000"])
+    else:
+        command.append("-an")
+    command.append(str(clip_path))
+    return command
+
+
+def concat_clip_segments(
+    clip_paths: list[Path],
+    output_path: Path,
+    heartbeat: Heartbeat | None,
+    deadline: float,
+) -> None:
+    settings = get_settings()
+    concat_file = output_path.parent / "clips.txt"
+    concat_file.write_text("".join(f"file '{path.name}'\n" for path in clip_paths), encoding="utf-8")
+    command = [
+        settings.ffmpeg_binary,
+        "-y",
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        str(concat_file),
+        "-c",
+        "copy",
+        str(output_path),
+    ]
+    run_process_with_heartbeat(command, timeout_seconds=remaining_timeout_seconds(deadline), heartbeat=heartbeat, cwd=output_path.parent)
+
+
+def finalize_preview_audio(
+    project: ProjectRecord,
+    joined_output: Path,
+    output_path: Path,
+    has_audio: bool,
+    voiceover_audio: Path | None,
+    voiceover_mode: VoiceoverMode,
+    heartbeat: Heartbeat | None,
+    deadline: float,
+) -> None:
+    settings = get_settings()
+    if voiceover_mode == "original" or voiceover_audio is None:
+        joined_output.replace(output_path)
+        return
+    duration_seconds = preview_audio_duration(project, output_duration_seconds(joined_output, fallback=require_duration(project)), voiceover_mode)
+    command = [settings.ffmpeg_binary, "-y", "-i", str(joined_output), "-i", str(voiceover_audio), "-filter_complex", passthrough_audio_filter(has_audio, voiceover_mode, duration_seconds), "-map", "0:v:0", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-movflags", "+faststart", str(output_path)]
+    run_process_with_heartbeat(command, timeout_seconds=remaining_timeout_seconds(deadline), heartbeat=heartbeat)
 
 
 def segment_filters(
@@ -241,27 +287,32 @@ def segment_filters(
     concat_audio: bool,
     quality: ExportQuality,
     working_dir: Path,
+    precise_start: float,
+    clip_duration: float,
 ) -> list[str]:
-    start, end = clip.start, clip.end
     scene = clip.scene
-    chain = [f"[0:v]trim=start={start}:end={end}", "setpts=PTS-STARTPTS"]
-    crop_filter, crop_box, crop_bounds = scene_crop_filter(scene, start, end, quality, clip.stage)
+    chain = [f"[0:v]trim=start={precise_start}:end={round(precise_start + clip_duration, 2)}", "setpts=PTS-STARTPTS"]
+    crop_filter, crop_box, crop_bounds = scene_crop_filter(scene, clip.start, clip.end, quality, clip.stage)
     animated_crop = animated_crop_filter_text(crop_filter)
     if animated_crop:
-        chain.extend(highlight_draw_filters(scene, start, end, crop_box, None))
+        chain.extend(highlight_draw_filters(scene, clip.start, clip.end, crop_box, None))
     if crop_filter:
         chain.append(crop_filter)
     if not animated_crop:
-        chain.extend(highlight_draw_filters(scene, start, end, crop_box, crop_bounds))
-    chain.extend(caption_draw_filters(scene, start, end, quality, working_dir))
+        chain.extend(highlight_draw_filters(scene, clip.start, clip.end, crop_box, crop_bounds))
+    chain.extend(caption_draw_filters(scene, clip.start, clip.end, quality, working_dir))
     chain.extend(video_finish_filters(clip))
     chain.append(f"fps={target_fps(quality)}")
     chain.append(passthrough_scale_filter(quality))
     chain.append(f"[v{index}]")
     filters = [",".join(chain[:-1]) + chain[-1]]
     if concat_audio:
-        filters.append(f"[0:a]atrim=start={start}:end={end},asetpts=PTS-STARTPTS[a{index}]")
+        filters.append(f"[0:a]atrim=start={precise_start}:end={round(precise_start + clip_duration, 2)},asetpts=PTS-STARTPTS[a{index}]")
     return filters
+
+
+def remaining_timeout_seconds(deadline: float) -> int:
+    return max(int(deadline - time.monotonic()), 1)
 
 
 def scene_crop_filter(
@@ -280,23 +331,6 @@ def scene_crop_filter(
         target_height(quality),
         target_fps(quality),
     )
-
-
-def scene_overlay_filters(
-    scene: EditPlanScene | None,
-    clip_start: float,
-    clip_end: float,
-    focus_box: FocusBox | None,
-    crop_bounds: tuple[float, float, float, float] | None,
-    quality: ExportQuality,
-    working_dir: Path,
-) -> list[str]:
-    if scene is None:
-        return []
-    filters: list[str] = []
-    filters.extend(highlight_draw_filters(scene, clip_start, clip_end, focus_box, crop_bounds))
-    filters.extend(caption_draw_filters(scene, clip_start, clip_end, quality, working_dir))
-    return filters
 
 
 def animated_crop_filter_text(filter_text: str | None) -> bool:
@@ -360,10 +394,6 @@ def video_finish_filters(clip: RenderClip) -> list[str]:
     return filters
 
 
-def output_scale_filter(quality: ExportQuality) -> str:
-    width = target_width(quality)
-    height = target_height(quality)
-    return f"[joinedv]scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:black,setsar=1[vout]"
 def passthrough_scale_filter(quality: ExportQuality) -> str:
     width = target_width(quality)
     height = target_height(quality)
@@ -381,20 +411,6 @@ def resolved_voiceover_mode(project: ProjectRecord, voiceover_audio: Path | None
     if voiceover_audio is None or project.voiceover is None or project.voiceover.status != "ready":
         return "original"
     return project.voiceover.mode
-def audio_mix_filter(has_audio: bool, voiceover_mode: VoiceoverMode, duration_seconds: float) -> str:
-    safe_duration = max(round(duration_seconds, 2), 0.1)
-    if voiceover_mode == "voiceover":
-        return f"[1:a]atrim=start=0:end={safe_duration},asetpts=PTS-STARTPTS[aout]"
-    if voiceover_mode == "mixed" and has_audio:
-        return (
-            f"[1:a]atrim=start=0:end={safe_duration},asetpts=PTS-STARTPTS[avo];"
-            "[aorig][avo]amix=inputs=2:duration=longest:dropout_transition=0[aout]"
-        )
-    if voiceover_mode == "mixed":
-        return f"[1:a]atrim=start=0:end={safe_duration},asetpts=PTS-STARTPTS[aout]"
-    if has_audio:
-        return "[aorig]anull[aout]"
-    return ""
 def passthrough_audio_filter(has_audio: bool, voiceover_mode: VoiceoverMode, duration_seconds: float) -> str:
     safe_duration = max(round(duration_seconds, 2), 0.1)
     if voiceover_mode == "voiceover":
