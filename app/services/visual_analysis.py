@@ -30,11 +30,25 @@ def analyze_video_scenes(
     analyses: list[VisualSceneAnalysisRecord] = []
     started_at = monotonic()
     total_scenes = len(launch_script.scenes)
+    budget_exhausted = False
     with TemporaryDirectory(prefix="launchify-vision-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
         for index, (scene, scene_range) in enumerate(prioritized, start=1):
             elapsed = monotonic() - started_at
             if visual_analysis_budget_reached(elapsed, settings.visual_analysis_total_budget_seconds):
+                if not budget_exhausted:
+                    logger.warning(
+                        "Visual analysis budget reached after %.2fs. Continuing planning with lightweight scene analyses for remaining scenes.",
+                        elapsed,
+                    )
+                    budget_exhausted = True
+                analyses.append(lightweight_scene_analysis(video_path, temp_dir, scene, scene_range, settings))
+                continue
+            if should_reserve_budget_for_remaining_scenes(elapsed, index, total_scenes, settings):
+                logger.info(
+                    "Visual analysis: scene %s using lightweight coverage to preserve remaining scene budget.",
+                    scene.scene_number,
+                )
                 analyses.append(lightweight_scene_analysis(video_path, temp_dir, scene, scene_range, settings))
                 continue
             analysis = analyze_scene(video_path, temp_dir, scene, scene_range, elapsed, settings, scene_budget_frames(index, total_scenes, settings))
@@ -49,21 +63,11 @@ def prioritized_scene_inputs(
     transcript: list[TranscriptSegment],
 ) -> list[tuple[LaunchScriptScene, tuple[float, float]]]:
     paired = list(zip(scenes, ranges, strict=True))
-    ranked = sorted(
-        enumerate(paired),
-        key=lambda item: scene_priority(item[1][0], item[1][1], transcript),
-        reverse=True,
-    )
-    ordered = [item[1] for item in ranked]
-    if len(ordered) <= 2:
-        return ordered
-    coverage_first = [ordered[0]]
-    latest_scene = max(paired, key=lambda item: item[1][0])
-    if latest_scene not in coverage_first:
-        coverage_first.append(latest_scene)
-    middle = [item for item in paired if item not in coverage_first]
-    timeline_order = sorted(middle, key=lambda item: item[1][0])
-    return [*coverage_first, *timeline_order]
+    if len(paired) <= 2:
+        return sorted(paired, key=lambda item: scene_priority(item[0], item[1], transcript), reverse=True)
+    anchor = max(paired, key=lambda item: scene_priority(item[0], item[1], transcript))
+    remaining = [item for item in paired if item != anchor]
+    return [anchor, *sorted(remaining, key=lambda item: item[1][0])]
 
 
 def scene_priority(
@@ -84,13 +88,7 @@ def analysis_map(analyses: list[VisualSceneAnalysisRecord]) -> dict[int, VisualS
 
 
 def visual_analysis_budget_reached(elapsed: float, total_budget_seconds: int) -> bool:
-    if elapsed < total_budget_seconds:
-        return False
-    logger.warning(
-        "Visual analysis budget reached after %.2fs. Continuing planning without scene analyses for remaining scenes.",
-        elapsed,
-    )
-    return True
+    return elapsed >= total_budget_seconds
 
 
 def analyze_scene(
@@ -146,6 +144,20 @@ def scene_budget_frames(scene_index: int, total_scenes: int, settings: Settings)
     if total_scenes <= 4 or scene_index <= 2:
         return settings.visual_analysis_frames_per_scene
     return adaptive_budget
+
+
+def should_reserve_budget_for_remaining_scenes(
+    elapsed: float,
+    scene_index: int,
+    total_scenes: int,
+    settings: Settings,
+) -> bool:
+    remaining_scenes = max(total_scenes - scene_index, 0)
+    if remaining_scenes <= 0:
+        return False
+    remaining_budget = max(settings.visual_analysis_total_budget_seconds - elapsed, 0.0)
+    reserved_budget = remaining_scenes * 8.0
+    return remaining_budget <= reserved_budget
 
 
 def scene_took_too_long(scene_started_at: float, settings: Settings) -> bool:

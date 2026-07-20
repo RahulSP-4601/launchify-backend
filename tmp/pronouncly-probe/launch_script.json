@@ -27,15 +27,15 @@
       "spoken_line": "log in with the existing one Since I've already created the account",
       "on_screen_text": "Log in with Google",
       "source_excerpt": "Log in with Google",
-      "estimated_duration_seconds": 5.17
+      "estimated_duration_seconds": 5.11
     },
     {
       "scene_number": 4,
-      "purpose": "Show the viewer the Select a course screen.",
+      "purpose": "Show the viewer the Japanese screen.",
       "spoken_line": "log in, you can see the five courses",
-      "on_screen_text": "Select a course",
-      "source_excerpt": "Select a course",
-      "estimated_duration_seconds": 3.42
+      "on_screen_text": "Japanese",
+      "source_excerpt": "Japanese",
+      "estimated_duration_seconds": 3.36
     },
     {
       "scene_number": 5,
@@ -43,7 +43,7 @@
       "spoken_line": "under Japan click on the Japan courses And",
       "on_screen_text": "Japanese",
       "source_excerpt": "Japanese",
-      "estimated_duration_seconds": 4.28
+      "estimated_duration_seconds": 4.2
     },
     {
       "scene_number": 6,
@@ -51,7 +51,7 @@
       "spoken_line": "the Japan course has been opened officially, there are five",
       "on_screen_text": "Pick your Japanese level before you start learning.",
       "source_excerpt": "Pick your Japanese level before you start learning.",
-      "estimated_duration_seconds": 4.28
+      "estimated_duration_seconds": 4.2
     }
   ],
   "cta": "Turn rough recordings into polished product walkthroughs.",

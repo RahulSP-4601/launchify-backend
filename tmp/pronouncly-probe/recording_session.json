@@ -1,31 +1,32 @@
 {
   "source": "manual_upload_inferred",
   "started_at": "0.0",
-  "ended_at": "46.02",
+  "ended_at": "45.54",
   "viewport_width": 2850,
   "viewport_height": 1552,
   "page_title": "Pronouncly",
   "page_url": "",
   "grounding_diagnostics": {
-    "source_duration_seconds": "46.02",
+    "source_duration_seconds": "45.54",
     "inferred_event_count": "5",
     "meaningful_event_count": "5",
-    "average_event_score": "0.65",
+    "average_event_score": "0.80",
     "timeline_coverage_ratio": "0.61",
     "weak_label_ratio": "0.00",
     "low_confidence_ratio": "0.00",
-    "auth_state_ratio": "0.20",
+    "auth_state_ratio": "0.00",
     "repeated_transcript_ratio": "0.20",
     "visual_scene_count": "6",
     "fallback_scene_count": "0",
+    "transcript_fallback_event_count": "0",
     "under_grounded": "false"
   },
   "events": [
     {
       "type": "click",
       "timestamp": 13.8,
-      "x": 2650.5,
-      "y": 62.08,
+      "x": 2664.75,
+      "y": 85.36,
       "value": "",
       "url": "",
       "title": "",
@@ -33,27 +34,27 @@
         "selector": "",
         "label": "Google Login",
         "role": "control",
-        "text": "User moves cursor to the Google Login button at the top right corner of the interface, indicating intent to click it.",
+        "text": "User is guided to click on the 'Google Login' button located at the top right corner of the interface.",
         "href": "",
         "bbox_x": 2508.0,
-        "bbox_y": 31.04,
-        "bbox_width": 285.0,
-        "bbox_height": 62.08
+        "bbox_y": 46.56,
+        "bbox_width": 313.5,
+        "bbox_height": 77.6
       },
       "metadata": {
         "inferred": "true",
         "scene_number": "1",
         "synthetic_selector": "[data-launchify-scene='1']",
-        "score": "0.77",
+        "score": "0.94",
         "action_class": "button_click",
-        "transcript_excerpt": "user moves cursor to the google login button at the top right corner of the interface"
+        "transcript_excerpt": "user is guided to click on the 'google login' button located at the top right corner of the interface"
       }
     },
     {
       "type": "click",
-      "timestamp": 20.96,
-      "x": 2251.5,
-      "y": 946.72,
+      "timestamp": 20.93,
+      "x": 2166.0,
+      "y": 900.16,
       "value": "",
       "url": "",
       "title": "",
@@ -61,55 +62,27 @@
         "selector": "",
         "label": "Log in with Google",
         "role": "control",
-        "text": "User logs in with an existing Google account by clicking 'Log in with Google' and then choosing an account from the account selection dialog.",
+        "text": "User is shown a login screen with options to sign in using Google. The cursor moves to and clicks the 'Log in with Google' button, then the interface transitions to an account selection screen showing multiple Google accounts.",
         "href": "",
-        "bbox_x": 1767.0,
-        "bbox_y": 900.1600000000001,
-        "bbox_width": 969.0,
-        "bbox_height": 93.12
+        "bbox_x": 1653.0,
+        "bbox_y": 807.04,
+        "bbox_width": 1026.0,
+        "bbox_height": 186.24
       },
       "metadata": {
         "inferred": "true",
         "scene_number": "3",
         "synthetic_selector": "[data-launchify-scene='3']",
-        "score": "0.58",
-        "action_class": "auth_action",
-        "transcript_excerpt": "i'll log in to the existing one"
+        "score": "0.66",
+        "action_class": "button_click",
+        "transcript_excerpt": "log in with the existing one Since I've already created the account"
       }
     },
     {
       "type": "focus",
-      "timestamp": 28.04,
-      "x": 1325.25,
-      "y": 776.0,
-      "value": "",
-      "url": "",
-      "title": "",
-      "target": {
-        "selector": "",
-        "label": "Select a course",
-        "role": "control",
-        "text": "User logs in and views the course selection dashboard showing five courses with some locked and some open.",
-        "href": "",
-        "bbox_x": 1111.5,
-        "bbox_y": 465.6,
-        "bbox_width": 427.5,
-        "bbox_height": 620.8
-      },
-      "metadata": {
-        "inferred": "true",
-        "scene_number": "4",
-        "synthetic_selector": "[data-launchify-scene='4']",
-        "score": "0.49",
-        "action_class": "result_state",
-        "transcript_excerpt": "log in, you can see the five courses"
-      }
-    },
-    {
-      "type": "click",
-      "timestamp": 37.66,
-      "x": 399.0,
-      "y": 776.0,
+      "timestamp": 29.38,
+      "x": 1425.0,
+      "y": 853.6,
       "value": "",
       "url": "",
       "title": "",
@@ -120,22 +93,52 @@
         "text": "Japanese",
         "href": "",
         "bbox_x": 142.5,
-        "bbox_y": 543.2,
-        "bbox_width": 513.0,
-        "bbox_height": 465.6
+        "bbox_y": 465.6,
+        "bbox_width": 2565.0,
+        "bbox_height": 776.0
+      },
+      "metadata": {
+        "inferred": "true",
+        "scene_number": "4",
+        "synthetic_selector": "[data-launchify-scene='4']",
+        "score": "0.97",
+        "action_class": "result_state",
+        "transcript_excerpt": "log in, you can see the five courses",
+        "scene_state": "result_state",
+        "result_label": "Japanese"
+      }
+    },
+    {
+      "type": "click",
+      "timestamp": 37.34,
+      "x": 427.5,
+      "y": 1047.6,
+      "value": "",
+      "url": "",
+      "title": "",
+      "target": {
+        "selector": "",
+        "label": "Japanese",
+        "role": "control",
+        "text": "Japanese",
+        "href": "",
+        "bbox_x": 285.0,
+        "bbox_y": 1008.8,
+        "bbox_width": 285.0,
+        "bbox_height": 77.6
       },
       "metadata": {
         "inferred": "true",
         "scene_number": "5",
         "synthetic_selector": "[data-launchify-scene='5']",
-        "score": "0.57",
-        "action_class": "card_selection",
-        "transcript_excerpt": "there are five user is instructed to click on the japanese course card and"
+        "score": "0.54",
+        "action_class": "button_click",
+        "transcript_excerpt": "there are five user clicks on the japanese course card to select it"
       }
     },
     {
       "type": "focus",
-      "timestamp": 41.94,
+      "timestamp": 41.54,
       "x": 1425.0,
       "y": 776.0,
       "value": "",
@@ -148,15 +151,15 @@
         "text": "Pick your Japanese level before you start learning.",
         "href": "",
         "bbox_x": 142.5,
-        "bbox_y": 388.0,
+        "bbox_y": 232.79999999999995,
         "bbox_width": 2565.0,
-        "bbox_height": 776.0
+        "bbox_height": 1086.4
       },
       "metadata": {
         "inferred": "true",
         "scene_number": "6",
         "synthetic_selector": "[data-launchify-scene='6']",
-        "score": "0.86",
+        "score": "0.88",
         "action_class": "result_state",
         "transcript_excerpt": "the Japan course has been opened officially, there are five",
         "scene_state": "result_state",

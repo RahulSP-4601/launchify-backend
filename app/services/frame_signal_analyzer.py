@@ -11,6 +11,7 @@ FRAME_WIDTH = 64
 FRAME_HEIGHT = 36
 FRAME_BYTES = FRAME_WIDTH * FRAME_HEIGHT
 FRAME_SEEK_OFFSETS = (0.0, -0.08, -0.2)
+FRAME_DIFF_TIMEOUT_SECONDS = 4
 logger = logging.getLogger(__name__)
 
 
@@ -62,7 +63,7 @@ def run_raw_frame_command(video_path: Path, timestamp: float) -> bytes | None:
                 command,
                 check=True,
                 capture_output=True,
-                timeout=get_settings().ffmpeg_timeout_seconds,
+                timeout=min(get_settings().ffmpeg_timeout_seconds, FRAME_DIFF_TIMEOUT_SECONDS),
             )
         except FileNotFoundError as exc:
             raise RuntimeError("FFmpeg is required for frame-diff analysis.") from exc
@@ -71,7 +72,7 @@ def run_raw_frame_command(video_path: Path, timestamp: float) -> bytes | None:
                 "FFmpeg frame-diff extraction timed out for %s at %.3fs after %ss",
                 video_path.name,
                 timestamp,
-                get_settings().ffmpeg_timeout_seconds,
+                min(get_settings().ffmpeg_timeout_seconds, FRAME_DIFF_TIMEOUT_SECONDS),
             )
             continue
         except subprocess.CalledProcessError as exc:

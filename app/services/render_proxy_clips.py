@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.models.projects import EditPlanScene, ProjectRecord
-from app.services.walkthrough_guardrails import guide_is_under_grounded, recording_duration_seconds
+from app.services.walkthrough_guardrails import guide_is_under_grounded, recording_duration_seconds, session_is_under_grounded
 from app.services.walkthrough_windows import step_clip_window
 
 MIN_CLIP_DURATION_SECONDS = 0.45
@@ -27,7 +27,7 @@ class RenderClip:
 def highlight_clips(project: ProjectRecord) -> list[RenderClip]:
     if project.edit_plan is None:
         return []
-    if guide_is_under_grounded(project.guide, recording_duration_seconds(project.recording_session, project.transcript)):
+    if under_grounded_walkthrough(project):
         return contextual_highlight_clips(project)
     if prefer_walkthrough_clips(project):
         return walkthrough_clips(project)
@@ -69,6 +69,11 @@ def should_use_contextual_clips(project: ProjectRecord, clips: list[RenderClip])
         return False
     action_duration = sum(clip.end - clip.start for clip in clips)
     return action_duration < max(MIN_ACTION_REEL_SECONDS, source_duration * MIN_SOURCE_COVERAGE_RATIO)
+
+
+def under_grounded_walkthrough(project: ProjectRecord) -> bool:
+    duration_seconds = recording_duration_seconds(project.recording_session, project.transcript)
+    return guide_is_under_grounded(project.guide, duration_seconds) or session_is_under_grounded(project.recording_session, project.transcript)
 
 
 def contextual_highlight_clips(project: ProjectRecord) -> list[RenderClip]:

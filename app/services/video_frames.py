@@ -8,6 +8,8 @@ from pathlib import Path
 from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
+END_FRAME_MARGIN_SECONDS = 0.85
+NEAR_END_THRESHOLD_SECONDS = 3.0
 
 
 @dataclass(frozen=True)
@@ -104,7 +106,7 @@ def normalize_scene_range(video_path: Path, scene_range: tuple[float, float]) ->
     if video_duration <= 0.4:
         return start, end
     safe_start = max(start, 0.0)
-    safe_end = min(end, video_duration - 0.25)
+    safe_end = min(end, max(video_duration - END_FRAME_MARGIN_SECONDS, safe_start + 0.25))
     if safe_end <= safe_start:
         return safe_start, min(end, video_duration)
     return safe_start, safe_end
@@ -122,8 +124,9 @@ def extract_frame(
 ) -> Path:
     output_path = output_dir / f"scene-{scene_number}-frame-{frame_index}.png"
     extraction_error: RuntimeError | None = None
-    near_end = timestamp >= max(video_duration_seconds(video_path) - 3.0, 0.0)
-    for candidate_timestamp in candidate_timestamps(timestamp):
+    video_duration = video_duration_seconds(video_path)
+    near_end = timestamp >= max(video_duration - NEAR_END_THRESHOLD_SECONDS, 0.0)
+    for candidate_timestamp in candidate_timestamps(timestamp, video_duration, near_end=near_end):
         output_path.unlink(missing_ok=True)
         for seek_mode in (("input", "output") if near_end else ("input",)):
             try:
@@ -176,11 +179,12 @@ def run_ffmpeg_capture(
         raise RuntimeError(f"FFmpeg failed while extracting video frames: {detail}") from exc
 
 
-def candidate_timestamps(timestamp: float) -> list[float]:
-    offsets = (0.0, 0.12, 0.32)
+def candidate_timestamps(timestamp: float, video_duration: float, *, near_end: bool) -> list[float]:
+    offsets = (0.0, 0.12, 0.32, 0.6, 0.95) if near_end else (0.0, 0.12, 0.32)
+    latest_safe = max(video_duration - END_FRAME_MARGIN_SECONDS, 0.0) if video_duration > 0 else timestamp
     candidates: list[float] = []
     for offset in offsets:
-        candidate = round(max(timestamp - offset, 0.0), 2)
+        candidate = round(min(max(timestamp - offset, 0.0), latest_safe), 2)
         if candidate not in candidates:
             candidates.append(candidate)
     return candidates

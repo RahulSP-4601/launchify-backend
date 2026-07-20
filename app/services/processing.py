@@ -15,7 +15,7 @@ from app.models.projects import (
     VisualSceneAnalysisRecord,
 )
 from app.services.edit_planner import generate_edit_plan
-from app.services.grounded_script_refinement import refine_launch_script_with_visuals
+from app.services.grounded_script_refinement import refine_launch_script_with_events, refine_launch_script_with_visuals
 from app.services.guide_synthesizer import synthesize_grounded_guide
 from app.services.inference_step_builder import build_inference_script
 from app.services.inferred_recording_session import infer_recording_session
@@ -150,10 +150,11 @@ def save_scripting_step(
     current_project = require_project(job.user_id, job.project_id)
     fallback_script = inferred_walkthrough_fallback(current_project, transcript)
     visual_analyses: list[VisualSceneAnalysisRecord] | None = None
+    inferred_script = fallback_script
     try:
         guide, visual_analyses = generate_grounded_guide_if_available(current_project, transcript)
         if guide is None:
-            guide, visual_analyses = generate_inferred_grounded_guide(current_project, job, asset_file, transcript)
+            guide, visual_analyses, inferred_script = generate_inferred_grounded_guide(current_project, job, asset_file, transcript)
         guide = acceptable_grounded_guide(guide, require_project(job.user_id, job.project_id), transcript, job.project_id)
     except Exception:
         logger.exception(
@@ -161,7 +162,7 @@ def save_scripting_step(
             job.project_id,
         )
         guide = None
-    launch_script = persist_guide_or_script(current_project, job, guide, fallback_script)
+    launch_script = persist_guide_or_script(current_project, job, guide, inferred_script or fallback_script)
     project_store.save_launch_script(job.user_id, job.project_id, launch_script, asset_path=job.asset_path)
     pipeline_log(
         job.project_id,
@@ -222,7 +223,7 @@ def generate_inferred_grounded_guide(
     job: ProcessingJobRecord,
     asset_file: Path,
     transcript: list[TranscriptSegment],
-) -> tuple[tuple[GuideRecord, LaunchScriptRecord] | None, list[VisualSceneAnalysisRecord] | None]:
+) -> tuple[tuple[GuideRecord, LaunchScriptRecord] | None, list[VisualSceneAnalysisRecord] | None, LaunchScriptRecord]:
     inference_script, scene_ranges = build_inference_script(project, transcript)
     pipeline_log(
         job.project_id,
@@ -231,6 +232,7 @@ def generate_inferred_grounded_guide(
         scene_ranges=len(scene_ranges),
     )
     visual_analyses = maybe_analyze_video_scenes(asset_file, inference_script, transcript, scene_ranges)
+    refined_script = refine_launch_script_with_visuals(inference_script, visual_analyses)
     recording_session = infer_recording_session(project, asset_file, inference_script, transcript, visual_analyses)
     if recording_session is None or not recording_session.events:
         pipeline_log(
@@ -240,7 +242,7 @@ def generate_inferred_grounded_guide(
             events=0 if recording_session is None else len(recording_session.events),
             visual_analyses=0 if visual_analyses is None else len(visual_analyses),
         )
-        return None, visual_analyses
+        return None, visual_analyses, refined_script
     project_store.save_recording_session(job.user_id, job.project_id, recording_session, asset_path=job.asset_path)
     pipeline_log(
         job.project_id,
@@ -250,8 +252,9 @@ def generate_inferred_grounded_guide(
         under_grounded=recording_session.grounding_diagnostics.get("under_grounded", ""),
         timeline_coverage_ratio=recording_session.grounding_diagnostics.get("timeline_coverage_ratio", ""),
     )
+    refined_script = refine_launch_script_with_events(refined_script, recording_session.events)
     grounded_project = require_project(job.user_id, job.project_id)
-    return synthesize_grounded_guide(grounded_project, transcript), visual_analyses
+    return synthesize_grounded_guide(grounded_project, transcript), visual_analyses, refined_script
 
 
 def inferred_walkthrough_fallback(
