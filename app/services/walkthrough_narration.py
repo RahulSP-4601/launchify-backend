@@ -32,38 +32,45 @@ def action_line(scene: EditPlanScene, label: str) -> str:
     focus = target_phrase(label)
     action_class = scene.action_class
     if action_class == "input_entry":
-        return sentence(f"Enter details in {focus}")
+        return sentence(join_phrases(f"Enter details in {focus}", progress_phrase(scene)))
     if action_class in {"navigation", "tab_switch"}:
-        return sentence(f"Open {focus}")
+        return sentence(join_phrases(f"Open {focus}", progress_phrase(scene)))
     if action_class == "auth_action":
-        return auth_line(focus)
-    return sentence(f"Choose {focus}" if action_class == "card_selection" else f"Select {focus}")
+        return auth_line(focus, scene)
+    lead = f"Choose {focus}" if action_class == "card_selection" else f"Select {focus}"
+    return sentence(join_phrases(lead, progress_phrase(scene)))
 
 
 def result_line(scene: EditPlanScene, label: str) -> str:
     if not label:
         return explanation_line(scene, label)
     focus = target_phrase(label)
+    if is_dashboard_scene(scene):
+        return sentence("Land on the course dashboard so every available learning path is clear.")
+    if is_level_scene(scene):
+        return sentence("Open the Japanese path and review the starting level before the lesson begins.")
     if scene.action_class in {"navigation", "auth_action", "tab_switch"}:
-        return sentence(f"You'll land on {focus}")
+        return sentence(join_phrases(f"You'll land on {focus}", progress_phrase(scene)))
     if scene.purpose and not transcript_like_label(scene.purpose):
         return sentence(f"This opens {compact_phrase(scene.purpose)}")
-    return sentence(f"You'll see {article_label(focus)}")
+    return sentence(join_phrases(f"You'll see {article_label(focus)}", progress_phrase(scene)))
 
 
 def explanation_line(scene: EditPlanScene, label: str) -> str:
     if label and label.lower() not in scene.title.lower():
-        return sentence(f"Review {article_label(target_phrase(label))}")
-    return sentence(compact_phrase(scene.spoken_line or scene.purpose or scene.title))
+        return sentence(join_phrases(f"Review {article_label(target_phrase(label))}", scene_context(scene)))
+    return sentence(compact_phrase(scene.spoken_line or scene.purpose or scene.title or scene_context(scene)))
 
 
-def auth_line(label: str) -> str:
+def auth_line(label: str, scene: EditPlanScene) -> str:
     lowered = label.lower()
+    if "account" in scene.on_screen_text.lower() or "account" in scene.source_excerpt.lower():
+        return sentence("Pick the existing Google account to continue straight into the product.")
     if "google" in lowered:
-        return "Continue with Google to sign in."
+        return sentence(join_phrases("Continue with Google for a clean login", progress_phrase(scene)))
     if "sign up" in lowered and "google" not in lowered:
-        return sentence(f"Use {label} to create the account")
-    return sentence(f"Use {label} to sign in")
+        return sentence(join_phrases(f"Use {label} to create the account", progress_phrase(scene)))
+    return sentence(join_phrases(f"Use {label} to sign in", progress_phrase(scene)))
 
 
 def target_phrase(label: str) -> str:
@@ -142,3 +149,50 @@ def sentence(text: str) -> str:
         return ""
     cleaned = cleaned[0].upper() + cleaned[1:]
     return cleaned if cleaned.endswith((".", "!", "?")) else f"{cleaned}."
+
+
+def outcome_phrase(scene: EditPlanScene) -> str:
+    if scene.purpose and not transcript_like_label(scene.purpose):
+        return compact_phrase(scene.purpose)
+    return scene_context(scene)
+
+
+def progress_phrase(scene: EditPlanScene) -> str:
+    if scene.action_class == "auth_action":
+        return "then move straight into the dashboard"
+    if is_dashboard_scene(scene):
+        return "so the course options are easy to scan"
+    if scene.action_class == "card_selection":
+        return "to enter the guided learning path"
+    if is_level_scene(scene):
+        return "so the next setup step is ready"
+    if scene.scene_role == "result":
+        return "so the next product state is clear"
+    return outcome_phrase(scene)
+
+
+def scene_context(scene: EditPlanScene) -> str:
+    for candidate in (scene.purpose, scene.title, scene.on_screen_text):
+        compact = compact_phrase(candidate)
+        if compact and not transcript_like_label(compact):
+            return compact
+    return ""
+
+
+def join_phrases(primary: str, secondary: str) -> str:
+    secondary = secondary.strip()
+    if not secondary:
+        return primary
+    if secondary.lower().startswith(primary.lower()):
+        return primary
+    return f"{primary}, then {secondary}"
+
+
+def is_dashboard_scene(scene: EditPlanScene) -> bool:
+    combined = f"{scene.on_screen_text} {scene.source_excerpt} {scene.purpose}".lower()
+    return "select a course" in combined or "dashboard" in combined or "courses" in combined
+
+
+def is_level_scene(scene: EditPlanScene) -> bool:
+    combined = f"{scene.on_screen_text} {scene.source_excerpt} {scene.purpose}".lower()
+    return "pick your japanese level" in combined or "level" in combined

@@ -4,10 +4,11 @@ from dataclasses import dataclass
 
 from app.models.projects import EditPlanCaption, EditPlanHighlight, EditPlanRecord, EditPlanScene, EditPlanZoom, ProjectRecord, VoiceoverMode
 from app.services.render_proxy_clips import RenderClip, highlight_clips
+from app.services.preview_scene_composition import PreviewSceneComposition, build_scene_composition
 
-MIN_PREVIEW_CLIP_SECONDS = 0.45
-MAX_PREVIEW_CLIP_SECONDS = 8.0
-VOICEOVER_TAIL_SECONDS = 0.18
+MIN_PREVIEW_CLIP_SECONDS = 0.6
+MAX_PREVIEW_CLIP_SECONDS = 9.5
+VOICEOVER_TAIL_SECONDS = 0.28
 
 
 @dataclass(frozen=True)
@@ -50,6 +51,7 @@ class PreviewManifestClip:
     caption_events: list[EditPlanCaption]
     transition_in: PreviewTransition
     transition_out: PreviewTransition
+    composition: PreviewSceneComposition
     animated_crop: bool
     spotlight: bool
     freeze_frame: bool = False
@@ -168,8 +170,8 @@ def build_manifest_clip(
     trim_end = bounded_trim_end(source_start, source_end, voiceover_segment, quality)
     scene_priority = preview_priority(clip)
     filtered_caption_events = filtered_captions(clip.scene.captions, source_start, trim_end, quality, voiceover_segment)
-    filtered_highlight_events = filtered_highlights(clip.scene.highlights, source_start, trim_end, quality)
-    filtered_zoom_events = filtered_zooms(clip.scene.zooms, source_start, trim_end, quality)
+    filtered_highlight_events = stage_highlights(clip.stage, clip.scene.highlights, source_start, trim_end, quality)
+    filtered_zoom_events = stage_zooms(clip.stage, clip.scene.zooms, source_start, trim_end, quality)
     scene = clip.scene.model_copy(
         update={
             "start": source_start,
@@ -196,6 +198,7 @@ def build_manifest_clip(
         caption_events=filtered_caption_events,
         transition_in=PreviewTransition(style=scene.transition_style, duration_seconds=scene.transition_duration_seconds),
         transition_out=PreviewTransition(style="fade", duration_seconds=min(scene.transition_duration_seconds, 0.2)),
+        composition=build_scene_composition(scene, clip.stage),
         animated_crop=bool(filtered_zoom_events),
         spotlight=bool(filtered_highlight_events),
         freeze_frame=False,
@@ -240,6 +243,26 @@ def filtered_zooms(
     return filtered
 
 
+def stage_highlights(
+    stage: str,
+    highlights: list[EditPlanHighlight],
+    clip_start: float,
+    clip_end: float,
+    quality: str,
+) -> list[EditPlanHighlight]:
+    return [] if stage == "establish" else filtered_highlights(highlights, clip_start, clip_end, quality)
+
+
+def stage_zooms(
+    stage: str,
+    zooms: list[EditPlanZoom],
+    clip_start: float,
+    clip_end: float,
+    quality: str,
+) -> list[EditPlanZoom]:
+    return [] if stage == "establish" else filtered_zooms(zooms, clip_start, clip_end, quality)
+
+
 def validate_manifest_clips(clips: list[PreviewManifestClip]) -> list[PreviewManifestClip]:
     validated: list[PreviewManifestClip] = []
     previous_end = 0.0
@@ -270,6 +293,7 @@ def validated_manifest_clip(clip: PreviewManifestClip, previous_end: float) -> P
         caption_events=clip.caption_events,
         transition_in=clip.transition_in,
         transition_out=clip.transition_out,
+        composition=clip.composition,
         animated_crop=clip.animated_crop,
         spotlight=clip.spotlight,
         freeze_frame=freeze_frame,

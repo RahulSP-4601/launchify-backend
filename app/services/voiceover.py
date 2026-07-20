@@ -29,6 +29,7 @@ from app.models.projects import (
 )
 from app.services.storage import download_asset_to_file, upload_audio_file
 from app.services.walkthrough_narration import scene_voice_line
+from app.services.walkthrough_text_normalizer import normalized_step, normalized_scene
 from app.services.voiceover_pacing import estimated_duration, fit_voice_line, normalize
 from app.services.walkthrough_guardrails import guide_is_under_grounded, session_is_under_grounded
 
@@ -165,6 +166,7 @@ def unit_from_edit_scene(scene: EditPlanScene) -> VoiceoverUnit:
     return VoiceoverUnit(scene_number=scene.scene_number, start=start, end=end, text=text)
 
 def unit_from_step(step: GuideStepRecord) -> VoiceoverUnit:
+    step = normalized_step(step)
     start = round(step.start, 2)
     end = round(max(step.end, start + 0.8), 2)
     text = fit_voice_line(step.narration, end - start)
@@ -185,6 +187,7 @@ def units_from_script(launch_script: LaunchScriptRecord) -> list[VoiceoverUnit]:
 
 
 def unit_from_scene(scene: LaunchScriptScene, start: float, duration: float) -> VoiceoverUnit:
+    scene = normalized_scene(scene)
     text = fit_voice_line(scene.spoken_line, duration)
     end = round(start + duration, 2)
     return VoiceoverUnit(scene_number=scene.scene_number, start=start, end=end, text=text)

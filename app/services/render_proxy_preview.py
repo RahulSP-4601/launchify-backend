@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
 import subprocess
 import time
 from pathlib import Path
@@ -11,6 +10,8 @@ from app.core.config import get_settings
 from app.models.projects import EditPlanScene, FocusBox, ProjectRecord, RenderedVideoRecord, VoiceoverMode
 from app.services.preview_manifest import PreviewManifest, PreviewManifestClip, build_preview_manifest
 from app.services.preview_render_guard import render_profiles, validate_rendered_clip, validate_rendered_preview
+from app.services.preview_scene_composition import composition_filters
+from app.services.preview_text_overlays import caption_draw_filters
 from app.services.render_focus_effects import rebased_highlight_box, scene_crop_plan, spotlight_filters
 from app.services.render_runtime_helpers import output_duration_seconds, require_duration, run_process_with_heartbeat
 
@@ -301,10 +302,15 @@ def segment_filters(
         chain.append(crop_filter)
     if not animated_crop:
         chain.extend(highlight_draw_filters(scene, clip.source_start, clip.source_end, crop_box, crop_bounds))
-    chain.extend(caption_draw_filters(scene, clip.source_start, clip.source_end, quality, working_dir))
+    chain.extend(composition_filters(clip.composition, scene.scene_number, quality, working_dir, target_width(quality), target_height(quality)))
+    if clip.composition.show_captions:
+        chain.extend(caption_draw_filters(scene, clip.source_start, clip.source_end, quality, working_dir))
     chain.extend(video_finish_filters(clip))
     chain.append(f"fps={target_fps(quality)}")
-    chain.append(passthrough_scale_filter(quality))
+    if clip.composition.layout_mode == "raw":
+        chain.append(passthrough_scale_filter(quality))
+    else:
+        chain.append("setsar=1")
     chain.append(f"[v{index}]")
     filters = [",".join(chain[:-1]) + chain[-1]]
     if concat_audio:
@@ -354,37 +360,10 @@ def highlight_draw_filters(
             continue
         filters.extend(spotlight_filters(box, start, end, highlight.style))
     return filters
-
-
-def caption_draw_filters(
-    scene: EditPlanScene,
-    clip_start: float,
-    clip_end: float,
-    quality: ExportQuality,
-    working_dir: Path,
-) -> list[str]:
-    filters: list[str] = []
-    for index, caption in enumerate(scene.captions, start=1):
-        start = max(caption.start, clip_start) - clip_start
-        end = min(caption.end, clip_end) - clip_start
-        if end - start <= 0.05:
-            continue
-        font_size = 34 if quality == "final" else 24
-        caption_file = write_caption_text_file(working_dir, scene.scene_number, index, caption.text)
-        filters.append(
-            "drawtext="
-            f"textfile='{escape_drawtext_path(caption_file)}':"
-            "expansion=none:"
-            f"fontsize={font_size}:fontcolor=white:"
-            "line_spacing=8:box=1:boxcolor=black@0.34:boxborderw=20:borderw=1:bordercolor=white@0.08:"
-            "x=(w-text_w)/2:y=h-(h*0.15):"
-            f"enable='between(t,{round(start, 2)},{round(end, 2)})'"
-        )
-    return filters
-
-
 def video_finish_filters(clip: PreviewManifestClip) -> list[str]:
     duration = round(max(clip.trim_end - clip.trim_start, 0.1), 2)
+    if clip.stage == "establish":
+        return []
     fade_in = min(0.12, max(duration * 0.08, 0.04))
     fade_out = min(0.16, max(duration * 0.1, 0.05))
     filters = [f"fade=t=in:st=0:d={fade_in}"]
@@ -400,7 +379,6 @@ def source_clip_duration(clip: PreviewManifestClip) -> float:
 def freeze_frame_filter(source_duration: float, clip_duration: float) -> str:
     hold_duration = round(max(clip_duration - source_duration, 0.0), 2)
     return f"tpad=stop_mode=clone:stop_duration={hold_duration}" if hold_duration > 0 else "null"
-
 
 def passthrough_scale_filter(quality: ExportQuality) -> str:
     width = target_width(quality)
@@ -450,15 +428,6 @@ def scheduled_voiceover_duration(project: ProjectRecord, voiceover_mode: Voiceov
     clip_end = max((clip.end for clip in voiceover.clips if clip.audio_storage_path), default=0.0)
     cue_end = max((cue.end for cue in voiceover.cues), default=0.0)
     return round(max(voiceover.duration_seconds, clip_end, cue_end), 2)
-def write_caption_text_file(working_dir: Path, scene_number: int, caption_index: int, text: str) -> Path:
-    caption_file = working_dir / f"scene-{scene_number}-caption-{caption_index}.txt"
-    caption_file.write_text(normalized_caption_text(text), encoding="utf-8")
-    return caption_file
-def normalized_caption_text(text: str) -> str:
-    preserved = "\n".join(line for line in (re.sub(r"\s+", " ", part).strip() for part in text.replace("\r", "").split("\n")) if line)
-    return preserved or " "
-def escape_drawtext_path(path: Path) -> str:
-    return str(path).replace("\\", "\\\\").replace("'", r"\'")
 def persist_proxy_preview(
     user_id: str,
     project: ProjectRecord,

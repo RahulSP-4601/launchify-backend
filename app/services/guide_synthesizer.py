@@ -24,6 +24,7 @@ from app.services.event_grounding import normalize_event_timestamp
 from app.services.guide_compiler import compile_guide_from_clusters
 from app.services.guide_event_normalizer import MEANINGFUL_EVENT_TYPES, normalize_events
 from app.services.guide_recovery import needs_cluster_recovery, recovered_step_seeds
+from app.services.guide_timing_ranges import contextual_step_ranges
 from app.services.script_writer import describe_transport_error, extract_message_content, openai_headers
 from app.services.walkthrough_guardrails import guide_is_under_grounded, recording_duration_seconds
 CLUSTER_GAP_SECONDS = 2.5
@@ -377,50 +378,7 @@ def contextual_cluster_ranges(
     clusters: Sequence[EventCluster],
     session: RecordingSessionRecord | None,
 ) -> list[tuple[float, float]]:
-    if not clusters:
-        return []
-    source_start, source_end = session_bounds(session, clusters)
-    anchors = [cluster_anchor(cluster) for cluster in clusters]
-    boundaries = [source_start]
-    for index in range(len(anchors) - 1):
-        boundaries.append(round((anchors[index] + anchors[index + 1]) / 2, 2))
-    boundaries.append(source_end)
-    ranges: list[tuple[float, float]] = []
-    previous_end = source_start
-    for index, cluster in enumerate(clusters):
-        step_start = max(previous_end, min(boundaries[index], cluster.start))
-        target_end = max(boundaries[index + 1], step_start + MIN_STEP_DURATION_SECONDS)
-        step_end = min(max(target_end, step_start), source_end)
-        if step_end - step_start < MIN_STEP_DURATION_SECONDS:
-            step_start = max(previous_end, source_start, step_end - MIN_STEP_DURATION_SECONDS)
-        ranges.append((round(step_start, 2), round(step_end, 2)))
-        previous_end = step_end
-    return ranges
-
-
-def session_bounds(
-    session: RecordingSessionRecord | None,
-    clusters: Sequence[EventCluster],
-) -> tuple[float, float]:
-    source_start = parse_session_time(session.started_at) if session is not None else 0.0
-    source_end = parse_session_time(session.ended_at) if session is not None else 0.0
-    fallback_end = max(cluster.end for cluster in clusters)
-    if source_end <= source_start:
-        source_end = fallback_end
-    source_start = min(source_start, min(cluster.start for cluster in clusters))
-    return round(max(source_start, 0.0), 2), round(max(source_end, fallback_end), 2)
-
-
-def cluster_anchor(cluster: EventCluster) -> float:
-    timestamp = normalize_event_timestamp(cluster.event.timestamp)
-    return round(min(max(timestamp, cluster.start), cluster.end), 2)
-
-
-def parse_session_time(value: str) -> float:
-    try:
-        return max(float(value), 0.0)
-    except (TypeError, ValueError):
-        return 0.0
+    return contextual_step_ranges(clusters, session)
 
 
 def build_instruction(event: SessionEventRecord, label: str) -> str:

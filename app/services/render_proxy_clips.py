@@ -6,7 +6,6 @@ from typing import Literal
 from app.models.projects import EditPlanScene, ProjectRecord
 from app.services.render_motion_staging import stage_motion_clips
 from app.services.walkthrough_guardrails import guide_is_under_grounded, recording_duration_seconds, session_is_under_grounded
-from app.services.walkthrough_windows import step_clip_window
 
 MIN_CLIP_DURATION_SECONDS = 0.45
 CLIP_PADDING_SECONDS = 0.1
@@ -15,8 +14,12 @@ MERGE_GAP_SECONDS = 0.18
 MIN_ACTION_REEL_SECONDS = 12.0
 MIN_SOURCE_COVERAGE_RATIO = 0.6
 MIN_WALKTHROUGH_CLIP_SECONDS = 1.2
-WALKTHROUGH_PRE_ACTION_SECONDS = 0.45
-WALKTHROUGH_POST_ACTION_SECONDS = 1.35
+CHAPTER_GAP_SECONDS = 0.75
+CHAPTER_LEAD_SECONDS = 0.35
+CHAPTER_TAIL_SECONDS = 0.9
+TARGET_WALKTHROUGH_COVERAGE_RATIO = 0.62
+TARGET_WALKTHROUGH_SCENE_SECONDS = 4.8
+TARGET_RESULT_SCENE_SECONDS = 5.4
 
 
 @dataclass(frozen=True)
@@ -108,33 +111,188 @@ def walkthrough_clips(project: ProjectRecord) -> list[RenderClip]:
     source_start, source_end = project_source_bounds(project)
     if not scenes or source_end - source_start <= 0:
         return []
+    chapters = grouped_chapters(scenes)
     clips: list[RenderClip] = []
     previous_end = source_start
-    for index, scene in enumerate(scenes):
-        next_scene = scenes[index + 1] if index + 1 < len(scenes) else None
-        clip_start, clip_end = walkthrough_bounds(scene, next_scene, previous_end, source_start, source_end)
-        if clip_end - clip_start < MIN_WALKTHROUGH_CLIP_SECONDS:
-            clip_end = min(source_end, max(clip_end, clip_start + MIN_WALKTHROUGH_CLIP_SECONDS))
-        if clip_end - clip_start < MIN_CLIP_DURATION_SECONDS:
+    for chapter in chapters:
+        chapter_start, chapter_end = chapter_bounds(chapter, previous_end, source_start, source_end)
+        for index, scene in enumerate(chapter):
+            next_scene = chapter[index + 1] if index + 1 < len(chapter) else None
+            clip_start, clip_end = chapter_scene_bounds(scene, next_scene, chapter_start, chapter_end, previous_end, source_end)
+            if clip_end - clip_start < MIN_WALKTHROUGH_CLIP_SECONDS:
+                clip_end = min(source_end, max(clip_end, clip_start + MIN_WALKTHROUGH_CLIP_SECONDS))
+            if clip_end - clip_start < MIN_CLIP_DURATION_SECONDS:
+                continue
+            clips.append(RenderClip(scene=scene, start=round(clip_start, 2), end=round(clip_end, 2)))
+            previous_end = clip_end
+    if not clips:
+        return contextual_highlight_clips(project)
+    return rebalance_walkthrough_coverage(clips, source_start, source_end)
+
+
+def grouped_chapters(scenes: list[EditPlanScene]) -> list[list[EditPlanScene]]:
+    chapters: list[list[EditPlanScene]] = []
+    current: list[EditPlanScene] = []
+    for scene in scenes:
+        if not current or join_chapter(current[-1], scene):
+            current.append(scene)
             continue
-        clips.append(RenderClip(scene=scene, start=round(clip_start, 2), end=round(clip_end, 2)))
-        previous_end = clip_end
-    return clips or contextual_highlight_clips(project)
+        chapters.append(current)
+        current = [scene]
+    if current:
+        chapters.append(current)
+    return chapters
 
 
-def walkthrough_bounds(
-    scene: EditPlanScene,
-    next_scene: EditPlanScene | None,
+def join_chapter(left: EditPlanScene, right: EditPlanScene) -> bool:
+    if right.start - left.end <= CHAPTER_GAP_SECONDS:
+        return True
+    if left.action_class == "auth_action" and right.action_class in {"auth_action", "navigation", "result_state"}:
+        return right.start - left.end <= 2.4
+    if left.scene_role == "action" and right.scene_role == "result":
+        return right.start - left.end <= 2.8
+    if left.action_class == "card_selection" and right.scene_role == "result":
+        return right.start - left.end <= 2.6
+    return False
+
+
+def chapter_bounds(
+    chapter: list[EditPlanScene],
     previous_end: float,
     source_start: float,
     source_end: float,
 ) -> tuple[float, float]:
-    clip_start, clip_end = step_clip_window(scene)
-    clip_start = max(previous_end, source_start, clip_start)
-    clip_end = min(source_end, max(clip_end, clip_start + MIN_WALKTHROUGH_CLIP_SECONDS))
-    if next_scene is not None:
-        clip_end = min(clip_end, contextual_scene_end(scene, next_scene, source_end))
-    return clip_start, clip_end
+    first = chapter[0]
+    last = chapter[-1]
+    start = max(previous_end, source_start, round(first.start - chapter_lead(first), 2))
+    end = min(source_end, round(last.end + chapter_tail(last), 2))
+    return start, max(end, start + MIN_WALKTHROUGH_CLIP_SECONDS)
+
+
+def chapter_scene_bounds(
+    scene: EditPlanScene,
+    next_scene: EditPlanScene | None,
+    chapter_start: float,
+    chapter_end: float,
+    previous_end: float,
+    source_end: float,
+) -> tuple[float, float]:
+    clip_start = chapter_start if scene.start <= chapter_start + 0.02 else max(previous_end, scene.start)
+    if next_scene is None:
+        clip_end = chapter_end
+    else:
+        handoff_end = min(next_scene.start, scene.end + carried_scene_gap(scene, next_scene))
+        clip_end = min(source_end, max(scene.end, handoff_end))
+    return clip_start, max(clip_end, clip_start + MIN_WALKTHROUGH_CLIP_SECONDS)
+
+
+def chapter_lead(scene: EditPlanScene) -> float:
+    if scene.action_class == "auth_action":
+        return CHAPTER_LEAD_SECONDS + 0.2
+    if scene.scene_role == "result":
+        return 0.15
+    return CHAPTER_LEAD_SECONDS
+
+
+def chapter_tail(scene: EditPlanScene) -> float:
+    if scene.scene_role == "result":
+        return CHAPTER_TAIL_SECONDS + 0.35
+    if scene.action_class in {"auth_action", "navigation", "tab_switch"}:
+        return CHAPTER_TAIL_SECONDS + 0.2
+    return CHAPTER_TAIL_SECONDS
+
+
+def carried_scene_gap(scene: EditPlanScene, next_scene: EditPlanScene) -> float:
+    if scene.action_class == "auth_action":
+        return 0.85
+    if scene.action_class == "card_selection" and next_scene.scene_role == "result":
+        return 0.8
+    if scene.scene_role == "action" and next_scene.scene_role == "result":
+        return 0.7
+    return CHAPTER_GAP_SECONDS
+
+
+def rebalance_walkthrough_coverage(
+    clips: list[RenderClip],
+    source_start: float,
+    source_end: float,
+) -> list[RenderClip]:
+    target = target_walkthrough_seconds(clips, source_start, source_end)
+    expanded = clips
+    for _ in range(3):
+        current = sum(clip.end - clip.start for clip in expanded)
+        if current >= target - 0.15:
+            return expanded
+        expanded = expand_clips_once(expanded, source_start, source_end, target - current)
+    return expanded
+
+
+def target_walkthrough_seconds(
+    clips: list[RenderClip],
+    source_start: float,
+    source_end: float,
+) -> float:
+    source_duration = max(source_end - source_start, 0.0)
+    coverage_floor = source_duration * TARGET_WALKTHROUGH_COVERAGE_RATIO
+    scene_floor = len(clips) * TARGET_WALKTHROUGH_SCENE_SECONDS
+    result_floor = sum(TARGET_RESULT_SCENE_SECONDS if clip.scene.scene_role == "result" else TARGET_WALKTHROUGH_SCENE_SECONDS for clip in clips)
+    return min(source_duration * 0.78, max(coverage_floor, scene_floor, result_floor, MIN_ACTION_REEL_SECONDS))
+
+
+def expand_clips_once(
+    clips: list[RenderClip],
+    source_start: float,
+    source_end: float,
+    remaining: float,
+) -> list[RenderClip]:
+    expanded: list[RenderClip] = []
+    for index, clip in enumerate(clips):
+        previous_end = expanded[-1].end if expanded else source_start
+        next_start = clips[index + 1].start if index + 1 < len(clips) else source_end
+        left_slack = outer_left_slack(clips, index, clip, source_start)
+        right_slack = outer_right_slack(clips, index, clip, source_end)
+        desired = remaining / max(len(clips) - index, 1)
+        left_take = min(left_slack, desired * left_share(clip))
+        right_take = min(right_slack, desired - left_take)
+        expanded.append(
+            clip.__class__(
+                scene=clip.scene,
+                start=round(max(previous_end, clip.start - left_take), 2),
+                end=round(min(next_start, clip.end + right_take), 2),
+                stage=clip.stage,
+            )
+        )
+    return expanded
+
+
+def outer_left_slack(
+    clips: list[RenderClip],
+    index: int,
+    clip: RenderClip,
+    source_start: float,
+) -> float:
+    if index != 0:
+        return 0.0
+    return max(clip.start - source_start, 0.0)
+
+
+def outer_right_slack(
+    clips: list[RenderClip],
+    index: int,
+    clip: RenderClip,
+    source_end: float,
+) -> float:
+    if index != len(clips) - 1:
+        return 0.0
+    return max(source_end - clip.end, 0.0)
+
+
+def left_share(clip: RenderClip) -> float:
+    if clip.scene.scene_role == "result":
+        return 0.28
+    if clip.scene.action_class == "auth_action":
+        return 0.45
+    return 0.38
 
 
 def contextual_scene_end(

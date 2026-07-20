@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from app.models.projects import EditPlanHighlight, EditPlanScene, EditPlanZoom, FocusBox
 
 INTRO_LEAD_SECONDS = 0.18
-LOOKAHEAD_SECONDS = 1.25
 LOOKBACK_SECONDS = 0.75
 MIN_DYNAMIC_CROP_SECONDS = 0.9
 MIN_ANIMATED_CROP_FPS = 24
@@ -83,9 +82,6 @@ def motion_zoom(scene: EditPlanScene, timestamp: float, phase: str) -> EditPlanZ
     active = [zoom for zoom in scene.zooms if zoom.start <= timestamp + INTRO_LEAD_SECONDS < zoom.end]
     if active:
         return max(active, key=lambda zoom: zoom.scale)
-    if phase == "start":
-        future = [zoom for zoom in scene.zooms if 0.0 < zoom.start - timestamp <= LOOKAHEAD_SECONDS]
-        return min(future, key=lambda zoom: zoom.start) if future else None
     recent = [zoom for zoom in scene.zooms if 0.0 <= timestamp - zoom.end <= LOOKBACK_SECONDS]
     if recent:
         return max(recent, key=lambda zoom: zoom.scale)
@@ -114,10 +110,10 @@ def staged_state(state: CropState | None, stage: str, phase: str) -> CropState |
     if state is None:
         return None
     if stage == "establish":
-        return shifted_state(softened_state(state, 0.32 if phase == "start" else 0.18), phase, drift=0.02)
+        return softened_state(state, 0.66 if phase == "start" else 0.5)
     if stage == "settle":
-        return shifted_state(softened_state(state, 0.1 if phase == "start" else 0.22), phase, drift=0.012)
-    return shifted_state(softened_state(state, 0.24 if phase == "start" else 0.0), phase, drift=0.03)
+        return softened_state(state, 0.22 if phase == "start" else 0.34)
+    return shifted_state(softened_state(state, 0.32 if phase == "start" else 0.1), phase, drift=0.004)
 
 
 def shifted_state(state: CropState | None, phase: str, drift: float) -> CropState | None:
@@ -135,7 +131,7 @@ def shifted_state(state: CropState | None, phase: str, drift: float) -> CropStat
 
 
 def neutral_crop(start_state: CropState, end_state: CropState) -> bool:
-    return end_state.crop_width >= 0.98 and abs(end_state.crop_width - start_state.crop_width) < 0.02
+    return end_state.crop_width >= 0.96 and abs(end_state.crop_width - start_state.crop_width) < 0.018
 
 
 def animated_crop_filter(
@@ -149,9 +145,10 @@ def animated_crop_filter(
     if duration <= MIN_DYNAMIC_CROP_SECONDS:
         return static_crop_filter(end_state)
     progress = frame_progress(duration, fps)
-    zoom = animated_zoom(start_state.crop_width, end_state.crop_width, progress)
-    origin_x = animated_value(start_state.origin_x, end_state.origin_x, progress)
-    origin_y = animated_value(start_state.origin_y, end_state.origin_y, progress)
+    eased = eased_progress(progress)
+    zoom = animated_zoom(start_state.crop_width, end_state.crop_width, eased)
+    origin_x = animated_value(start_state.origin_x, end_state.origin_x, eased)
+    origin_y = animated_value(start_state.origin_y, end_state.origin_y, eased)
     return (
         "zoompan="
         f"z='{zoom}':"
@@ -170,6 +167,10 @@ def static_crop_filter(state: CropState) -> str:
 def frame_progress(duration: float, fps: int) -> str:
     frames = max(int(round(max(duration, 0.2) * max(fps, 1))) - 1, 1)
     return f"min(on/{frames},1)"
+
+
+def eased_progress(progress: str) -> str:
+    return f"if(lt({progress},0.5),2*pow({progress},2),1-pow(-2*{progress}+2,2)/2)"
 
 
 def animated_value(start: float, end: float, progress: str) -> str:
@@ -245,10 +246,10 @@ def spotlight_filters(box: FocusBox, start: float, end: float, style: str) -> li
         draw_mask(left, bottom, max(right - left, 0.02), max(1.0 - bottom, 0.02), alpha, enable),
         "drawbox="
         f"x=iw*{max(left - 0.012, 0.0)}:y=ih*{max(top - 0.012, 0.0)}:w=iw*{min(max(right - left, 0.04) + 0.024, 1.0)}:h=ih*{min(max(bottom - top, 0.04) + 0.024, 1.0)}:"
-        f"color=0xFFF4C2@{max(border - 0.3, 0.18)}:t=1:enable='{enable}'",
+        f"color=0xFFF4C2@{max(border - 0.24, 0.12)}:t=1:enable='{enable}'",
         "drawbox="
         f"x=iw*{left}:y=ih*{top}:w=iw*{max(right - left, 0.04)}:h=ih*{max(bottom - top, 0.04)}:"
-        f"color=0xFFD36E@{border}:t=2:enable='{enable}'",
+        f"color=0xFFD36E@{border}:t=1:enable='{enable}'",
     ]
 
 
@@ -262,20 +263,22 @@ def draw_mask(x: float, y: float, width: float, height: float, alpha: float, ena
 
 def highlight_alpha(style: str) -> float:
     if style == "ambient":
-        return 0.15
+        return 0.08
     if style == "ambient-lift":
-        return 0.18
-    if style == "soft-glow":
-        return 0.16
-    return 0.22
+        return 0.1
+    if style == "spotlight":
+        return 0.12
+    return 0.11
 
 
 def highlight_border(style: str) -> float:
     if style == "ambient":
-        return 0.48
+        return 0.18
     if style == "ambient-lift":
-        return 0.54
-    return 0.64
+        return 0.24
+    if style == "spotlight":
+        return 0.3
+    return 0.22
 
 
 def clamp(value: float, minimum: float, maximum: float) -> float:

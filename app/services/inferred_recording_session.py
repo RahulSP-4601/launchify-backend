@@ -38,6 +38,7 @@ from app.services.inferred_recording_support import (
     state_like_label,
     transcript_window,
 )
+from app.services.auth_chain_recovery import recover_auth_chain_events
 from app.services.guide_event_dedupe import synthetic_event_score
 from app.services.inferred_action_recovery import needs_action_recovery, recover_events_from_analyses
 from app.services.inferred_action_selection import SceneEventCandidate
@@ -131,7 +132,8 @@ def finalize_inferred_events(
         viewport_height,
     )
     supplemented = backfill_transcript_scene_events(supplemented, launch_script, analyses_by_scene, dedupe_events)
-    return refine_event_flow(supplemented, launch_script.scenes, analyses_by_scene)
+    refined = refine_event_flow(supplemented, launch_script.scenes, analyses_by_scene)
+    return dedupe_events(recover_auth_chain_events(refined, launch_script, analyses_by_scene))
 
 
 def deduped_scene_candidates(

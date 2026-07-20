@@ -43,6 +43,8 @@ def classify_action(
         return "input_entry"
     if event_type == "navigation":
         return "navigation"
+    if auth_like_label(primary_tokens, transcript_tokens):
+        return "auth_action"
     if any(token in primary_tokens for token in BUTTON_WORDS):
         return "button_click"
     if any(token in primary_tokens for token in CARD_WORDS):
@@ -51,10 +53,6 @@ def classify_action(
         return "tab_switch"
     if any(token in primary_tokens for token in MENU_WORDS):
         return "menu_open"
-    if any(token in primary_tokens for token in AUTH_WORDS):
-        return "auth_action"
-    if any(token in transcript_tokens for token in AUTH_WORDS) and not primary_tokens.intersection(BUTTON_WORDS | CARD_WORDS | TAB_WORDS | MENU_WORDS):
-        return "auth_action"
     if is_result_state(primary_tokens, transcript_tokens):
         return "result_state"
     if any(token in tokens for token in EXPLANATION_WORDS):
@@ -78,6 +76,19 @@ def event_action_class(event: SessionEventRecord | None) -> str:
 
 def normalize_label(label: str) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", label.lower()))
+
+
+def auth_like_label(primary_tokens: set[str], transcript_tokens: set[str]) -> bool:
+    if "google" in primary_tokens and ({"login", "log", "sign", "signup", "account"} & (primary_tokens | transcript_tokens)):
+        return True
+    if {"choose", "account"} <= primary_tokens:
+        return True
+    if primary_tokens.intersection(AUTH_WORDS) and transcript_tokens.intersection(AUTH_WORDS | {"existing", "choose", "continue"}):
+        return True
+    return bool(
+        primary_tokens.intersection(AUTH_WORDS)
+        and not primary_tokens.intersection(CARD_WORDS | TAB_WORDS | MENU_WORDS)
+    )
 
 
 def is_result_state(primary_tokens: set[str], transcript_tokens: set[str]) -> bool:

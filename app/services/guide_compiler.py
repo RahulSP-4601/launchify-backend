@@ -5,6 +5,7 @@ from typing import Any, Protocol, Sequence
 from app.models.projects import ArticleStepRecord, GuideRecord, GuideStepRecord, ProjectRecord, RecordingSessionRecord, SessionEventRecord
 from app.services.action_classifier import event_action_class
 from app.services.event_grounding import normalize_event_timestamp
+from app.services.walkthrough_text_normalizer import normalized_step
 
 MIN_STEP_DURATION_SECONDS = 0.8
 
@@ -33,7 +34,7 @@ def compile_guide_from_clusters(
         title = compiler_title(label, cluster.index)
         on_screen_text = label or title
         steps.append(
-            GuideStepRecord(
+            normalized_step(GuideStepRecord(
                 step_index=cluster.index,
                 title=title,
                 instruction=instruction,
@@ -47,7 +48,7 @@ def compile_guide_from_clusters(
                 highlight_label=(label or title)[:48],
                 source_excerpt=cluster.transcript_excerpt or label,
                 action_class=event_action_class(cluster.event),
-            )
+            ))
         )
         article_steps.append(ArticleStepRecord(step_index=cluster.index, title=title, body=instruction))
     return GuideRecord(

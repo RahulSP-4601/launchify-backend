@@ -35,6 +35,7 @@ from app.services.timing_sync import sync_edit_plan_timing
 from app.services.visual_analysis import analysis_map
 from app.services.visual_policy import ScenePolicy, build_scene_policy
 from app.services.walkthrough_windows import action_result_window
+from app.services.walkthrough_text_normalizer import normalized_scene, normalized_step
 
 
 def generate_edit_plan(
@@ -124,6 +125,7 @@ def build_edit_scene(
     project: ProjectRecord,
     visual_analysis: VisualSceneAnalysisRecord | None,
 ) -> EditPlanScene:
+    scene = normalized_scene(scene)
     transcript_slice = slice_transcript(project.transcript, start, end)
     action_class = scene_action_class(scene, transcript_slice)
     scene_role = scene_role_from_action_class(action_class)
@@ -183,6 +185,7 @@ def build_grounded_scene(
     project: ProjectRecord,
     analyses_by_scene: dict[int, VisualSceneAnalysisRecord],
 ) -> EditPlanScene:
+    step = normalized_step(step)
     start = round(step.start, 2)
     end = round(max(step.end, start + 0.8), 2)
     transcript_slice = slice_transcript(project.transcript, start, end)

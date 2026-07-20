@@ -4,6 +4,7 @@ from app.models.projects import EditPlanScene
 
 RESULT_WORDS = frozenset({"see", "view", "available", "logged", "shown", "displayed", "appears", "will", "now"})
 EXPLANATION_WORDS = frozenset({"because", "here", "notice", "right", "you", "this", "where"})
+MAX_GUIDED_CLIP_SECONDS = 8.4
 
 
 def action_result_window(
@@ -28,7 +29,7 @@ def action_result_window(
 def step_clip_window(scene: EditPlanScene) -> tuple[float, float]:
     duration = max(scene.end - scene.start, 0.8)
     if scene.action_timestamp is None:
-        return scene.start, scene.end
+        return bounded_scene_window(scene.start, scene.end)
     hold_extension = narration_density_hold(scene)
     clip_start = max(scene.start, scene.action_timestamp - pre_action_seconds(scene))
     clip_end = min(
@@ -41,15 +42,15 @@ def step_clip_window(scene: EditPlanScene) -> tuple[float, float]:
             scene.action_timestamp + minimum_post_action_seconds(scene.action_class) + hold_extension,
         ),
     )
-    return round(clip_start, 2), round(clip_end, 2)
+    return bounded_action_window(scene.start, scene.end, clip_start, clip_end, scene.action_timestamp)
 
 
 def result_hold_seconds(spoken_line: str, duration: float, scene_role: str = "action") -> float:
     words = spoken_line.lower().split()
     explanation_bonus = 0.34 if any(word.strip(".,") in RESULT_WORDS for word in words) else 0.0
     if scene_role == "result":
-        return min(2.2, max(1.2, duration * 0.34 + explanation_bonus))
-    return min(1.8, max(0.9, duration * 0.28 + explanation_bonus))
+        return min(2.8, max(1.45, duration * 0.38 + explanation_bonus))
+    return min(2.15, max(1.05, duration * 0.31 + explanation_bonus))
 
 
 def explanation_hold_seconds(spoken_line: str, action_class: str = "generic_action") -> float:
@@ -73,10 +74,12 @@ def pre_action_seconds(scene: EditPlanScene) -> float:
 
 def minimum_post_action_seconds(action_class: str) -> float:
     if action_class in {"result_state", "explanatory_hold"}:
-        return 2.0
+        return 2.35
     if action_class in {"auth_action", "navigation", "tab_switch"}:
-        return 1.7
-    return 1.45
+        return 2.05
+    if action_class == "card_selection":
+        return 1.9
+    return 1.6
 
 
 def narration_density_hold(scene: EditPlanScene) -> float:
@@ -87,8 +90,8 @@ def narration_density_hold(scene: EditPlanScene) -> float:
     density_gap = min((source_words - spoken_words) / 10.0, 1.0)
     base_extension = 0.4 + density_gap * 0.9
     if scene.action_class in {"result_state", "explanatory_hold", "card_selection"}:
-        return round(min(base_extension + 0.35, 1.5), 2)
-    return round(min(base_extension, 1.15), 2)
+        return round(min(base_extension + 0.45, 1.8), 2)
+    return round(min(base_extension, 1.35), 2)
 
 
 def scene_pre_roll(duration: float, scene_role: str, action_class: str) -> float:
@@ -107,3 +110,25 @@ def focus_peak_seconds(duration: float, scene_role: str) -> float:
 
 def word_count(text: str) -> int:
     return len([word for word in text.split() if word.strip(".,")])
+
+
+def bounded_scene_window(start: float, end: float) -> tuple[float, float]:
+    if end - start <= MAX_GUIDED_CLIP_SECONDS:
+        return round(start, 2), round(end, 2)
+    return round(start, 2), round(start + MAX_GUIDED_CLIP_SECONDS, 2)
+
+
+def bounded_action_window(
+    scene_start: float,
+    scene_end: float,
+    clip_start: float,
+    clip_end: float,
+    action_time: float,
+) -> tuple[float, float]:
+    if clip_end - clip_start <= MAX_GUIDED_CLIP_SECONDS:
+        return round(clip_start, 2), round(clip_end, 2)
+    centered_start = max(scene_start, action_time - 1.5)
+    centered_end = min(scene_end, max(action_time + 3.4, centered_start + MAX_GUIDED_CLIP_SECONDS))
+    if centered_end - centered_start > MAX_GUIDED_CLIP_SECONDS:
+        centered_end = centered_start + MAX_GUIDED_CLIP_SECONDS
+    return round(centered_start, 2), round(centered_end, 2)

@@ -72,6 +72,10 @@ def prune_auth_cluster(
             continue
         if semantic.branch not in {dominant, "generic"}:
             continue
+        if should_keep_auth_progression(event, semantic, selected):
+            selected.append(event)
+            auth_kept = True
+            continue
         if auth_kept and semantic.branch != dominant:
             continue
         if auth_kept and semantic.semantic_action in {"auth_entry_google", "auth_signup_google", "auth_create_account"}:
@@ -80,8 +84,23 @@ def prune_auth_cluster(
         if semantic.branch == dominant or semantic.semantic_action in {"auth_login_google", "auth_choose_account"}:
             auth_kept = True
     return selected
-
-
+def should_keep_auth_progression(
+    event: SessionEventRecord,
+    semantic: SemanticEvent,
+    selected: list[SessionEventRecord],
+) -> bool:
+    if semantic.semantic_action not in {"auth_entry_google", "auth_login_google", "auth_choose_account"}:
+        return False
+    if not selected:
+        return False
+    previous = selected[-1]
+    previous_scene = scene_number(previous)
+    current_scene = scene_number(event)
+    if current_scene <= previous_scene:
+        return False
+    previous_label = normalize_label(previous.target.label)
+    current_label = normalize_label(event.target.label)
+    return previous_label != current_label and event.timestamp > previous.timestamp
 def prune_course_cluster(
     events: list[SessionEventRecord],
     scenes_by_number: dict[int, LaunchScriptScene],
