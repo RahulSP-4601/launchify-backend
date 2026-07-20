@@ -213,6 +213,7 @@ def build_clip_command(
     settings = get_settings()
     source_duration = source_clip_duration(clip)
     clip_duration = max(round(clip.trim_end - clip.trim_start, 2), source_duration)
+    frame_limit = max(int(round(clip_duration * target_fps(quality))), 1)
     coarse_start = max(round(clip.source_start - SEEK_SLACK_SECONDS, 2), 0.0)
     precise_start = round(max(clip.source_start - coarse_start, 0.0), 2)
     filters = segment_filters(0, clip, render_audio, quality, working_dir, precise_start, source_duration, clip_duration)
@@ -227,10 +228,9 @@ def build_clip_command(
         str(source_video),
         "-filter_complex",
         ";".join(filters),
-        "-map",
-        "[v0]",
+        "-map", "[v0]", "-frames:v", str(frame_limit),
     ]
-    command.extend(["-threads", "1", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20" if quality == "final" else "24", "-pix_fmt", "yuv420p", "-movflags", "+faststart"])
+    command.extend(["-threads", "1", "-t", str(clip_duration), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20" if quality == "final" else "24", "-pix_fmt", "yuv420p", "-movflags", "+faststart"])
     if render_audio:
         command.extend(["-map", "[a0]", "-c:a", "aac", "-b:a", "128k", "-ar", "48000"])
     else:
