@@ -47,8 +47,8 @@ class Settings(BaseSettings):
     preview_render_mode: Literal["proxy", "styled"] = "proxy"
     low_memory_final_mode: Literal["proxy", "render"] = "proxy"
     fast_pipeline_enabled: bool = True
-    preview_proxy_width: int = 854
-    preview_proxy_height: int = 480
+    preview_proxy_width: int = 1280
+    preview_proxy_height: int = 720
     preview_proxy_fps: int = 12
     final_render_width: int = 1280
     final_render_height: int = 720

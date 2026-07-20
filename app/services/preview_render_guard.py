@@ -9,7 +9,7 @@ from app.services.preview_manifest import PreviewManifest, PreviewManifestClip, 
 from app.services.render_runtime_helpers import output_duration_seconds
 
 RenderProfile = Literal["balanced", "no_motion", "no_spotlight", "simple_crop", "static_frame"]
-MIN_RENDER_BYTES = 4096
+MIN_RENDER_BYTES = 1024
 MAX_CLIP_DURATION_SLACK_SECONDS = 0.9
 MAX_CLIP_DURATION_SCALE = 1.8
 
@@ -33,9 +33,9 @@ def validate_rendered_preview(
 ) -> str | None:
     if voiceover_mode == "voiceover" and voiceover_audio is None:
         return "missing_voiceover_audio"
-    if not output_path.exists() or output_path.stat().st_size < MIN_RENDER_BYTES:
-        return "empty_output"
     duration = output_duration_seconds(output_path, fallback=manifest.total_duration_seconds)
+    if not output_path.exists() or (output_path.stat().st_size < MIN_RENDER_BYTES and duration <= 0.05):
+        return "empty_output"
     lower_bound = max(manifest.total_duration_seconds * 0.65, 0.3)
     upper_bound = max(manifest.total_duration_seconds * 1.35, manifest.total_duration_seconds + 1.0)
     if duration < lower_bound or duration > upper_bound:
@@ -54,9 +54,9 @@ def validate_rendered_preview(
 
 
 def validate_rendered_clip(clip: PreviewManifestClip, clip_path: Path) -> str | None:
-    if not clip_path.exists() or clip_path.stat().st_size < MIN_RENDER_BYTES:
-        return "empty_clip"
     duration = output_duration_seconds(clip_path, fallback=clip.duration_seconds)
+    if not clip_path.exists() or (clip_path.stat().st_size < MIN_RENDER_BYTES and duration <= 0.05):
+        return "empty_clip"
     lower_bound = max(clip.duration_seconds * 0.55, 0.1)
     upper_bound = max(clip.duration_seconds * MAX_CLIP_DURATION_SCALE, clip.duration_seconds + MAX_CLIP_DURATION_SLACK_SECONDS)
     if duration < lower_bound or duration > upper_bound:
