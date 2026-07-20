@@ -7,7 +7,12 @@ from typing import Callable, Literal
 
 from app.models.projects import ProjectRecord, RenderedVideoRecord
 from app.services.render_proxy_preview import prepare_proxy_preview
-from app.services.render_runtime_helpers import download_voiceover_audio, output_duration_seconds, upload_variant
+from app.services.render_runtime_helpers import (
+    download_voiceover_audio,
+    output_duration_seconds,
+    prepare_final_render_source,
+    upload_variant,
+)
 
 Heartbeat = Callable[[], None]
 logger = logging.getLogger(__name__)
@@ -23,16 +28,18 @@ def publish_grounded_preview(
     with TemporaryDirectory(prefix="launchify-playback-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
         output_path = temp_dir / f"{variant}.mp4"
+        prepared_source = prepare_final_render_source(source_video, temp_dir, heartbeat)
         voiceover_audio = download_voiceover_audio(project)
         logger.info(
-            "Preview publish started for project %s: variant=%s, source_video=%s, voiceover_audio=%s.",
+            "Preview publish started for project %s: variant=%s, source_video=%s, prepared_source=%s, voiceover_audio=%s.",
             project.id,
             variant,
             source_video.name,
+            prepared_source.name,
             voiceover_audio is not None,
         )
         try:
-            prepare_proxy_preview(project, source_video, output_path, voiceover_audio, heartbeat, quality="final")
+            prepare_proxy_preview(project, prepared_source, output_path, voiceover_audio, heartbeat, quality="final")
         finally:
             if voiceover_audio is not None:
                 voiceover_audio.unlink(missing_ok=True)
