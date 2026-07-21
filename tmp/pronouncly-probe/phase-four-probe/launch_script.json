@@ -1,6 +1,6 @@
 {
   "hook": "Getting Started with Pronouncly",
-  "summary": "This guide walks you through logging into Pronouncly, selecting the Japanese course, and preparing to start your language learning journey.",
+  "summary": "Learn how to log in to Pronouncly using Google, access the available courses, and select your Japanese learning level to begin your language journey.",
   "title_options": [
     "Getting Started with Pronouncly",
     "Getting Started with Pronouncly in minutes",
@@ -23,7 +23,7 @@
       "on_screen_text": "Continue With Google",
       "specific_target_label": "",
       "source_excerpt": "Since I've already created the account, I'll log in to the existing one. After log in, you can see the five courses. Right now, we have opened the Japan courses, and the rest of the four courses are coming soon. So under Japan click on the Japan courses. And once the Japan course has been opened so, officially, there are five",
-      "estimated_duration_seconds": 3.0
+      "estimated_duration_seconds": 3.06
     },
     {
       "scene_number": 3,
@@ -38,7 +38,7 @@
       "scene_number": 4,
       "purpose": "Choose the starting level before the lesson begins.",
       "spoken_line": "Choose the level that matches the learner's starting point.",
-      "on_screen_text": "Pick Your Japanese Level",
+      "on_screen_text": "Pick your Japanese level",
       "specific_target_label": "",
       "source_excerpt": "Since I've already created the account, I'll log in to the existing one. After log in, you can see the five courses. Right now, we have opened the Japan courses, and the rest of the four courses are coming soon. So under Japan click on the Japan courses. And once the Japan course has been opened so, officially, there are five",
       "estimated_duration_seconds": 4.35
@@ -46,10 +46,11 @@
   ],
   "cta": "Turn rough recordings into polished launch videos.",
   "notes": [
-    "Steps are ordered according to the captured timestamps and events.",
-    "Repetitive adjacent clicks on login and course selection were merged into concise steps.",
-    "On-screen text is concise and premium, matching the narration tone.",
-    "No UI elements or actions were invented beyond those present in the event log.",
+    "Followed the chronological order of captured events without reordering.",
+    "Merged related actions into single steps for clarity.",
+    "Used concise and premium on-screen text for better user engagement.",
+    "Ensured narration matches exactly the actions in the event log.",
+    "Focused on internal QA audience with clear and precise instructions.",
     "Grounded step timing was expanded into continuous walkthrough ranges anchored to captured actions."
   ]
 }

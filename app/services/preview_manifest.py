@@ -278,7 +278,7 @@ def validate_manifest_clips(clips: list[PreviewManifestClip]) -> list[PreviewMan
 
 def validated_manifest_clip(clip: PreviewManifestClip, previous_end: float) -> PreviewManifestClip:
     start = max(round(clip.source_start, 2), previous_end)
-    end = round(max(clip.trim_end, start + MIN_PREVIEW_CLIP_SECONDS), 2)
+    end = round(max(required_trim_end(start, clip.trim_end, clip.voiceover_segment), start + MIN_PREVIEW_CLIP_SECONDS), 2)
     source_start, source_end, freeze_frame = clip_source_window(clip, start)
     scene = clip.scene.model_copy(update={"start": start, "end": end, "render_duration_seconds": round(end - start, 2)})
     return clip.__class__(
@@ -349,6 +349,16 @@ def extended_trim_end(
     return round(max(source_end, source_start + voiceover_segment.duration_seconds + VOICEOVER_TAIL_SECONDS), 2)
 
 
+def required_trim_end(
+    clip_start: float,
+    current_end: float,
+    voiceover_segment: PreviewVoiceoverSegment | None,
+) -> float:
+    if voiceover_segment is None:
+        return current_end
+    return round(max(current_end, clip_start + voiceover_segment.duration_seconds + VOICEOVER_TAIL_SECONDS), 2)
+
+
 def bounded_trim_end(
     source_start: float,
     source_end: float,
@@ -356,7 +366,7 @@ def bounded_trim_end(
     quality: str,
 ) -> float:
     trim_end = extended_trim_end(source_start, source_end, voiceover_segment)
-    if quality != "preview":
+    if quality != "preview" or voiceover_segment is not None:
         return trim_end
     return round(min(trim_end, source_start + MAX_PREVIEW_CLIP_SECONDS), 2)
 

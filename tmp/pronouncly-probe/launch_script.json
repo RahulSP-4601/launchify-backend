@@ -21,7 +21,7 @@
       "on_screen_text": "Continue With Google",
       "specific_target_label": "",
       "source_excerpt": "Continue With Google",
-      "estimated_duration_seconds": 1.68
+      "estimated_duration_seconds": 1.71
     },
     {
       "scene_number": 400001,
@@ -30,7 +30,7 @@
       "on_screen_text": "Select A Course",
       "specific_target_label": "",
       "source_excerpt": "Select A Course",
-      "estimated_duration_seconds": 1.68
+      "estimated_duration_seconds": 1.71
     },
     {
       "scene_number": 5,
@@ -39,7 +39,7 @@
       "on_screen_text": "Pick your Japanese level before you start learning.",
       "specific_target_label": "",
       "source_excerpt": "Pick your Japanese level before you start learning.",
-      "estimated_duration_seconds": 4.2
+      "estimated_duration_seconds": 4.28
     }
   ],
   "cta": "Turn rough recordings into polished product walkthroughs.",
