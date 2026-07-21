@@ -296,8 +296,8 @@ def grounded_event_spans(events: Sequence[SessionEventRecord]) -> list[tuple[flo
     spans: list[tuple[float, float]] = []
     for event in events:
         try:
-            start = max(float(event.metadata.get("grounding_window_start", "")), 0.0)
-            end = max(float(event.metadata.get("grounding_window_end", "")), 0.0)
+            start = max(float(event.metadata.get("grounding_support_window_start", event.metadata.get("grounding_window_start", ""))), 0.0)
+            end = max(float(event.metadata.get("grounding_support_window_end", event.metadata.get("grounding_window_end", ""))), 0.0)
         except (TypeError, ValueError):
             continue
         if end <= start:
@@ -310,8 +310,8 @@ def grounded_scene_spans(events: Sequence[SessionEventRecord]) -> list[tuple[flo
     spans: list[tuple[float, float]] = []
     for event in events:
         try:
-            start = max(float(event.metadata.get("grounding_scene_start", "")), 0.0)
-            end = max(float(event.metadata.get("grounding_scene_end", "")), 0.0)
+            start = max(float(event.metadata.get("grounding_support_scene_start", event.metadata.get("grounding_scene_start", ""))), 0.0)
+            end = max(float(event.metadata.get("grounding_support_scene_end", event.metadata.get("grounding_scene_end", ""))), 0.0)
             score = max(float(event.metadata.get("grounding_score", "0")), 0.0)
         except (TypeError, ValueError):
             continue

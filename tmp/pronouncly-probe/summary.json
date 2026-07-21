@@ -2,7 +2,7 @@
   "video_path": "/Users/rahulpanchal/Desktop/pronouncly-walkthrough.mov",
   "content_type": "video/quicktime",
   "transcript_segments": 2,
-  "transcript_duration_seconds": 46.02,
+  "transcript_duration_seconds": 45.54,
   "script_scene_count": 4,
   "scene_ranges": [
     [
@@ -15,33 +15,33 @@
     ],
     [
       18.38,
-      23.55
+      23.49
     ],
     [
-      26.33,
-      29.75
+      26.22,
+      29.58
     ],
     [
-      37.46,
-      41.74
+      37.14,
+      41.34
     ],
     [
-      41.74,
-      46.02
+      41.34,
+      45.54
     ]
   ],
   "visual_analysis_count": 6,
   "recording_event_count": 4,
   "grounding_diagnostics": {
-    "source_duration_seconds": "46.02",
+    "source_duration_seconds": "45.54",
     "inferred_event_count": "4",
     "meaningful_event_count": "4",
-    "average_event_score": "0.89",
+    "average_event_score": "0.90",
     "average_grounding_score": "0.81",
     "grounded_event_ratio": "1.00",
     "result_grounding_ratio": "0.82",
     "branch_grounding_ratio": "0.73",
-    "timeline_coverage_ratio": "1.00",
+    "timeline_coverage_ratio": "0.92",
     "weak_label_ratio": "0.00",
     "low_confidence_ratio": "0.00",
     "auth_state_ratio": "0.50",

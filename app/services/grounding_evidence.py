@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.models.projects import SessionEventRecord, VisualSceneAnalysisRecord
 from app.services.canonical_consistency import branch_family, event_branch_family
+from app.services.grounding_support import roll_up_supporting_evidence
 from app.services.inferred_recording_support import normalize_label
 
 
@@ -16,20 +17,44 @@ def validate_event_grounding(
     events: list[SessionEventRecord],
     analyses_by_scene: dict[int, VisualSceneAnalysisRecord],
 ) -> list[SessionEventRecord]:
-    canonical_index = canonical_event_index(events)
+    prevalidated = weak_event_filtered(events, analyses_by_scene)
+    canonical_index = canonical_event_index(prevalidated)
+    canonical_events = [event for event in prevalidated if event.metadata.get("canonical_label", "").strip()]
     validated: list[SessionEventRecord] = []
-    for event in sorted(events, key=lambda item: item.timestamp):
-        if should_drop_weak_event(event, validated, analyses_by_scene):
-            continue
-        if should_drop_shadow_event(event, validated, canonical_index):
+    for event in sorted(prevalidated, key=lambda item: item.timestamp):
+        if should_drop_shadow_event(event, validated, canonical_index, canonical_events, analyses_by_scene):
             continue
         validated.append(event)
-    return validated
+    return roll_up_supporting_evidence(
+        validated,
+        prevalidated,
+        analyses_by_scene,
+        event_scene_family=event_scene_family,
+        scene_number=scene_number,
+        event_has_distinct_transition=event_has_distinct_transition,
+        candidate_grounding_score=candidate_grounding_score,
+    )
+
+
+def weak_event_filtered(
+    events: list[SessionEventRecord],
+    analyses_by_scene: dict[int, VisualSceneAnalysisRecord],
+) -> list[SessionEventRecord]:
+    filtered: list[SessionEventRecord] = []
+    for event in sorted(events, key=lambda item: item.timestamp):
+        if should_drop_weak_event(event, filtered, analyses_by_scene):
+            continue
+        filtered.append(event)
+    return filtered
 
 
 def grounding_payload(events: list[SessionEventRecord]) -> list[dict[str, object]]:
     payload: list[dict[str, object]] = []
     for event in events:
+        window_start = safe_float(event.metadata.get("grounding_support_window_start", event.metadata.get("grounding_window_start", "0")))
+        window_end = safe_float(event.metadata.get("grounding_support_window_end", event.metadata.get("grounding_window_end", "0")))
+        scene_start = safe_float(event.metadata.get("grounding_support_scene_start", event.metadata.get("grounding_scene_start", "0")))
+        scene_end = safe_float(event.metadata.get("grounding_support_scene_end", event.metadata.get("grounding_scene_end", "0")))
         payload.append(
             {
                 "timestamp": event.timestamp,
@@ -40,10 +65,15 @@ def grounding_payload(events: list[SessionEventRecord]) -> list[dict[str, object
                 "result_evidence": safe_float(event.metadata.get("grounding_result_evidence", "0")),
                 "branch_evidence": safe_float(event.metadata.get("grounding_branch_evidence", "0")),
                 "transcript_evidence": safe_float(event.metadata.get("grounding_transcript_evidence", "0")),
-                "window_start": safe_float(event.metadata.get("grounding_window_start", "0")),
-                "window_end": safe_float(event.metadata.get("grounding_window_end", "0")),
-                "scene_start": safe_float(event.metadata.get("grounding_scene_start", "0")),
-                "scene_end": safe_float(event.metadata.get("grounding_scene_end", "0")),
+                "window_start": window_start,
+                "window_end": window_end,
+                "scene_start": scene_start,
+                "scene_end": scene_end,
+                "support_window_start": window_start,
+                "support_window_end": window_end,
+                "support_scene_start": scene_start,
+                "support_scene_end": scene_end,
+                "support_count": safe_float(event.metadata.get("grounding_support_count", "0")),
                 "status": event.metadata.get("grounding_status", "unknown"),
             }
         )
@@ -100,13 +130,17 @@ def should_drop_shadow_event(
     event: SessionEventRecord,
     validated: list[SessionEventRecord],
     canonical_index: dict[str, list[SessionEventRecord]],
+    canonical_events: list[SessionEventRecord],
+    analyses_by_scene: dict[int, VisualSceneAnalysisRecord],
 ) -> bool:
     if event.metadata.get("canonical_label", "").strip():
         return False
     label = normalize_label(event.target.label or event.target.text)
     if not label:
         return False
-    if absorbed_account_picker_event(event, validated, canonical_index, label):
+    if absorbed_account_picker_event(event, validated, canonical_index, canonical_events, analyses_by_scene, label):
+        return True
+    if absorbed_picker_child_event(event, canonical_events, analyses_by_scene):
         return True
     if label in {"log in with google", "login with google", "continue with google"}:
         return has_nearby_canonical(validated, canonical_index, "continue with google", event.timestamp, 8.0)
@@ -142,17 +176,25 @@ def absorbed_account_picker_event(
     event: SessionEventRecord,
     validated: list[SessionEventRecord],
     canonical_index: dict[str, list[SessionEventRecord]],
+    canonical_events: list[SessionEventRecord],
+    analyses_by_scene: dict[int, VisualSceneAnalysisRecord],
     label: str,
 ) -> bool:
-    screen_before = event.metadata.get("screen_before", "").strip()
-    screen_after = event.metadata.get("screen_after", "").strip()
-    if screen_before != "account_picker" and screen_after != "account_picker":
+    if event_scene_family(event, analyses_by_scene.get(scene_number(event))) != "account_picker":
         return False
     if not is_generic_account_picker_label(label):
         return False
     if not has_nearby_canonical(validated, canonical_index, "continue with google", event.timestamp, 8.0):
         return False
-    return has_nearby_canonical(validated, canonical_index, "select a course", event.timestamp, 12.0)
+    if has_nearby_canonical(validated, canonical_index, "select a course", event.timestamp, 12.0):
+        return True
+    return has_nearby_family_canonical(
+        canonical_events,
+        timestamp=event.timestamp,
+        max_gap_seconds=12.0,
+        family="course_catalog",
+        require_forward_progress=True,
+    )
 
 
 def is_generic_account_picker_label(label: str) -> bool:
@@ -162,6 +204,97 @@ def is_generic_account_picker_label(label: str) -> bool:
         return True
     tokens = label.split()
     return len(tokens) <= 4 and any(token in label for token in ("account", "profile", "gmail", "google"))
+
+
+def absorbed_picker_child_event(
+    event: SessionEventRecord,
+    canonical_events: list[SessionEventRecord],
+    analyses_by_scene: dict[int, VisualSceneAnalysisRecord],
+) -> bool:
+    if event.type != "click":
+        return False
+    if event_has_distinct_transition(event):
+        return False
+    analysis = analyses_by_scene.get(scene_number(event))
+    if event_scene_family(event, analysis) != "difficulty_picker":
+        return False
+    nearby = nearby_canonical_events(canonical_events, event.timestamp, 6.0)
+    if not nearby:
+        return False
+    return any(
+        event_scene_family(candidate, analyses_by_scene.get(scene_number(candidate))) == "difficulty_picker"
+        and canonical_represents_screen_state(candidate)
+        and candidate.timestamp >= event.timestamp
+        and candidate_grounding_score(candidate) >= candidate_grounding_score(event)
+        for candidate in nearby
+    )
+
+
+def has_nearby_family_canonical(
+    canonical_events: list[SessionEventRecord],
+    *,
+    timestamp: float,
+    max_gap_seconds: float,
+    family: str,
+    require_forward_progress: bool = False,
+) -> bool:
+    for event in nearby_canonical_events(canonical_events, timestamp, max_gap_seconds):
+        if require_forward_progress and event.timestamp < timestamp:
+            continue
+        if event_scene_family(event, None) == family:
+            return True
+    return False
+
+
+def nearby_canonical_events(
+    canonical_events: list[SessionEventRecord],
+    timestamp: float,
+    max_gap_seconds: float,
+) -> list[SessionEventRecord]:
+    return [
+        event
+        for event in canonical_events
+        if abs(event.timestamp - timestamp) <= max_gap_seconds
+    ]
+
+
+def event_has_distinct_transition(event: SessionEventRecord) -> bool:
+    before = event.metadata.get("screen_before", "").strip()
+    after = event.metadata.get("screen_after", "").strip()
+    return bool(before and after and before != after)
+
+
+def canonical_represents_screen_state(event: SessionEventRecord) -> bool:
+    canonical = normalize_label(event.metadata.get("canonical_label", ""))
+    if canonical.startswith("pick your"):
+        return True
+    return event.type == "focus" and bool(canonical)
+
+
+def candidate_grounding_score(event: SessionEventRecord) -> float:
+    return safe_float(event.metadata.get("grounding_score", event.metadata.get("score", "0")))
+
+
+def event_scene_family(
+    event: SessionEventRecord,
+    analysis: VisualSceneAnalysisRecord | None,
+) -> str:
+    for key in ("screen_after", "screen_before"):
+        state = event.metadata.get(key, "").strip()
+        if state in {"account_picker", "course_catalog", "difficulty_picker", "auth_provider"}:
+            return state
+    label_text = " ".join(normalize_label(label) for label in ((analysis.visible_labels if analysis is not None else []) or []))
+    event_text = normalize_label(f"{event.target.label} {event.target.text}")
+    combined = f"{event_text} {label_text}"
+    if "account" in combined and ("choose" in combined or "google" in combined or "profile" in combined):
+        return "account_picker"
+    if any(token in combined for token in ("pick your", "jlpt", "level", "before you start")):
+        return "difficulty_picker"
+    if any(token in combined for token in ("course", "japanese", "open course", "coming soon")):
+        return "course_catalog"
+    if any(token in combined for token in ("google login", "log in with google", "sign up with google", "continue with google")):
+        return "auth_provider"
+    return "generic"
 
 
 def action_evidence(event: SessionEventRecord) -> float:

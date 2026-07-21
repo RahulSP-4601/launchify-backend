@@ -19,15 +19,15 @@
       "spoken_line": "log in, you can see the five courses",
       "on_screen_text": "Continue With Google",
       "source_excerpt": "Continue With Google",
-      "estimated_duration_seconds": 3.42
+      "estimated_duration_seconds": 1.68
     },
     {
-      "scene_number": 4,
+      "scene_number": 400001,
       "purpose": "Show the viewer the course catalog before the next guided selection.",
       "spoken_line": "log in, you can see the five courses",
       "on_screen_text": "Select A Course",
       "source_excerpt": "Select A Course",
-      "estimated_duration_seconds": 3.42
+      "estimated_duration_seconds": 1.68
     },
     {
       "scene_number": 5,
@@ -35,7 +35,7 @@
       "spoken_line": "under Japan click on the Japan courses And",
       "on_screen_text": "Pick your Japanese level before you start learning.",
       "source_excerpt": "Pick your Japanese level before you start learning.",
-      "estimated_duration_seconds": 4.28
+      "estimated_duration_seconds": 4.2
     }
   ],
   "cta": "Turn rough recordings into polished product walkthroughs.",
