@@ -15,21 +15,21 @@
     {
       "scene_number": 2,
       "start": 9.25,
-      "end": 12.57,
+      "end": 12.3,
       "text": "Continue with Google to sign in quickly.",
-      "duration_seconds": 3.32
+      "duration_seconds": 3.05
     },
     {
       "scene_number": 3,
-      "start": 12.57,
-      "end": 21.49,
+      "start": 12.3,
+      "end": 21.22,
       "text": "Open the Japanese course to choose your level next.",
       "duration_seconds": 8.92
     },
     {
       "scene_number": 4,
-      "start": 21.49,
-      "end": 25.84,
+      "start": 21.22,
+      "end": 25.57,
       "text": "Choose Your Japanese Level before you begin.",
       "duration_seconds": 4.35
     }
@@ -46,9 +46,9 @@
     {
       "scene_number": 2,
       "start": 26.31,
-      "end": 29.63,
+      "end": 29.36,
       "text": "Continue with Google to sign in quickly.",
-      "duration_seconds": 3.32,
+      "duration_seconds": 3.05,
       "audio_storage_path": ""
     },
     {
@@ -69,5 +69,5 @@
     }
   ],
   "audio_storage_path": "",
-  "duration_seconds": 25.84
+  "duration_seconds": 25.57
 }

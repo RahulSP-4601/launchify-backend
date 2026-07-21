@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
+from typing import cast
 from app.models.projects import (
     FocusBox,
     LaunchScriptRecord,
@@ -15,9 +16,8 @@ from app.services.canonical_consistency import auth_mapping_conflict, result_sta
 from app.services.canonical_fact_scoring import auth_result_label_conflict, fact_penalty, label_priority
 from app.services.inferred_recording_support import normalize_label
 from app.services.interaction_episode_builder import build_interaction_episodes
-from app.services.evidence_timeline import build_evidence_timeline, evidence_payload
-from app.services.extraction_artifacts import artifact_payload
-from app.services.result_linking import ResultLink, infer_result_link
+from app.services.evidence_timeline import build_evidence_timeline, evidence_payload; from app.services.extraction_artifacts import artifact_payload
+from app.services.result_linking import ResultLink, infer_result_link; from app.services.selection_fact_resolution import resolved_selection_target_label, resolved_selection_targets_with_followup
 from app.services.sequence_decoder import select_best_sequence
 from app.services.stable_state_reconstruction import EpisodeStateBundle, StateFingerprint, reconstruct_episode_states
 @dataclass(frozen=True)
@@ -33,8 +33,6 @@ class CanonicalFact:
     focus_box: FocusBox | None
     confidence: float
     confidence_breakdown: dict[str, float]
-
-
 def build_canonical_facts(
     launch_script: LaunchScriptRecord,
     transcript: list[TranscriptSegment],
@@ -45,8 +43,6 @@ def build_canonical_facts(
     episodes = build_interaction_episodes(timeline)
     bundles = reconstruct_episode_states(episodes, analyses_by_scene)
     return decoded_facts(bundles)
-
-
 def canonical_artifacts(
     launch_script: LaunchScriptRecord,
     transcript: list[TranscriptSegment],
@@ -57,8 +53,6 @@ def canonical_artifacts(
     bundles = reconstruct_episode_states(build_interaction_episodes(timeline), analyses_by_scene)
     facts = decoded_facts(bundles)
     return artifact_payload(evidence_payload(timeline), canonical_fact_payloads(facts))
-
-
 def canonical_events_from_facts(
     launch_script: LaunchScriptRecord,
     transcript: list[TranscriptSegment],
@@ -71,8 +65,6 @@ def canonical_events_from_facts(
         for fact in build_canonical_facts(launch_script, transcript, analyses_by_scene)
     ]
     return [event for event in events if event is not None]
-
-
 def fact_from_bundle(bundle: EpisodeStateBundle) -> CanonicalFact | None:
     return fact_from_bundle_with_link(bundle, infer_result_link(bundle))
 
@@ -88,12 +80,19 @@ def fact_from_bundle_with_link(
     raw_target = preferred_raw_target(action_state, result_state)
     resolved_target = resolved_raw_target(bundle, link, raw_target)
     canonical = canonical_label(bundle, resolved_target, link.screen_after, link.result_label)
+    action_class = classify_action(fact_event_type(bundle, raw_target), canonical, resolved_target, canonical)
+    resolved_target = resolved_selection_target_label(
+        raw_target_label=resolved_target,
+        canonical_label=canonical,
+        action_class=action_class,
+        screen_after=link.screen_after,
+        result_label=link.result_label,
+    )
     if not keepable_fact(bundle, link, canonical, raw_target, resolved_target):
         return None
     screen_before = normalized_transition_state(link.screen_before, canonical, is_before=True)
     screen_after = normalized_transition_state(link.screen_after, canonical, is_before=False)
     event_type = fact_event_type(bundle, raw_target)
-    action_class = classify_action(event_type, canonical, resolved_target, canonical)
     confidence = fact_confidence(bundle, canonical, resolved_target, link)
     return CanonicalFact(
         scene_number=bundle.episode.scene_number,
@@ -192,7 +191,8 @@ def decoded_facts(bundles: list[EpisodeStateBundle]) -> list[CanonicalFact]:
         candidate_label=lambda item: item.canonical_label,
         candidate_penalty=lambda item: fact_penalty(item.raw_target_label, item.canonical_label, item.screen_after),
     )
-    return collapse_exported_facts(prune_selected_facts(selected))
+    pruned = prune_selected_facts(selected)
+    return collapse_exported_facts(cast(list[CanonicalFact], resolved_selection_targets_with_followup(pruned)))
 
 def build_fact_candidates(bundles: list[EpisodeStateBundle]) -> list[list[CanonicalFact]]:
     candidates: list[list[CanonicalFact]] = []

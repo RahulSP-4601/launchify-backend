@@ -1,7 +1,7 @@
 {
-  "title": "Getting Started with Pronouncly: Launch Guide",
-  "summary": "This guide walks you through logging into Pronouncly, selecting the Japanese course, and preparing to start your language learning journey.",
-  "source": "Pronouncly Phase 4 Probe video",
+  "title": "Getting Started with Pronouncly: Your AI Language Learning Platform",
+  "summary": "This guide walks you through logging into Pronouncly using Google, selecting the Japanese course, and preparing to choose your proficiency level to begin learning.",
+  "source": "Pronouncly Phase 4 Probe video walkthrough",
   "steps": [
     {
       "step_index": 1,
@@ -15,7 +15,7 @@
       "event_type": "click",
       "focus_selector": "",
       "focus_label": "Google Login",
-      "highlight_label": "Login Button",
+      "highlight_label": "Google Login",
       "source_excerpt": "Hey. So we are launching Pronouncely. It's an AI powered land language learning platform. So to get started, first, you need to go on the Google login button that's on the top right. Once you click it, just you you need to create an account or you can log in with the existing one.",
       "action_class": "auth_action"
     },
@@ -31,7 +31,7 @@
       "event_type": "click",
       "focus_selector": "",
       "focus_label": "Continue With Google",
-      "highlight_label": "Google Login",
+      "highlight_label": "Continue With Google",
       "source_excerpt": "Since I've already created the account, I'll log in to the existing one. After log in, you can see the five courses. Right now, we have opened the Japan courses, and the rest of the four courses are coming soon. So under Japan click on the Japan courses. And once the Japan course has been opened so, officially, there are five",
       "action_class": "auth_action"
     },
@@ -63,7 +63,7 @@
       "event_type": "focus",
       "focus_selector": "",
       "focus_label": "Pick your Japanese level before you start learning.",
-      "highlight_label": "Level Selection",
+      "highlight_label": "Your Japanese Level",
       "source_excerpt": "Since I've already created the account, I'll log in to the existing one. After log in, you can see the five courses. Right now, we have opened the Japan courses, and the rest of the four courses are coming soon. So under Japan click on the Japan courses. And once the Japan course has been opened so, officially, there are five",
       "action_class": "button_click"
     }
@@ -91,11 +91,10 @@
     }
   ],
   "generation_notes": [
-    "Followed the chronological order of events strictly as per timestamps.",
-    "Merged related clicks into cohesive steps where appropriate.",
-    "Used concise, premium on-screen text for clarity and impact.",
-    "Narration is clear and launch-ready for internal QA use.",
-    "No UI elements or steps were invented beyond the event log and transcript.",
+    "Used only actions and transcript segments present in the event log.",
+    "Merged related clicks on login and course selection into clear steps.",
+    "Kept the order and timestamps faithful to the original events.",
+    "Created concise, premium on-screen text and narration for launch readiness.",
     "Grounded step timing was expanded into continuous walkthrough ranges anchored to captured actions."
   ]
 }

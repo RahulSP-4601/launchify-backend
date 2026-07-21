@@ -1,10 +1,39 @@
 from __future__ import annotations
 
+import re
+
 from app.models.projects import EditPlanCaption, EditPlanRecord, EditPlanScene
 from app.services.editorial_labels import completed_selection_target
 from app.services.editorial_flow import AUTH_FAMILY, CONFIG_FAMILY, FlowSceneContext, SELECTION_FAMILY, scene_contexts
 from app.services.voiceover_pacing import fit_voice_line
 from app.services.walkthrough_narration import scene_voice_line
+
+GENERIC_SETUP_WORDS = {
+    "before",
+    "begin",
+    "choose",
+    "continue",
+    "course",
+    "difficulty",
+    "lesson",
+    "level",
+    "option",
+    "options",
+    "pick",
+    "preferences",
+    "role",
+    "select",
+    "set",
+    "setup",
+    "settings",
+    "starting",
+    "template",
+    "the",
+    "to",
+    "up",
+    "workspace",
+    "your",
+}
 
 
 def apply_scene_copy_refinement(edit_plan: EditPlanRecord) -> EditPlanRecord:
@@ -70,6 +99,9 @@ def refined_purpose(scene: EditPlanScene) -> str:
 
 
 def refined_on_screen_text(scene: EditPlanScene, purpose: str) -> str:
+    setup_label = specific_setup_label(scene)
+    if scene.layout_mode == "screen-only" and setup_label:
+        return setup_label
     if scene.layout_mode == "screen-only":
         return purpose
     if scene.layout_mode == "dashboard-wide" and purpose:
@@ -134,7 +166,8 @@ def selection_spoken_line(scene: EditPlanScene, context: FlowSceneContext, label
 
 def configuration_spoken_line(scene: EditPlanScene, label: str) -> str:
     if "level" in label:
-        return "Select the Japanese level that matches your starting point."
+        target = spoken_configuration_target(scene)
+        return f"Select {target} that matches your starting point."
     if any(token in label for token in ("difficulty", "setup", "preferences")):
         return "Set the starting options before the lesson begins."
     return scene_voice_line(scene)
@@ -162,3 +195,40 @@ def spoken_target(scene: EditPlanScene) -> str:
 
 def normalize_compare(text: str) -> str:
     return " ".join(text.lower().split()).strip().rstrip(".")
+
+
+def specific_setup_label(scene: EditPlanScene) -> str:
+    candidates = [
+        scene.specific_target_label,
+        *(highlight.label for highlight in scene.highlights),
+        scene.on_screen_text,
+        scene.title,
+    ]
+    ranked = [normalized_scene_copy(candidate) for candidate in candidates if setup_candidate_is_specific(candidate)]
+    return ranked[0] if ranked else ""
+
+
+def setup_candidate_is_specific(text: str) -> bool:
+    normalized = normalized_scene_copy(text)
+    if not normalized:
+        return False
+    lowered = normalized.lower()
+    if "level" not in lowered and not any(token in lowered for token in ("settings", "preferences", "role", "template", "workspace", "setup")):
+        return False
+    return bool(specific_setup_tokens(normalized))
+
+
+def specific_setup_tokens(text: str) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", text.lower())
+        if (len(token) >= 3 or any(char.isdigit() for char in token)) and token not in GENERIC_SETUP_WORDS
+    }
+
+
+def spoken_configuration_target(scene: EditPlanScene) -> str:
+    source = specific_setup_label(scene) or normalized_scene_copy(scene.on_screen_text or scene.title)
+    lowered = source.lower()
+    if lowered.startswith(("your ", "the ", "a ", "an ")):
+        return source
+    return f"the {source}".strip()

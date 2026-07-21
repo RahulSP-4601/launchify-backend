@@ -1,6 +1,6 @@
 {
   "overview": "Launchify grounded 4 captured product actions for Internal QA, turned them into synchronized steps, and prepared captions, zooms, and highlights from the event-backed guide.",
-  "total_duration_seconds": 25.84,
+  "total_duration_seconds": 25.57,
   "scenes": [
     {
       "scene_number": 1,
@@ -52,14 +52,14 @@
           "reason": "grounded action focus",
           "confidence": 0.9,
           "focus_box": {
-            "x": 0.87,
-            "y": 0.04,
+            "x": 0.88,
+            "y": 0.03,
             "width": 0.11,
-            "height": 0.05
+            "height": 0.04
           },
           "easing": "ease-in-out",
-          "x_offset": 0.051,
-          "y_offset": -0.05,
+          "x_offset": 0.052,
+          "y_offset": -0.052,
           "smoothing": 0.16,
           "hold_ratio": 0.74
         },
@@ -71,14 +71,14 @@
           "reason": "grounded settle hold",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.87,
-            "y": 0.04,
+            "x": 0.88,
+            "y": 0.03,
             "width": 0.11,
-            "height": 0.05
+            "height": 0.04
           },
           "easing": "ease-in-out",
-          "x_offset": 0.035699999999999996,
-          "y_offset": -0.034999999999999996,
+          "x_offset": 0.036399999999999995,
+          "y_offset": -0.036399999999999995,
           "smoothing": 0.16,
           "hold_ratio": 0.82
         }
@@ -87,18 +87,18 @@
         {
           "start": 10.64,
           "end": 11.99,
-          "label": "Login Button",
+          "label": "Google Login",
           "style": "soft-glow",
           "anchor_region": "top-right",
           "confidence": 0.92,
           "focus_box": {
-            "x": 0.87,
-            "y": 0.04,
+            "x": 0.88,
+            "y": 0.03,
             "width": 0.11,
-            "height": 0.05
+            "height": 0.04
           },
           "placement_preference": "avoid-ui-cover",
-          "ui_label": "Login Button"
+          "ui_label": "Google Login"
         }
       ]
     },
@@ -107,8 +107,8 @@
       "title": "Continue With Google",
       "purpose": "Continue with google to move forward with the existing account",
       "start": 26.31,
-      "end": 29.63,
-      "render_duration_seconds": 3.32,
+      "end": 29.36,
+      "render_duration_seconds": 3.05,
       "confidence": 0.82,
       "camera_mode": "focus",
       "decision_summary": "Grounded from captured click event near Continue With Google at 26.53s with event-led camera timing. Editorial layout=split-right; beats=26.35-27.34/27.92. result_anchor=27.08s",
@@ -121,7 +121,7 @@
       "scene_role": "action",
       "action_timestamp": 26.53,
       "result_anchor_timestamp": 27.08,
-      "readable_hold_seconds": 1.74,
+      "readable_hold_seconds": 1.69,
       "establish_end_timestamp": 26.73,
       "focus_start_timestamp": 26.35,
       "focus_end_timestamp": 27.34,
@@ -152,8 +152,8 @@
           "reason": "grounded action focus",
           "confidence": 0.9,
           "focus_box": {
-            "x": 0.665,
-            "y": 0.45,
+            "x": 0.605,
+            "y": 0.475,
             "width": 0.12,
             "height": 0.1
           },
@@ -171,8 +171,8 @@
           "reason": "grounded settle hold",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.665,
-            "y": 0.45,
+            "x": 0.605,
+            "y": 0.475,
             "width": 0.12,
             "height": 0.1
           },
@@ -187,18 +187,18 @@
         {
           "start": 26.35,
           "end": 27.34,
-          "label": "Google Login",
+          "label": "Continue With Google",
           "style": "soft-glow",
           "anchor_region": "top-left",
           "confidence": 0.92,
           "focus_box": {
-            "x": 0.665,
-            "y": 0.45,
+            "x": 0.605,
+            "y": 0.475,
             "width": 0.12,
             "height": 0.1
           },
           "placement_preference": "avoid-ui-cover",
-          "ui_label": "Google Login"
+          "ui_label": "Continue With Google"
         }
       ]
     },
@@ -221,7 +221,7 @@
       "scene_role": "action",
       "action_timestamp": 29.55,
       "result_anchor_timestamp": 30.1,
-      "readable_hold_seconds": 1.74,
+      "readable_hold_seconds": 1.69,
       "establish_end_timestamp": 29.79,
       "focus_start_timestamp": 29.37,
       "focus_end_timestamp": 30.36,
@@ -248,18 +248,18 @@
           "start": 29.37,
           "end": 30.36,
           "scale": 1.18,
-          "focus_region": "top-left",
+          "focus_region": "mid-left",
           "reason": "grounded action focus",
           "confidence": 0.9,
           "focus_box": {
-            "x": 0.665,
-            "y": 0.5,
+            "x": 0.505,
+            "y": 0.475,
             "width": 0.12,
             "height": 0.1
           },
           "easing": "ease-in-out",
           "x_offset": -0.037,
-          "y_offset": -0.025,
+          "y_offset": 0.0,
           "smoothing": 0.16,
           "hold_ratio": 0.76
         },
@@ -267,18 +267,18 @@
           "start": 30.36,
           "end": 30.94,
           "scale": 1.1,
-          "focus_region": "top-left",
+          "focus_region": "mid-left",
           "reason": "grounded settle hold",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.665,
-            "y": 0.5,
+            "x": 0.505,
+            "y": 0.475,
             "width": 0.12,
             "height": 0.1
           },
           "easing": "ease-in-out",
           "x_offset": -0.025899999999999996,
-          "y_offset": -0.017499999999999998,
+          "y_offset": 0.0,
           "smoothing": 0.16,
           "hold_ratio": 0.82
         }
@@ -289,11 +289,11 @@
           "end": 30.36,
           "label": "Japanese",
           "style": "soft-glow",
-          "anchor_region": "top-left",
+          "anchor_region": "mid-left",
           "confidence": 0.92,
           "focus_box": {
-            "x": 0.665,
-            "y": 0.5,
+            "x": 0.505,
+            "y": 0.475,
             "width": 0.12,
             "height": 0.1
           },
@@ -314,7 +314,7 @@
       "decision_summary": "Grounded from captured focus event near Pick your Japanese level before you start learning. at 41.54s with event-led camera timing. Editorial layout=screen-only; beats=41.32-42.22/43.00. result_anchor=42.09s",
       "visual_summary": "Spotlight the real UI action around Pick your Japanese level before you start learning. and keep surrounding context subdued. Editorial planning emphasized a stable result frame and reduced overlay noise.",
       "spoken_line": "Choose Your Japanese Level before you begin.",
-      "on_screen_text": "Choose the starting level before the lesson begins",
+      "on_screen_text": "Pick Your Japanese Level",
       "specific_target_label": "",
       "source_excerpt": "created the account, i'll log in to the existing one. after log in, you can see",
       "action_class": "button_click",
@@ -344,18 +344,18 @@
           "start": 41.32,
           "end": 42.22,
           "scale": 1.07,
-          "focus_region": "top-left",
+          "focus_region": "mid-left",
           "reason": "grounded action focus",
           "confidence": 0.9,
           "focus_box": {
-            "x": 0.05,
-            "y": 0.1,
-            "width": 0.28,
-            "height": 0.28
+            "x": 0.0,
+            "y": 0.665,
+            "width": 0.12,
+            "height": 0.1
           },
           "easing": "ease-in-out",
-          "x_offset": -0.037,
-          "y_offset": -0.031,
+          "x_offset": -0.043,
+          "y_offset": 0.0,
           "smoothing": 0.18,
           "hold_ratio": 0.82
         }
@@ -369,10 +369,10 @@
           "anchor_region": "center",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.05,
-            "y": 0.1,
-            "width": 0.28,
-            "height": 0.28
+            "x": 0.0,
+            "y": 0.665,
+            "width": 0.12,
+            "height": 0.1
           },
           "placement_preference": "avoid-ui-cover",
           "ui_label": "Pick Your Japanese Level"
@@ -381,11 +381,11 @@
     }
   ],
   "render_spec": {
-    "title_card": "Getting Started with Pronouncly: Launch Guide",
+    "title_card": "Getting Started with Pronouncly: Your AI Language Learning Platform",
     "title_options": [
-      "Getting Started with Pronouncly: Launch Guide"
+      "Getting Started with Pronouncly: Your AI Language Learning Platform"
     ],
     "cta": "Turn rough recordings into polished launch videos.",
-    "total_duration_seconds": 25.84
+    "total_duration_seconds": 25.57
   }
 }

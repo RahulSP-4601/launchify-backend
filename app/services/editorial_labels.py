@@ -22,6 +22,9 @@ LEADING_VERBS = (
 GENERIC_OBJECTS = {"step", "screen", "page", "option", "field", "control", "button"}
 SELECTION_NOUNS = ("course", "courses", "plan", "plans", "template", "templates", "workspace", "workspaces", "project", "projects")
 ADJECTIVE_LIKE_SUFFIXES = ("ese", "ish", "ian", "ic", "al", "ary", "ory", "able", "ible", "less", "ful")
+GENERIC_HIGHLIGHT_WORDS = {"your", "the", "a", "an", "my", "our", "step", "screen", "page", "option", "field", "control", "button"}
+AUTH_PROVIDER_WORDS = {"google", "github", "microsoft", "apple", "email", "sso", "account"}
+SETUP_GENERIC_WORDS = {"continue", "pick", "choose", "select", "open", "use", "set", "level", "course", "plan", "workspace", "project", "option"}
 
 
 def canonical_step_title(
@@ -83,14 +86,52 @@ def canonical_highlight_label(
     label: str,
     title: str,
 ) -> str:
+    cleaned_label = clean_editorial_text(label)
+    if preserved_auth_highlight(cleaned_label):
+        return title_case(cleaned_label)
     source = object_phrase(label) or title or label
     cleaned = title_case(source)
     words = cleaned.split()
     if len(words) <= MAX_HIGHLIGHT_WORDS:
         return cleaned
-    preferred = [word for word in words if word.lower() not in {"your", "the", "a", "an"}]
-    compact = " ".join(preferred[:MAX_HIGHLIGHT_WORDS]).strip()
+    compact = compact_highlight_words(words)
     return compact or " ".join(words[:MAX_HIGHLIGHT_WORDS]).strip()
+
+
+def compact_highlight_words(words: list[str]) -> str:
+    preferred = [word for word in words if word.lower() not in GENERIC_HIGHLIGHT_WORDS]
+    if preserved_specific_highlight(words):
+        specific = [word for word in preferred if word.lower() not in SETUP_GENERIC_WORDS]
+        merged = (specific[:1] + preferred) if specific else preferred
+        compact = unique_words(merged)[:MAX_HIGHLIGHT_WORDS]
+        if compact:
+            return " ".join(compact).strip()
+    compact = preferred[:MAX_HIGHLIGHT_WORDS]
+    return " ".join(compact).strip()
+
+
+def preserved_specific_highlight(words: list[str]) -> bool:
+    lowered = [word.lower() for word in words]
+    if any(word in AUTH_PROVIDER_WORDS for word in lowered):
+        return True
+    return any(
+        word not in SETUP_GENERIC_WORDS
+        and word not in GENERIC_HIGHLIGHT_WORDS
+        and len(word) >= 4
+        for word in lowered
+    )
+
+
+def unique_words(words: list[str]) -> list[str]:
+    unique: list[str] = []
+    seen: set[str] = set()
+    for word in words:
+        key = word.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(word)
+    return unique
 
 
 def specific_target_label(
@@ -216,6 +257,22 @@ def fallback_title(action_class: str, event_type: str, screen_after: str) -> str
     if event_type == "focus":
         return "Review The Screen"
     return "Continue"
+
+
+def preserved_auth_highlight(label: str) -> bool:
+    lowered = label.lower()
+    if len(label.split()) > 4:
+        return False
+    auth_markers = (
+        "continue with ",
+        "sign in with ",
+        "sign up with ",
+        "log in with ",
+        "login with ",
+        "google login",
+        "choose an account",
+    )
+    return any(marker in lowered for marker in auth_markers)
 
 
 def title_case(text: str) -> str:
