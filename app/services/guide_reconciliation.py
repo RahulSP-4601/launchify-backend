@@ -34,6 +34,8 @@ GENERIC_EDITORIAL_TOKENS = {
     "option",
     "account",
 }
+SELECTION_GENERIC_WORDS = {"course", "courses", "option", "options", "selected", "select", "choose", "open", "click"}
+SETUP_FOLLOWUP_WORDS = {"level", "levels", "difficulty", "lesson", "lessons", "start", "learning", "begin"}
 
 
 def finalized_guide_steps(steps: list[GuideStepRecord]) -> list[GuideStepRecord]:
@@ -93,11 +95,13 @@ def merge_redundant_steps(steps: list[GuideStepRecord]) -> list[GuideStepRecord]
 def should_merge_steps(left: GuideStepRecord, right: GuideStepRecord) -> bool:
     if right.start - left.end > 1.2:
         return False
-    if semantic_target(left) != semantic_target(right):
+    if not matching_targets(left, right):
         return False
     if left.action_class == right.action_class and left.title == right.title:
         return True
     setup_classes = {"button_click", "focus", "result_state"}
+    if left.action_class == "card_selection" and right.action_class in {"button_click", "focus"} and same_selection_flow(left, right):
+        return True
     return left.action_class in setup_classes and right.action_class in setup_classes
 
 
@@ -126,6 +130,42 @@ def step_priority(step: GuideStepRecord) -> tuple[int, int, float]:
 
 def semantic_target(step: GuideStepRecord) -> str:
     return normalize_key(step.specific_target_label or step.on_screen_text or step.focus_label or step.title)
+
+
+def matching_targets(left: GuideStepRecord, right: GuideStepRecord) -> bool:
+    if semantic_target(left) == semantic_target(right):
+        return True
+    left_key = comparable_target_key(left)
+    right_key = comparable_target_key(right)
+    return bool(left_key) and left_key == right_key
+
+
+def same_selection_flow(left: GuideStepRecord, right: GuideStepRecord) -> bool:
+    if contains_any(step_text(right), SETUP_FOLLOWUP_WORDS):
+        return False
+    left_key = comparable_target_key(left)
+    right_key = comparable_target_key(right)
+    return bool(left_key and right_key and left_key == right_key)
+
+
+def comparable_target_key(step: GuideStepRecord) -> str:
+    words = [
+        token for token in semantic_target(step).split()
+        if token not in SELECTION_GENERIC_WORDS and len(token) >= 3
+    ]
+    return " ".join(words)
+
+
+def step_text(step: GuideStepRecord) -> str:
+    return " ".join(
+        normalize_key(part)
+        for part in (step.title, step.on_screen_text, step.focus_label, step.highlight_label, step.instruction)
+        if part
+    )
+
+
+def contains_any(text: str, words: set[str]) -> bool:
+    return any(word in text.split() for word in words)
 
 
 def resolved_on_screen_text(step: GuideStepRecord, specific_target: str) -> str:

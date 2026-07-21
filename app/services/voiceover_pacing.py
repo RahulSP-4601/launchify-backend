@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-CONNECTOR_WORDS = {"and", "then", "next", "so", "now", "just", "into", "with"}
+CONNECTOR_WORDS = {"and", "then", "next", "so", "now", "just", "into", "with", "before", "after", "the", "a", "an", "to"}
 LEADING_FILLERS = ("now ", "then ", "so ", "just ", "here ", "you can ", "once ", "simply ")
 MIN_WORDS = 4
 
@@ -28,7 +28,20 @@ def trimmed_words(text: str, available_seconds: float) -> str:
     words = text.split()[:limit]
     while len(words) > MIN_WORDS and words[-1].lower().strip(".,") in CONNECTOR_WORDS:
         words.pop()
+    while len(words) > MIN_WORDS and dangling_phrase(words):
+        words.pop()
     return " ".join(words)
+
+
+def dangling_phrase(words: list[str]) -> bool:
+    if not words:
+        return False
+    tail = words[-1].lower().strip(".,")
+    if tail in CONNECTOR_WORDS:
+        return True
+    if len(words) < 2:
+        return False
+    return " ".join(word.lower().strip(".,") for word in words[-2:]) in {"before the", "after the", "into the", "to the"}
 
 
 def normalize(text: str) -> str:

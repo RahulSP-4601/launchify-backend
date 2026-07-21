@@ -243,7 +243,7 @@ def calibrated_zooms(scene: EditPlanScene, layout_mode: str, beats: EditorialBea
                 update={
                     "start": round(start, 2),
                     "end": round(end, 2),
-                    "scale": min(max(zoom.scale, target_scale - 0.02), target_scale),
+                    "scale": softened_editorial_scale(zoom.scale, target_scale),
                     "smoothing": max(zoom.smoothing, 0.16 if scene.action_class == "card_selection" else 0.14),
                     "hold_ratio": max(zoom.hold_ratio, 0.76 if scene.action_class == "card_selection" else 0.72),
                     "focus_box": focus_box or zoom.focus_box,
@@ -251,6 +251,12 @@ def calibrated_zooms(scene: EditPlanScene, layout_mode: str, beats: EditorialBea
             )
         )
     return tuned
+
+
+def softened_editorial_scale(current_scale: float, target_scale: float) -> float:
+    if current_scale >= target_scale:
+        return target_scale
+    return round(min(target_scale, max(1.0, current_scale + 0.02)), 2)
 
 
 def calibrated_highlights(scene: EditPlanScene, layout_mode: str, beats: EditorialBeatPlan, focus_box: FocusBox | None) -> list[EditPlanHighlight]:

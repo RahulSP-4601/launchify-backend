@@ -28,7 +28,7 @@ from app.models.projects import (
 )
 from app.services.benchmarking import build_benchmark_report
 from app.services.edit_planner import generate_edit_plan
-from app.services.phase_four import refined_plan_and_report, voiceover_for_project
+from app.services.phase_four import polished_plan_and_report, voiceover_for_project
 from app.services.guide_synthesizer import cluster_events, reconcile_grounded_guide, synthesize_grounded_guide
 from app.services.guide_timing_ranges import contextual_step_ranges
 from app.services.preview_delivery import preview_delivery_diagnostics
@@ -43,7 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", default="", help="Where to write phase-four artifacts. Defaults to <artifact_dir>/phase-four-probe.")
     parser.add_argument("--project-name", default="Phase 4 probe")
     parser.add_argument("--product-name", default="Launchify probe")
-    parser.add_argument("--product-description", default="Local phase four replay from raw-upload artifacts.")
+    parser.add_argument("--product-description", default="")
     parser.add_argument("--target-audience", default="Internal QA")
     parser.add_argument("--video-goal", default="launch_video")
     parser.add_argument(
@@ -83,7 +83,7 @@ def main() -> int:
         project = project.model_copy(update={"guide": guide, "launch_script": effective_launch_script})
 
     edit_plan = generate_edit_plan(project, visual_analyses)
-    refined_edit_plan, quality_report = refined_plan_and_report(project, edit_plan, project.manual_overrides or ManualOverrideRecord())
+    refined_edit_plan, quality_report = polished_plan_and_report(project, edit_plan, project.manual_overrides or ManualOverrideRecord())
     voiceover = voiceover_for_project("phase-four-probe", project, refined_edit_plan, args.voiceover_mode)
     reconciled_edit_plan, reconciled_voiceover = reconcile_edit_plan_to_voiceover(refined_edit_plan, voiceover)
     benchmark_report = build_benchmark_report(project, reconciled_edit_plan, quality_report)

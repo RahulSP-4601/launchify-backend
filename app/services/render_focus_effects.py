@@ -263,22 +263,22 @@ def draw_mask(x: float, y: float, width: float, height: float, alpha: float, ena
 
 def highlight_alpha(style: str) -> float:
     if style == "ambient":
-        return 0.08
+        return 0.05
     if style == "ambient-lift":
-        return 0.1
+        return 0.07
     if style == "spotlight":
-        return 0.12
-    return 0.11
+        return 0.08
+    return 0.07
 
 
 def highlight_border(style: str) -> float:
     if style == "ambient":
-        return 0.18
+        return 0.14
     if style == "ambient-lift":
-        return 0.24
+        return 0.18
     if style == "spotlight":
-        return 0.3
-    return 0.22
+        return 0.22
+    return 0.16
 
 
 def clamp(value: float, minimum: float, maximum: float) -> float:

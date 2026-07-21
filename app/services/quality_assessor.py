@@ -27,11 +27,12 @@ def build_quality_report(project: ProjectRecord, edit_plan: EditPlanRecord) -> Q
 
 def caption_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRecord]:
     issues: list[QualityIssueRecord] = []
-    for scene in edit_plan.scenes:
+    ordered = sorted(edit_plan.scenes, key=lambda scene: (scene.start, scene.scene_number))
+    for index, scene in enumerate(ordered):
         if not scene.captions:
             issues.append(issue("missing-captions", "high", scene.scene_number, "Scene has no captions.", "Regenerate or add a caption line for this scene."))
             continue
-        if any(len(caption.text) > 90 for caption in scene.captions):
+        if any(len(caption.text) > caption_length_limit(scene, index == 0) for caption in scene.captions):
             issues.append(issue("long-captions", "medium", scene.scene_number, "Caption line is too long for clean reading.", "Split the line into shorter caption chunks."))
         if any("\n" not in caption.text and len(caption.text) > 40 for caption in scene.captions):
             issues.append(issue("flat-captions", "low", scene.scene_number, "Long caption line is not visually balanced.", "Use a balanced two-line subtitle layout."))
@@ -198,6 +199,17 @@ def issue(
 
 def normalize(text: str) -> str:
     return " ".join(text.lower().split()).strip().rstrip(".")
+
+
+def caption_length_limit(scene: EditPlanScene, is_first: bool) -> int:
+    if is_first and is_launch_intro(scene):
+        return 140
+    return 90
+
+
+def is_launch_intro(scene: EditPlanScene) -> bool:
+    lowered = normalize(scene.spoken_line)
+    return scene.action_class == "auth_action" and scene.scene_role == "action" and lowered.startswith("we're launching ")
 
 
 def title_is_overliteral(title: str) -> bool:

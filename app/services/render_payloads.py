@@ -3,9 +3,6 @@ from __future__ import annotations
 from app.core.config import get_settings
 from app.models.projects import EditPlanRecord, ProjectRecord, TemplateConfigRecord, VoiceoverRecord
 from app.services.preview_manifest import manifest_edit_plan
-
-PREVIEW_DIMENSIONS = {"width": 512, "height": 288, "fps": 12}
-FINAL_DIMENSIONS = {"width": 1280, "height": 720, "fps": 30}
 INTRO_DURATION_SECONDS = 1.0
 OUTRO_DURATION_SECONDS = 1.4
 
@@ -46,7 +43,11 @@ def render_dimensions(quality: str) -> dict[str, int]:
             "height": settings.final_render_height,
             "fps": settings.final_render_fps,
         }
-    return PREVIEW_DIMENSIONS
+    return {
+        "width": settings.preview_proxy_width,
+        "height": settings.preview_proxy_height,
+        "fps": settings.preview_proxy_fps,
+    }
 
 
 def total_render_duration(content_duration_seconds: float) -> float:

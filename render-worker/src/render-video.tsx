@@ -9,17 +9,15 @@ import {
 } from "remotion";
 
 import {
-  activeCaption,
   activeFocusBox,
   motionOpacity,
   sceneDurationFrames,
-  spotlightStyle,
   transitionStyle,
   totalFrames,
   zoomTransform,
 } from "./render-helpers";
-import { FocusMatte, HighlightBadge } from "./scene-overlays";
-import { CaptionPill, IntroCard, OutroCard, SceneMeta } from "./scene-text";
+import { FocusMatte } from "./scene-overlays";
+import { IntroCard, OutroCard } from "./scene-text";
 import { RenderPayload, RenderScene } from "./types";
 
 export const LaunchifyRender: React.FC<RenderPayload> = (payload) => {
@@ -78,10 +76,8 @@ const SceneComposition: React.FC<{ fastPreview: boolean; payload: RenderPayload;
   const sourceDuration = Math.max(scene.end - scene.start, 0);
   const sourceSeconds = Math.min(frame / payload.dimensions.fps, sourceDuration);
   const localSeconds = scene.start + sourceSeconds;
-  const caption = activeCaption(scene, localSeconds);
   const focusBox = activeFocusBox(scene, localSeconds);
   const zoom = zoomTransform(scene.zooms, localSeconds);
-  const spotlight = spotlightStyle(scene.highlights, localSeconds);
   const transition = transitionStyle(scene, frame, payload.dimensions.fps);
 
   return (
@@ -99,31 +95,9 @@ const SceneComposition: React.FC<{ fastPreview: boolean; payload: RenderPayload;
         <GradientMask fastPreview={fastPreview} />
         <BrowserChrome payload={payload} viewport={viewport} />
       </ViewportFrame>
-      {shouldRenderSceneMeta(scene) ? <SceneMeta payload={payload} scene={scene} fastPreview={fastPreview} /> : null}
-      {shouldRenderCaption(scene) && caption ? <CaptionPill payload={payload} caption={caption} /> : null}
-      {spotlight ? (
-        <HighlightBadge
-          anchor={spotlight.anchor}
-          fastPreview={fastPreview}
-          focusBox={spotlight.focusBox}
-          intensity={spotlight.intensity}
-          label={spotlight.label}
-          pulse={spotlight.pulse}
-          style={spotlight.style}
-          viewport={viewport}
-        />
-      ) : null}
     </AbsoluteFill>
   );
 };
-
-function shouldRenderSceneMeta(scene: RenderScene) {
-  return !["screen-only", "dashboard-wide"].includes(scene.layout_mode ?? "auto");
-}
-
-function shouldRenderCaption(scene: RenderScene) {
-  return scene.show_captions !== false;
-}
 
 const ViewportFrame: React.FC<{ children: React.ReactNode; fastPreview: boolean }> = ({ children, fastPreview }) => (
   <div style={viewportFrameStyle(fastPreview)}>
@@ -230,13 +204,13 @@ function shellStyle(): React.CSSProperties {
 }
 
 function viewportMetrics(dimensions: { width: number; height: number }) {
-  const frameHeight = dimensions.height * 0.82;
+  const frameHeight = dimensions.height * 0.84;
   const chromeOffset = Math.round(frameHeight * (42 / 720));
   return {
-    left: 0.045,
-    top: 0.09,
-    width: 0.91,
-    height: 0.82,
+    left: 0.035,
+    top: 0.08,
+    width: 0.93,
+    height: 0.84,
     chromeOffset,
     canvasWidth: dimensions.width,
     canvasHeight: dimensions.height,
@@ -263,24 +237,24 @@ function sceneCanvasStyle(opacity: number, translateY: number): React.CSSPropert
 
 function viewportFrameStyle(fastPreview: boolean): React.CSSProperties {
   return {
-    background: "rgba(255,255,255,0.5)",
-    border: "1px solid rgba(255,255,255,0.86)",
+    background: "rgba(255,255,255,0.62)",
+    border: "1px solid rgba(255,255,255,0.94)",
     borderRadius: 34,
     boxShadow: fastPreview
-      ? "0 14px 30px rgba(15, 23, 42, 0.12)"
-      : "0 18px 42px rgba(15, 23, 42, 0.14)",
-    height: "82%",
-    left: "4.5%",
+      ? "0 18px 34px rgba(15, 23, 42, 0.12)"
+      : "0 24px 48px rgba(15, 23, 42, 0.14)",
+    height: "84%",
+    left: "3.5%",
     overflow: "hidden",
     position: "absolute",
-    top: "9%",
-    width: "91%",
+    top: "8%",
+    width: "93%",
   };
 }
 
 function viewportInnerStyle(): React.CSSProperties {
   return {
-    background: "#020617",
+    background: "#071322",
     borderRadius: 28,
     height: "100%",
     overflow: "hidden",
@@ -345,8 +319,8 @@ function sceneGlowStyle(fastPreview: boolean): React.CSSProperties {
 function gradientMaskStyle(fastPreview: boolean): React.CSSProperties {
   return {
     background: fastPreview
-      ? "linear-gradient(180deg, rgba(2,6,23,0.08) 0%, rgba(2,6,23,0.02) 28%, rgba(2,6,23,0.24) 100%)"
-      : "linear-gradient(180deg, rgba(2,6,23,0.1) 0%, rgba(2,6,23,0.03) 28%, rgba(2,6,23,0.28) 100%)",
+      ? "linear-gradient(180deg, rgba(2,6,23,0.03) 0%, rgba(2,6,23,0.01) 24%, rgba(2,6,23,0.12) 100%)"
+      : "linear-gradient(180deg, rgba(2,6,23,0.04) 0%, rgba(2,6,23,0.01) 24%, rgba(2,6,23,0.14) 100%)",
   };
 }
 

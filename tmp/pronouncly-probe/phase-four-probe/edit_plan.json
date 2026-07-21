@@ -1,6 +1,6 @@
 {
   "overview": "Launchify grounded 4 captured product actions for Internal QA, turned them into synchronized steps, and prepared captions, zooms, and highlights from the event-backed guide.",
-  "total_duration_seconds": 25.57,
+  "total_duration_seconds": 25.42,
   "scenes": [
     {
       "scene_number": 1,
@@ -13,7 +13,7 @@
       "camera_mode": "focus",
       "decision_summary": "Grounded from captured click event near Google Login at 10.82s with event-led camera timing. Editorial layout=split-right; beats=10.64-14.06/14.64. result_anchor=13.80s",
       "visual_summary": "Spotlight the real UI action around Google Login and keep surrounding context subdued. Editorial planning emphasized a stable result frame and reduced overlay noise.",
-      "spoken_line": "Click Google Login to get started.",
+      "spoken_line": "We're launching Pronouncly and you can start by clicking Google Login to enter the product and begin the guided flow.",
       "on_screen_text": "Google Login",
       "specific_target_label": "",
       "source_excerpt": "hey. so we are launching pronouncely. it's an ai powered land language learning platform. , first,",
@@ -33,8 +33,8 @@
       "captions": [
         {
           "start": 10.6,
-          "end": 17.5,
-          "text": "Click Google Login\nto get started.",
+          "end": 19.85,
+          "text": "We're launching Pronouncly and you can\nstart by clicking Google Login to enter the product and begin the guided flow.",
           "emphasis_words": [
             "launching",
             "Pronouncely",
@@ -47,20 +47,20 @@
         {
           "start": 10.64,
           "end": 14.06,
-          "scale": 1.14,
+          "scale": 1.12,
           "focus_region": "top-right",
-          "reason": "grounded action focus",
-          "confidence": 0.9,
+          "reason": "Editorial action-focus move around the strongest grounded UI region.",
+          "confidence": 0.82,
           "focus_box": {
-            "x": 0.88,
-            "y": 0.03,
-            "width": 0.11,
-            "height": 0.04
+            "x": 0.8422,
+            "y": 0.0558,
+            "width": 0.1121,
+            "height": 0.0605
           },
-          "easing": "ease-in-out",
-          "x_offset": 0.052,
+          "easing": "ease-out",
+          "x_offset": 0.051,
           "y_offset": -0.052,
-          "smoothing": 0.16,
+          "smoothing": 0.93,
           "hold_ratio": 0.74
         },
         {
@@ -68,18 +68,18 @@
           "end": 14.64,
           "scale": 1.08,
           "focus_region": "top-right",
-          "reason": "grounded settle hold",
+          "reason": "Editorial action-focus move around the strongest grounded UI region.",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.88,
-            "y": 0.03,
-            "width": 0.11,
-            "height": 0.04
+            "x": 0.8422,
+            "y": 0.0558,
+            "width": 0.1121,
+            "height": 0.0605
           },
           "easing": "ease-in-out",
-          "x_offset": 0.036399999999999995,
-          "y_offset": -0.036399999999999995,
-          "smoothing": 0.16,
+          "x_offset": 0.051,
+          "y_offset": -0.052,
+          "smoothing": 0.91,
           "hold_ratio": 0.82
         }
       ],
@@ -90,12 +90,12 @@
           "label": "Google Login",
           "style": "soft-glow",
           "anchor_region": "top-right",
-          "confidence": 0.92,
+          "confidence": 0.84,
           "focus_box": {
-            "x": 0.88,
-            "y": 0.03,
-            "width": 0.11,
-            "height": 0.04
+            "x": 0.8422,
+            "y": 0.0558,
+            "width": 0.1121,
+            "height": 0.0605
           },
           "placement_preference": "avoid-ui-cover",
           "ui_label": "Google Login"
@@ -106,35 +106,35 @@
       "scene_number": 2,
       "title": "Continue With Google",
       "purpose": "Continue with google to move forward with the existing account",
-      "start": 26.31,
-      "end": 29.36,
-      "render_duration_seconds": 3.05,
+      "start": 26.2,
+      "end": 29.19,
+      "render_duration_seconds": 2.99,
       "confidence": 0.82,
       "camera_mode": "focus",
-      "decision_summary": "Grounded from captured click event near Continue With Google at 26.53s with event-led camera timing. Editorial layout=split-right; beats=26.35-27.34/27.92. result_anchor=27.08s",
+      "decision_summary": "Grounded from captured click event near Continue With Google at 26.42s with event-led camera timing. Editorial layout=split-right; beats=26.24-27.23/27.81. result_anchor=26.97s",
       "visual_summary": "Spotlight the real UI action around Continue With Google and keep surrounding context subdued. Editorial planning emphasized a stable result frame and reduced overlay noise.",
-      "spoken_line": "Continue with Google to sign in quickly.",
+      "spoken_line": "Continue with Google to keep sign-in quick.",
       "on_screen_text": "Continue With Google",
       "specific_target_label": "",
       "source_excerpt": "created the account, i'll log in to the existing one. after log in, you can see",
       "action_class": "auth_action",
       "scene_role": "action",
-      "action_timestamp": 26.53,
-      "result_anchor_timestamp": 27.08,
-      "readable_hold_seconds": 1.69,
-      "establish_end_timestamp": 26.73,
-      "focus_start_timestamp": 26.35,
-      "focus_end_timestamp": 27.34,
-      "settle_end_timestamp": 27.92,
+      "action_timestamp": 26.42,
+      "result_anchor_timestamp": 26.97,
+      "readable_hold_seconds": 1.74,
+      "establish_end_timestamp": 26.62,
+      "focus_start_timestamp": 26.24,
+      "focus_end_timestamp": 27.23,
+      "settle_end_timestamp": 27.81,
       "layout_mode": "split-right",
       "show_captions": true,
       "transition_style": "focus-push",
       "transition_duration_seconds": 0.28,
       "captions": [
         {
-          "start": 26.31,
-          "end": 29.37,
-          "text": "Continue with Google\nto sign in quickly.",
+          "start": 26.2,
+          "end": 29.19,
+          "text": "Continue with Google\nto keep sign-in quick.",
           "emphasis_words": [
             "Since",
             "already",
@@ -145,57 +145,57 @@
       ],
       "zooms": [
         {
-          "start": 26.35,
-          "end": 27.34,
+          "start": 26.24,
+          "end": 27.23,
           "scale": 1.14,
-          "focus_region": "top-left",
-          "reason": "grounded action focus",
-          "confidence": 0.9,
-          "focus_box": {
-            "x": 0.605,
-            "y": 0.475,
-            "width": 0.12,
-            "height": 0.1
-          },
-          "easing": "ease-in-out",
-          "x_offset": -0.037,
-          "y_offset": -0.025,
-          "smoothing": 0.16,
-          "hold_ratio": 0.74
-        },
-        {
-          "start": 27.34,
-          "end": 27.92,
-          "scale": 1.08,
-          "focus_region": "top-left",
-          "reason": "grounded settle hold",
+          "focus_region": "center",
+          "reason": "Editorial action-focus move around the strongest grounded UI region.",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.605,
-            "y": 0.475,
-            "width": 0.12,
-            "height": 0.1
+            "x": 0.4206,
+            "y": 0.4405,
+            "width": 0.1588,
+            "height": 0.1189
           },
           "easing": "ease-in-out",
-          "x_offset": -0.025899999999999996,
-          "y_offset": -0.017499999999999998,
-          "smoothing": 0.16,
-          "hold_ratio": 0.82
+          "x_offset": 0.0,
+          "y_offset": 0.0,
+          "smoothing": 0.94,
+          "hold_ratio": 0.76
+        },
+        {
+          "start": 27.23,
+          "end": 27.81,
+          "scale": 1.08,
+          "focus_region": "center",
+          "reason": "Editorial action-focus move around the strongest grounded UI region.",
+          "confidence": 0.82,
+          "focus_box": {
+            "x": 0.4206,
+            "y": 0.4405,
+            "width": 0.1588,
+            "height": 0.1189
+          },
+          "easing": "ease-out",
+          "x_offset": 0.0,
+          "y_offset": 0.0,
+          "smoothing": 0.96,
+          "hold_ratio": 0.86
         }
       ],
       "highlights": [
         {
-          "start": 26.35,
-          "end": 27.34,
+          "start": 26.24,
+          "end": 27.23,
           "label": "Continue With Google",
           "style": "soft-glow",
-          "anchor_region": "top-left",
-          "confidence": 0.92,
+          "anchor_region": "center",
+          "confidence": 0.84,
           "focus_box": {
-            "x": 0.605,
-            "y": 0.475,
-            "width": 0.12,
-            "height": 0.1
+            "x": 0.4206,
+            "y": 0.4405,
+            "width": 0.1588,
+            "height": 0.1189
           },
           "placement_preference": "avoid-ui-cover",
           "ui_label": "Continue With Google"
@@ -206,35 +206,35 @@
       "scene_number": 3,
       "title": "Select A Course",
       "purpose": "Choose the japanese course to continue into setup",
-      "start": 29.37,
-      "end": 38.29,
-      "render_duration_seconds": 8.92,
+      "start": 29.2,
+      "end": 38.03,
+      "render_duration_seconds": 8.83,
       "confidence": 0.82,
       "camera_mode": "focus",
-      "decision_summary": "Grounded from captured click event near Select A Course at 29.55s with event-led camera timing. Editorial layout=split-right; beats=29.37-30.36/30.94. result_anchor=30.10s",
+      "decision_summary": "Grounded from captured click event near Select A Course at 29.38s with event-led camera timing. Editorial layout=split-right; beats=29.20-30.19/30.77. result_anchor=29.93s",
       "visual_summary": "Spotlight the real UI action around Select A Course and keep surrounding context subdued. Editorial planning emphasized a stable result frame and reduced overlay noise.",
-      "spoken_line": "Open the Japanese course to choose your level next.",
+      "spoken_line": "From here, choose the Japanese course to continue deeper into the main product experience.",
       "on_screen_text": "Japanese",
       "specific_target_label": "Japanese",
       "source_excerpt": "created the account, i'll log in to the existing one. after log in, you can see",
       "action_class": "card_selection",
       "scene_role": "action",
-      "action_timestamp": 29.55,
-      "result_anchor_timestamp": 30.1,
-      "readable_hold_seconds": 1.69,
-      "establish_end_timestamp": 29.79,
-      "focus_start_timestamp": 29.37,
-      "focus_end_timestamp": 30.36,
-      "settle_end_timestamp": 30.94,
+      "action_timestamp": 29.38,
+      "result_anchor_timestamp": 29.93,
+      "readable_hold_seconds": 1.74,
+      "establish_end_timestamp": 29.62,
+      "focus_start_timestamp": 29.2,
+      "focus_end_timestamp": 30.19,
+      "settle_end_timestamp": 30.77,
       "layout_mode": "split-right",
       "show_captions": true,
       "transition_style": "focus-push",
       "transition_duration_seconds": 0.28,
       "captions": [
         {
-          "start": 29.37,
-          "end": 36.27,
-          "text": "Open the Japanese course\nto choose your level next.",
+          "start": 29.2,
+          "end": 38.03,
+          "text": "From here, choose the Japanese course\nto continue deeper into the main product experience.",
           "emphasis_words": [
             "Since",
             "already",
@@ -245,57 +245,57 @@
       ],
       "zooms": [
         {
-          "start": 29.37,
-          "end": 30.36,
-          "scale": 1.18,
-          "focus_region": "mid-left",
-          "reason": "grounded action focus",
-          "confidence": 0.9,
+          "start": 29.2,
+          "end": 30.19,
+          "scale": 1.03,
+          "focus_region": "center",
+          "reason": "Editorial selection-focus move around the strongest grounded UI region.",
+          "confidence": 0.82,
           "focus_box": {
-            "x": 0.505,
-            "y": 0.475,
-            "width": 0.12,
-            "height": 0.1
+            "x": 0.3942,
+            "y": 0.4269,
+            "width": 0.2117,
+            "height": 0.1462
           },
-          "easing": "ease-in-out",
-          "x_offset": -0.037,
+          "easing": "ease-out",
+          "x_offset": 0.0,
           "y_offset": 0.0,
-          "smoothing": 0.16,
+          "smoothing": 0.93,
           "hold_ratio": 0.76
         },
         {
-          "start": 30.36,
-          "end": 30.94,
-          "scale": 1.1,
-          "focus_region": "mid-left",
-          "reason": "grounded settle hold",
+          "start": 30.19,
+          "end": 30.77,
+          "scale": 1.05,
+          "focus_region": "center",
+          "reason": "Editorial selection-focus move around the strongest grounded UI region.",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.505,
-            "y": 0.475,
-            "width": 0.12,
-            "height": 0.1
+            "x": 0.3942,
+            "y": 0.4269,
+            "width": 0.2117,
+            "height": 0.1462
           },
           "easing": "ease-in-out",
-          "x_offset": -0.025899999999999996,
+          "x_offset": 0.0,
           "y_offset": 0.0,
-          "smoothing": 0.16,
+          "smoothing": 0.91,
           "hold_ratio": 0.82
         }
       ],
       "highlights": [
         {
-          "start": 29.37,
-          "end": 30.36,
+          "start": 29.2,
+          "end": 30.19,
           "label": "Japanese",
-          "style": "soft-glow",
-          "anchor_region": "mid-left",
-          "confidence": 0.92,
+          "style": "ambient-lift",
+          "anchor_region": "center",
+          "confidence": 0.84,
           "focus_box": {
-            "x": 0.505,
-            "y": 0.475,
-            "width": 0.12,
-            "height": 0.1
+            "x": 0.3942,
+            "y": 0.4269,
+            "width": 0.2117,
+            "height": 0.1462
           },
           "placement_preference": "avoid-ui-cover",
           "ui_label": "Japanese"
@@ -306,55 +306,55 @@
       "scene_number": 4,
       "title": "Choose Your Japanese Level",
       "purpose": "Choose the starting level before the lesson begins",
-      "start": 41.32,
-      "end": 45.67,
+      "start": 40.92,
+      "end": 45.27,
       "render_duration_seconds": 4.35,
       "confidence": 0.82,
       "camera_mode": "focus",
-      "decision_summary": "Grounded from captured focus event near Pick your Japanese level before you start learning. at 41.54s with event-led camera timing. Editorial layout=screen-only; beats=41.32-42.22/43.00. result_anchor=42.09s",
+      "decision_summary": "Grounded from captured focus event near Pick your Japanese level before you start learning. at 41.14s with event-led camera timing. Editorial layout=screen-only; beats=40.92-41.82/42.60. result_anchor=41.69s",
       "visual_summary": "Spotlight the real UI action around Pick your Japanese level before you start learning. and keep surrounding context subdued. Editorial planning emphasized a stable result frame and reduced overlay noise.",
-      "spoken_line": "Choose Your Japanese Level before you begin.",
+      "spoken_line": "Next, choose the Japanese level that matches the learner's starting point.",
       "on_screen_text": "Pick Your Japanese Level",
       "specific_target_label": "",
       "source_excerpt": "created the account, i'll log in to the existing one. after log in, you can see",
       "action_class": "button_click",
       "scene_role": "action",
-      "action_timestamp": 41.54,
-      "result_anchor_timestamp": 42.09,
+      "action_timestamp": 41.14,
+      "result_anchor_timestamp": 41.69,
       "readable_hold_seconds": 1.68,
-      "establish_end_timestamp": 41.32,
-      "focus_start_timestamp": 41.32,
-      "focus_end_timestamp": 42.22,
-      "settle_end_timestamp": 43.0,
+      "establish_end_timestamp": 40.92,
+      "focus_start_timestamp": 40.92,
+      "focus_end_timestamp": 41.82,
+      "settle_end_timestamp": 42.6,
       "layout_mode": "screen-only",
       "show_captions": true,
       "transition_style": "fade",
       "transition_duration_seconds": 0.24,
       "captions": [
         {
-          "start": 41.32,
-          "end": 45.67,
-          "text": "Choose Your Japanese\nLevel before you begin.",
+          "start": 40.92,
+          "end": 45.27,
+          "text": "Next, choose the Japanese level\nthat matches the learner's starting point.",
           "emphasis_words": [],
           "variant": "minimal"
         }
       ],
       "zooms": [
         {
-          "start": 41.32,
-          "end": 42.22,
+          "start": 40.92,
+          "end": 41.82,
           "scale": 1.07,
-          "focus_region": "mid-left",
+          "focus_region": "center",
           "reason": "grounded action focus",
           "confidence": 0.9,
           "focus_box": {
-            "x": 0.0,
+            "x": 0.05,
             "y": 0.665,
             "width": 0.12,
             "height": 0.1
           },
           "easing": "ease-in-out",
-          "x_offset": -0.043,
+          "x_offset": 0.0,
           "y_offset": 0.0,
           "smoothing": 0.18,
           "hold_ratio": 0.82
@@ -362,14 +362,14 @@
       ],
       "highlights": [
         {
-          "start": 41.32,
-          "end": 42.22,
+          "start": 40.92,
+          "end": 41.82,
           "label": "Pick Your Japanese Level",
           "style": "soft-glow",
           "anchor_region": "center",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.0,
+            "x": 0.05,
             "y": 0.665,
             "width": 0.12,
             "height": 0.1
@@ -381,11 +381,11 @@
     }
   ],
   "render_spec": {
-    "title_card": "Getting Started with Pronouncly: Your AI Language Learning Platform",
+    "title_card": "Getting Started with Pronouncly",
     "title_options": [
-      "Getting Started with Pronouncly: Your AI Language Learning Platform"
+      "Getting Started with Pronouncly"
     ],
     "cta": "Turn rough recordings into polished launch videos.",
-    "total_duration_seconds": 25.57
+    "total_duration_seconds": 25.42
   }
 }

@@ -144,44 +144,47 @@ def context_aware_spoken_line(
 
 def auth_spoken_line(scene: EditPlanScene, context: FlowSceneContext, label: str) -> str:
     if "continue with google" in label:
-        return "Continue with Google to move through sign-in in one step."
+        return "Continue with Google to keep sign-in fast and familiar."
     if any(token in label for token in ("google login", "login", "sign in")) and context.is_first:
-        return "Click Google Login to start the flow from the landing page."
+        return "The walkthrough opens with a direct sign-in path from the landing page."
     if "account" in label:
         return "Choose the existing account so the product opens right away."
     if context.is_first:
-        return "Start with the primary login action."
-    return "Finish sign-in and continue into the product."
+        return "This first interaction clears the way into the main product experience."
+    target = auth_target(scene)
+    return f"Use {target} to finish sign-in and move into the product."
 
 
 def selection_spoken_line(scene: EditPlanScene, context: FlowSceneContext, label: str) -> str:
     if any(token in label for token in ("japanese", "course", "workspace", "template", "plan", "project")):
         if context.next_scene is not None:
-            return f"Open {spoken_target(scene)} to move directly into setup."
-        return f"Choose {spoken_target(scene)} to enter the learning path."
+            return f"{spoken_target(scene)} becomes the entry point for the guided setup."
+        return f"{spoken_target(scene)} sets the direction for the rest of the journey."
     if context.previous_scene is not None and context.previous_scene.action_class == "auth_action":
-        return "Choose the course that carries the signup flow into onboarding."
-    return "Choose the course that opens the guided journey."
+        return "This selection carries the user from login into the onboarding flow."
+    return "This selection defines the guided path the product opens next."
 
 
 def configuration_spoken_line(scene: EditPlanScene, label: str) -> str:
     if "level" in label:
         target = spoken_configuration_target(scene)
-        return f"Select {target} that matches your starting point."
+        return f"{target.capitalize()} personalizes the experience before the lesson begins."
     if any(token in label for token in ("difficulty", "setup", "preferences")):
-        return "Set the starting options before the lesson begins."
+        return "These setup choices shape the product around the user's starting point."
     return scene_voice_line(scene)
 
 
 def diversify_neighbor_line(scene: EditPlanScene, context: FlowSceneContext, label: str) -> str:
     if context.family == AUTH_FAMILY and "continue with google" in label:
-        return "Use Continue with Google to complete the login cleanly."
+        return "That Google sign-in step keeps the login flow lightweight and quick."
+    if context.family == AUTH_FAMILY and "account" in label:
+        return "Pick the existing account to complete login without repeating setup."
     if context.family == SELECTION_FAMILY:
         if any(token in label for token in ("course", "japanese", "workspace", "template", "plan", "project")):
-            return f"Open {spoken_target(scene)} to start the guided setup."
-        return "Choose the next course option to keep the journey moving."
+            return f"{spoken_target(scene)} carries the viewer into the next guided setup screen."
+        return "This next choice keeps the guided flow moving without breaking momentum."
     if context.family == CONFIG_FAMILY:
-        return "Choose the option that fits the starting setup."
+        return "This final setup choice makes the first session feel tailored from the start."
     return scene_voice_line(scene)
 
 
@@ -191,6 +194,14 @@ def spoken_target(scene: EditPlanScene) -> str:
         canonical_label=scene.title or scene.on_screen_text,
         transcript_excerpt=scene.source_excerpt,
     )
+
+
+def auth_target(scene: EditPlanScene) -> str:
+    source = (scene.on_screen_text or scene.title or "the sign-in option").strip().rstrip(".")
+    lowered = source.lower()
+    if lowered.startswith("continue with "):
+        return source[14:].strip()
+    return source
 
 
 def normalize_compare(text: str) -> str:

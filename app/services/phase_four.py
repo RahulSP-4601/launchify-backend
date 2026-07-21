@@ -16,8 +16,10 @@ from app.models.projects import (
 from app.services.benchmarking import build_benchmark_report
 from app.services.override_manager import apply_manual_overrides
 from app.services.preview_delivery import preview_delivery_diagnostics
+from app.services.quality_assessor import build_quality_report
 from app.services.refinement_loop import refine_edit_plan
 from app.services.voiceover import build_voiceover, refresh_voiceover_asset
+from app.services.voiceover_script_polish import polish_voiceover_script
 from app.services.voiceover_timeline import reconcile_edit_plan_to_voiceover
 from app.services.walkthrough_guardrails import recording_duration_seconds
 
@@ -31,7 +33,7 @@ def apply_phase_four_defaults(
 ) -> tuple[EditPlanRecord, QualityReportRecord, BenchmarkReportRecord, VoiceoverRecord, TemplateConfigRecord, ManualOverrideRecord]:
     template_config = project.template_config or TemplateConfigRecord()
     manual_overrides = project.manual_overrides or ManualOverrideRecord()
-    refined_edit_plan, quality_report = refined_plan_and_report(project, edit_plan, manual_overrides)
+    refined_edit_plan, quality_report = polished_plan_and_report(project, edit_plan, manual_overrides)
     default_voiceover_mode: VoiceoverMode = "voiceover"
     voiceover = voiceover_for_project(user_id, project, refined_edit_plan, default_voiceover_mode)
     reconciled_edit_plan, reconciled_voiceover = reconcile_edit_plan_to_voiceover(refined_edit_plan, voiceover)
@@ -70,7 +72,7 @@ def apply_phase_four_update(
             "manual_overrides": manual_overrides,
         }
     )
-    refined_edit_plan, quality_report = refined_plan_and_report(updated_project, edit_plan, manual_overrides)
+    refined_edit_plan, quality_report = polished_plan_and_report(updated_project, edit_plan, manual_overrides)
     voiceover = voiceover_for_project(user_id, updated_project, refined_edit_plan, voiceover_mode)
     reconciled_edit_plan, reconciled_voiceover = reconcile_edit_plan_to_voiceover(refined_edit_plan, voiceover)
     reconciled_voiceover = finalized_voiceover(user_id, updated_project.id, reconciled_voiceover)
@@ -116,3 +118,15 @@ def refined_plan_and_report(
 ) -> tuple[EditPlanRecord, QualityReportRecord]:
     overridden_plan = apply_manual_overrides(edit_plan, manual_overrides)
     return refine_edit_plan(project, overridden_plan)
+
+
+def polished_plan_and_report(
+    project: ProjectRecord,
+    edit_plan: EditPlanRecord,
+    manual_overrides: ManualOverrideRecord,
+) -> tuple[EditPlanRecord, QualityReportRecord]:
+    refined_plan, quality_report = refined_plan_and_report(project, edit_plan, manual_overrides)
+    polished_plan = polish_voiceover_script(project, refined_plan)
+    if polished_plan == refined_plan:
+        return polished_plan, quality_report
+    return polished_plan, build_quality_report(project, polished_plan)

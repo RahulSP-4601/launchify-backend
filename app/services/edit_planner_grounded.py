@@ -17,8 +17,9 @@ from app.models.projects import (
 from app.services.action_classifier import classify_action, event_action_class
 from app.services.caption_designer import build_caption_track
 from app.services.event_grounding import focus_box_for_event, normalize_event_timestamp, primary_event_for_window, region_for_box
+from app.services.grounded_motion_support import apply_grounded_focus, focus_box_area, grounded_event_focus_box
 from app.services.inferred_recording_support import normalize_label
-from app.services.motion_director import build_motion_track, offset_for_box
+from app.services.motion_director import build_motion_track
 from app.services.scene_roles import scene_role_from_action_class
 from app.services.selection_disambiguation import valid_specific_selection_candidate
 from app.services.visual_policy import ScenePolicy, build_scene_policy
@@ -94,6 +95,7 @@ def grounded_motion_assets(
     action_class = grounded_action_class(step, primary_event)
     scene_role = scene_role_from_action_class(action_class)
     policy = build_scene_policy(synthetic_scene, transcript_slice, visual_analysis, scene_role=scene_role, action_class=action_class)
+    policy = grounded_policy(policy, project, step, primary_event, scene_role)
     captions = build_caption_track(
         transcript_slice or [TranscriptSegment(start=start, end=end, text=step.narration)],
         start,
@@ -102,6 +104,53 @@ def grounded_motion_assets(
     )
     zooms, highlights = build_motion_track(synthetic_scene, start, end, policy, project.template_config)
     return policy, captions, *apply_grounded_focus(project, step, primary_event, zooms, highlights)
+
+
+def grounded_policy(
+    policy: ScenePolicy,
+    project: ProjectRecord,
+    step: GuideStepRecord,
+    primary_event: SessionEventRecord | None,
+    scene_role: str,
+) -> ScenePolicy:
+    event_focus_box = grounded_event_focus_box(project, primary_event)
+    if event_focus_box is None:
+        return policy
+    preferred_box = grounded_focus_anchor(policy, event_focus_box)
+    focus_region = region_for_box(preferred_box)
+    target_label = step.highlight_label or step.focus_label or step.on_screen_text or policy.target_label
+    return ScenePolicy(
+        scene_confidence=max(policy.scene_confidence, 0.82),
+        zoom_confidence=max(policy.zoom_confidence, 0.82),
+        highlight_confidence=max(policy.highlight_confidence, 0.84),
+        focus_region=focus_region,
+        anchor_region=focus_region,
+        highlight_style=policy.highlight_style,
+        camera_mode="focus",
+        decision_summary=policy.decision_summary,
+        should_zoom=True,
+        should_highlight=scene_role == "action",
+        focus_box=preferred_box,
+        cursor_box=policy.cursor_box,
+        click_target_box=preferred_box,
+        anchor_box=preferred_box,
+        target_label=target_label,
+        visual_summary=policy.visual_summary,
+        scene_role=policy.scene_role,
+        action_class=policy.action_class,
+    )
+
+
+def grounded_focus_anchor(policy: ScenePolicy, event_focus_box: FocusBox) -> FocusBox:
+    candidates = [
+        box
+        for box in (policy.click_target_box, policy.anchor_box, policy.focus_box, event_focus_box)
+        if box is not None
+    ]
+    if not candidates:
+        return event_focus_box
+    compact = min(candidates, key=focus_box_area)
+    return compact if focus_box_area(compact) <= focus_box_area(event_focus_box) else event_focus_box
 
 
 def build_grounded_overview(project: ProjectRecord, guide: GuideRecord) -> str:
@@ -233,180 +282,3 @@ def token_root(token: str) -> str:
         if cleaned.endswith(suffix) and len(cleaned) - len(suffix) >= 4:
             return cleaned[: -len(suffix)]
     return cleaned[:5]
-
-
-def apply_grounded_focus(
-    project: ProjectRecord,
-    step: GuideStepRecord,
-    primary_event: SessionEventRecord | None,
-    zooms: list[EditPlanZoom],
-    highlights: list[EditPlanHighlight],
-) -> tuple[list[EditPlanZoom], list[EditPlanHighlight]]:
-    event_focus_box = focus_box_for_event(project.recording_session, primary_event)
-    if event_focus_box is None:
-        return zooms, highlights
-    focus_region = region_for_box(event_focus_box)
-    return (
-        grounded_zoom_track(step, primary_event, event_focus_box, focus_region, zooms),
-        grounded_highlight_track(step, primary_event, event_focus_box, focus_region, highlights),
-    )
-
-
-def grounded_zoom_track(
-    step: GuideStepRecord,
-    primary_event: SessionEventRecord | None,
-    event_focus_box: FocusBox,
-    focus_region: str,
-    zooms: list[EditPlanZoom],
-) -> list[EditPlanZoom]:
-    hydrated = [hydrate_grounded_zoom(zoom, event_focus_box, focus_region) for zoom in zooms]
-    if primary_event is not None:
-        return segmented_grounded_zooms(step, primary_event, event_focus_box, focus_region)
-    return hydrated or [seed_grounded_zoom(step, event_focus_box, focus_region)]
-
-
-def grounded_highlight_track(
-    step: GuideStepRecord,
-    primary_event: SessionEventRecord | None,
-    event_focus_box: FocusBox,
-    focus_region: str,
-    highlights: list[EditPlanHighlight],
-) -> list[EditPlanHighlight]:
-    hydrated = [hydrate_grounded_highlight(highlight, step, event_focus_box, focus_region) for highlight in highlights]
-    if primary_event is not None:
-        return [segmented_grounded_highlight(step, primary_event, event_focus_box, focus_region)]
-    return hydrated or [seed_grounded_highlight(step, event_focus_box, focus_region)]
-
-
-def segmented_grounded_zooms(
-    step: GuideStepRecord,
-    primary_event: SessionEventRecord | None,
-    event_focus_box: FocusBox,
-    focus_region: str,
-) -> list[EditPlanZoom]:
-    focus_start, focus_peak_end, settle_end = grounded_focus_windows(step, primary_event)
-    lead_end = max(min(focus_start, step.end), min(step.start + 0.34, focus_start))
-    zooms: list[EditPlanZoom] = []
-    if lead_end - step.start >= 0.35:
-        zooms.append(build_zoom_segment(step.start, lead_end, 1.04, "grounded lead-in", 0.74, event_focus_box, focus_region, 0.35, 0.3, 0.08))
-    zooms.append(build_zoom_segment(focus_start, focus_peak_end, 1.24, "grounded action focus", 0.9, event_focus_box, focus_region, 1.0, 0.72, 0.12))
-    if settle_end - focus_peak_end >= 0.35:
-        zooms.append(build_zoom_segment(focus_peak_end, settle_end, 1.12, "grounded settle hold", 0.82, event_focus_box, focus_region, 0.7, 0.58, 0.14))
-    return zooms
-
-
-def build_zoom_segment(
-    start: float,
-    end: float,
-    scale: float,
-    reason: str,
-    confidence: float,
-    focus_box: FocusBox,
-    focus_region: str,
-    offset_multiplier: float,
-    hold_ratio: float,
-    smoothing: float,
-) -> EditPlanZoom:
-    return EditPlanZoom(
-        start=round(start, 2),
-        end=round(end, 2),
-        scale=scale,
-        focus_region=focus_region,
-        reason=reason,
-        confidence=confidence,
-        focus_box=focus_box,
-        x_offset=offset_for_box(focus_box, focus_region, axis="x") * offset_multiplier,
-        y_offset=offset_for_box(focus_box, focus_region, axis="y") * offset_multiplier,
-        hold_ratio=hold_ratio,
-        smoothing=smoothing,
-    )
-
-
-def segmented_grounded_highlight(
-    step: GuideStepRecord,
-    primary_event: SessionEventRecord | None,
-    event_focus_box: FocusBox,
-    focus_region: str,
-) -> EditPlanHighlight:
-    event_time = normalize_event_timestamp(primary_event.timestamp) if primary_event is not None else step.start
-    focus_start = max(step.start, event_time - 0.14)
-    focus_peak_end = min(step.end, focus_start + 1.35)
-    if focus_peak_end - focus_start < 0.8:
-        focus_peak_end = min(step.end, focus_start + 0.8)
-    label = step.specific_target_label or step.highlight_label or step.focus_label or step.title
-    return EditPlanHighlight(
-        start=round(focus_start, 2),
-        end=round(focus_peak_end, 2),
-        label=label,
-        style="spotlight",
-        anchor_region=focus_region,
-        confidence=0.92,
-        focus_box=event_focus_box,
-        ui_label=label,
-    )
-
-
-def grounded_focus_windows(step: GuideStepRecord, primary_event: SessionEventRecord | None) -> tuple[float, float, float]:
-    event_time = normalize_event_timestamp(primary_event.timestamp) if primary_event is not None else step.start
-    focus_start, focus_peak_end, settle_end = action_result_window(step.start, step.end, event_time, step.narration)
-    if focus_peak_end - focus_start < 0.7:
-        focus_peak_end = min(step.end, focus_start + 0.7)
-    return focus_start, focus_peak_end, settle_end
-
-
-def hydrate_grounded_zoom(zoom: EditPlanZoom, event_focus_box: FocusBox, focus_region: str) -> EditPlanZoom:
-    resolved_focus_box = zoom.focus_box or event_focus_box
-    return zoom.model_copy(update={
-        "focus_box": resolved_focus_box,
-        "focus_region": focus_region if zoom.focus_region == "center" else zoom.focus_region,
-        "confidence": max(zoom.confidence, 0.82),
-        "scale": max(zoom.scale, 1.2),
-        "x_offset": offset_for_box(resolved_focus_box, focus_region, axis="x"),
-        "y_offset": offset_for_box(resolved_focus_box, focus_region, axis="y"),
-    })
-
-
-def hydrate_grounded_highlight(
-    highlight: EditPlanHighlight,
-    step: GuideStepRecord,
-    event_focus_box: FocusBox,
-    focus_region: str,
-) -> EditPlanHighlight:
-    label = step.specific_target_label or step.highlight_label or step.focus_label or highlight.label
-    return highlight.model_copy(update={
-        "focus_box": highlight.focus_box or event_focus_box,
-        "anchor_region": focus_region if highlight.anchor_region == "center" else highlight.anchor_region,
-        "confidence": max(highlight.confidence, 0.84),
-        "ui_label": label,
-        "label": label,
-    })
-
-
-def seed_grounded_zoom(step: GuideStepRecord, event_focus_box: FocusBox, focus_region: str) -> EditPlanZoom:
-    return EditPlanZoom(
-        start=step.start,
-        end=step.end,
-        scale=1.22,
-        focus_region=focus_region,
-        reason="grounded session focus",
-        confidence=0.86,
-        focus_box=event_focus_box,
-        x_offset=offset_for_box(event_focus_box, focus_region, axis="x"),
-        y_offset=offset_for_box(event_focus_box, focus_region, axis="y"),
-        hold_ratio=0.68,
-        smoothing=0.14,
-    )
-
-
-def seed_grounded_highlight(step: GuideStepRecord, event_focus_box: FocusBox, focus_region: str) -> EditPlanHighlight:
-    label = step.specific_target_label or step.highlight_label or step.focus_label or step.title
-    return EditPlanHighlight(
-        start=step.start,
-        end=step.end,
-        label=label,
-        style="spotlight",
-        anchor_region=focus_region,
-        confidence=0.88,
-        focus_box=event_focus_box,
-        ui_label=label,
-    )

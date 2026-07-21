@@ -90,12 +90,12 @@ function focusMatteRects(
 
 function matteOpacity(fastPreview: boolean, sceneRole: "action" | "result" | "explanation") {
   if (sceneRole === "explanation") {
-    return fastPreview ? 0.16 : 0.2;
+    return fastPreview ? 0.08 : 0.1;
   }
   if (sceneRole === "result") {
-    return fastPreview ? 0.2 : 0.26;
+    return fastPreview ? 0.1 : 0.14;
   }
-  return fastPreview ? 0.24 : 0.32;
+  return fastPreview ? 0.12 : 0.16;
 }
 
 function focusHaloStyle(
@@ -106,12 +106,12 @@ function focusHaloStyle(
 ): React.CSSProperties {
   const { left, top, boxWidth, boxHeight } = focusMetrics(focusBox, viewport);
   const accent = sceneRole === "result" ? "245, 158, 11" : "34, 211, 238";
-  const shadow = fastPreview ? 18 : 26;
+  const shadow = fastPreview ? 14 : 18;
   return {
-    background: `radial-gradient(circle at center, rgba(${accent}, 0.12), rgba(${accent}, 0.02) 58%, transparent 74%)`,
-    border: `1px solid rgba(${accent}, ${sceneRole === "action" ? 0.14 : 0.08})`,
+    background: `radial-gradient(circle at center, rgba(${accent}, 0.08), rgba(${accent}, 0.01) 62%, transparent 78%)`,
+    border: `1px solid rgba(${accent}, ${sceneRole === "action" ? 0.1 : 0.06})`,
     borderRadius: 30,
-    boxShadow: `0 0 ${shadow}px rgba(${accent}, ${sceneRole === "action" ? 0.22 : 0.12})`,
+    boxShadow: `0 0 ${shadow}px rgba(${accent}, ${sceneRole === "action" ? 0.14 : 0.08})`,
     height: boxHeight,
     left,
     pointerEvents: "none",

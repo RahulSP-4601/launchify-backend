@@ -49,10 +49,10 @@ class Settings(BaseSettings):
     fast_pipeline_enabled: bool = True
     preview_proxy_width: int = 1280
     preview_proxy_height: int = 720
-    preview_proxy_fps: int = 12
+    preview_proxy_fps: int = 30
     final_render_width: int = 1280
     final_render_height: int = 720
-    final_render_fps: int = 24
+    final_render_fps: int = 30
     final_render_scale: float = 0.85
     render_concurrency: int = 1
     render_offthread_video_threads: int = 1

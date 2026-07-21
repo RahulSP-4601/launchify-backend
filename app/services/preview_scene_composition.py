@@ -6,9 +6,9 @@ from textwrap import wrap
 
 from app.models.projects import EditPlanScene
 
-COMPOSITION_BG = "0x051015"
-PANEL_BG = "0x0C171D"
-PANEL_BORDER = "0x31444F"
+COMPOSITION_BG = "0x08131E"
+PANEL_BG = "0x102232"
+PANEL_BORDER = "0x5A7E96"
 ACCENT = "0xFFD27A"
 TEXT_PRIMARY = "white"
 TEXT_SECONDARY = "0xB8C6CF"
@@ -40,33 +40,31 @@ class LayoutMetrics:
 
 
 def build_scene_composition(scene: EditPlanScene, stage: str) -> PreviewSceneComposition:
+    layout_mode = resolved_layout_mode(scene, stage)
     if scene.layout_mode != "auto":
         return PreviewSceneComposition(
             scene.layout_mode,
-            composed_headline(scene),
-            composed_supporting_copy(scene),
-            () if scene.layout_mode in {"screen-only", "dashboard-wide"} else composed_step_badges(scene),
-            scene.show_captions and should_show_captions(scene.layout_mode, stage),
+            "",
+            "",
+            (),
+            False,
         )
-    headline = composed_headline(scene)
-    support = composed_supporting_copy(scene)
-    badges = composed_step_badges(scene)
+    return PreviewSceneComposition(layout_mode, "", "", (), False)
+
+
+def resolved_layout_mode(scene: EditPlanScene, stage: str) -> str:
     if "account" in scene.on_screen_text.lower() or "account" in scene.source_excerpt.lower():
-        return PreviewSceneComposition("screen-only", headline, support, badges, should_show_captions("screen-only", stage))
+        return "screen-only"
     if scene.scene_role == "result":
-        return PreviewSceneComposition("dashboard-wide", headline, support, badges, should_show_captions("dashboard-wide", stage))
+        return "dashboard-wide"
     if stage == "establish":
-        return PreviewSceneComposition("feature-center", headline, support, badges, should_show_captions("feature-center", stage))
+        return "feature-center"
     if scene.action_class in {"auth_action", "card_selection"}:
-        return PreviewSceneComposition("split-right", headline, support, badges, should_show_captions("split-right", stage))
-    return PreviewSceneComposition("feature-center", headline, support, badges, should_show_captions("feature-center", stage))
+        return "split-right"
+    return "feature-center"
 
 
 def should_show_captions(layout_mode: str, stage: str) -> bool:
-    if layout_mode == "screen-only":
-        return True
-    if layout_mode == "feature-center":
-        return stage != "establish"
     return False
 
 
@@ -147,8 +145,6 @@ def split_layout_filters(
         centered_panel_pad_filter(screen_x, screen_y, screen_w, screen_h, target_width, target_height),
         panel_filter(screen_x, screen_y, screen_w, screen_h),
     ]
-    filters.extend(text_filters(composition, metrics, scene_number, working_dir, target_width, target_height))
-    filters.extend(badge_filters(composition.step_badges, metrics, target_width, target_height))
     return filters
 
 
@@ -166,8 +162,6 @@ def centered_layout_filters(
         centered_panel_pad_filter(screen_x, screen_y, screen_w, screen_h, target_width, target_height),
         panel_filter(screen_x, screen_y, screen_w, screen_h),
     ]
-    filters.extend(text_filters(composition, metrics, scene_number, working_dir, target_width, target_height))
-    filters.extend(badge_filters(composition.step_badges, metrics, target_width, target_height))
     return filters
 
 
@@ -183,7 +177,6 @@ def screen_only_filters(
         centered_panel_pad_filter(screen_x, screen_y, screen_w, screen_h, target_width, target_height),
         panel_filter(screen_x, screen_y, screen_w, screen_h),
     ]
-    filters.extend(badge_filters(composition.step_badges, metrics, target_width, target_height))
     return filters
 
 
@@ -201,7 +194,6 @@ def dashboard_layout_filters(
         centered_panel_pad_filter(screen_x, screen_y, screen_w, screen_h, target_width, target_height),
         panel_filter(screen_x, screen_y, screen_w, screen_h),
     ]
-    filters.extend(text_filters(composition, metrics, scene_number, working_dir, target_width, target_height))
     return filters
 
 
@@ -227,17 +219,17 @@ def centered_panel_pad_filter(
 
 
 def panel_filter(screen_x: int, screen_y: int, screen_w: int, screen_h: int) -> str:
-    outer_x = max(screen_x - 18, 0)
-    outer_y = max(screen_y - 18, 0)
-    outer_w = min(screen_w + 36, 4096)
-    outer_h = min(screen_h + 36, 4096)
+    outer_x = max(screen_x - 20, 0)
+    outer_y = max(screen_y - 20, 0)
+    outer_w = min(screen_w + 40, 4096)
+    outer_h = min(screen_h + 40, 4096)
     return (
         "drawbox="
         f"x={outer_x}:y={outer_y}:w={outer_w}:h={outer_h}:"
-        f"color={PANEL_BG}@0.9:t=fill,"
+        f"color={PANEL_BG}@0.56:t=fill,"
         "drawbox="
         f"x={outer_x}:y={outer_y}:w={outer_w}:h={outer_h}:"
-        f"color={PANEL_BORDER}@0.38:t=2"
+        f"color={PANEL_BORDER}@0.52:t=2"
     )
 
 
@@ -340,9 +332,9 @@ def escaped_text(text: str) -> str:
 def layout_metrics(layout_mode: str, quality: str) -> LayoutMetrics:
     premium = quality == "final"
     if layout_mode == "split-right":
-        return LayoutMetrics(0.42, 0.52, 0.54, 0.21, 0.09, 0.18, 0.54, 20, 58, 62 if premium else 44, 28 if premium else 20, True)
+        return LayoutMetrics(0.72, 0.78, 0.16, 0.11, 0.0, 0.0, 0.0, 0, 0, 0, 0, False)
     if layout_mode == "screen-only":
-        return LayoutMetrics(0.86, 0.78, 0.0, 0.08, 0.0, 0.0, 0.0, 0, 0, 0, 0, False)
+        return LayoutMetrics(0.9, 0.82, 0.0, 0.08, 0.0, 0.0, 0.0, 0, 0, 0, 0, False)
     if layout_mode == "dashboard-wide":
-        return LayoutMetrics(0.88, 0.56, 0.0, 0.24, 0.09, 0.08, 0.16, 30, 72, 56 if premium else 40, 26 if premium else 19, False)
-    return LayoutMetrics(0.78, 0.62, 0.0, 0.18, 0.09, 0.08, 0.16, 28, 76, 58 if premium else 42, 26 if premium else 19, False)
+        return LayoutMetrics(0.92, 0.74, 0.0, 0.14, 0.0, 0.0, 0.0, 0, 0, 0, 0, False)
+    return LayoutMetrics(0.84, 0.78, 0.0, 0.1, 0.0, 0.0, 0.0, 0, 0, 0, 0, False)
