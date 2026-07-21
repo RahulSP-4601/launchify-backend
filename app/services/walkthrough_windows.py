@@ -30,12 +30,13 @@ def step_clip_window(scene: EditPlanScene) -> tuple[float, float]:
     duration = max(scene.end - scene.start, 0.8)
     if scene.action_timestamp is None:
         return bounded_scene_window(scene.start, scene.end)
-    hold_extension = narration_density_hold(scene)
+    anchor_time = scene.result_anchor_timestamp or scene.action_timestamp
+    hold_extension = narration_density_hold(scene) + max(scene.readable_hold_seconds - 1.0, 0.0)
     clip_start = max(scene.start, scene.action_timestamp - pre_action_seconds(scene))
     clip_end = min(
         scene.end,
         max(
-            scene.action_timestamp
+            anchor_time
             + result_hold_seconds(scene.spoken_line, duration, scene.scene_role)
             + explanation_hold_seconds(scene.spoken_line, scene.action_class)
             + hold_extension,

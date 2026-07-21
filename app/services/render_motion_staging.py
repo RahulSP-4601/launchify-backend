@@ -18,6 +18,8 @@ def stage_motion_clips(clips: list[RenderClip]) -> list[RenderClip]:
 
 
 def stage_motion_clip(clip: RenderClip) -> list[RenderClip]:
+    if clip.scene.layout_mode in {"screen-only", "dashboard-wide"}:
+        return [clip]
     if clip.end - clip.start < MIN_STAGEABLE_SECONDS:
         return [clip]
     pivot_times = focus_timestamps(clip)
@@ -33,10 +35,17 @@ def stage_motion_clip(clip: RenderClip) -> list[RenderClip]:
 
 def focus_timestamps(clip: RenderClip) -> list[float]:
     scene = clip.scene
-    focus_points = [zoom.start for zoom in scene.zooms if clip.start < zoom.start < clip.end]
+    focus_points = []
+    if scene.focus_start_timestamp is not None and clip.start < scene.focus_start_timestamp < clip.end:
+        focus_points.append(scene.focus_start_timestamp)
+    if scene.focus_end_timestamp is not None and clip.start < scene.focus_end_timestamp < clip.end:
+        focus_points.append(scene.focus_end_timestamp)
+    focus_points.extend(zoom.start for zoom in scene.zooms if clip.start < zoom.start < clip.end)
     focus_points.extend(highlight.start for highlight in scene.highlights if clip.start < highlight.start < clip.end)
     if scene.action_timestamp is not None and clip.start < scene.action_timestamp < clip.end:
         focus_points.append(scene.action_timestamp)
+    if scene.result_anchor_timestamp is not None and clip.start < scene.result_anchor_timestamp < clip.end:
+        focus_points.append(scene.result_anchor_timestamp)
     return sorted(focus_points)
 
 

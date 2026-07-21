@@ -162,7 +162,7 @@ def voiceover_units(
 def unit_from_edit_scene(scene: EditPlanScene) -> VoiceoverUnit:
     start = round(scene.start, 2)
     end = round(start + max(scene.render_duration_seconds or (scene.end - scene.start), 0.8), 2)
-    text = fit_voice_line(scene_voice_line(scene), end - start)
+    text = fit_voice_line((scene.spoken_line or scene_voice_line(scene)).strip(), end - start)
     return VoiceoverUnit(scene_number=scene.scene_number, start=start, end=end, text=text)
 
 def unit_from_step(step: GuideStepRecord) -> VoiceoverUnit:

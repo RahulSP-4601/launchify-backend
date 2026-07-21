@@ -38,9 +38,10 @@ def reconcile_edit_plan_to_voiceover(
 
 def target_render_duration(scene: EditPlanScene, clip: VoiceoverClipRecord | None) -> float:
     base_duration = scene_duration_seconds(scene)
+    editorial_floor = max(base_duration, scene.readable_hold_seconds + 0.9 if scene.readable_hold_seconds > 0 else base_duration)
     if clip is None:
-        return base_duration
-    return round(max(base_duration, clip.duration_seconds + VOICEOVER_SCENE_TAIL_SECONDS, MIN_SCENE_DURATION_SECONDS), 2)
+        return round(editorial_floor, 2)
+    return round(max(editorial_floor, clip.duration_seconds + VOICEOVER_SCENE_TAIL_SECONDS, MIN_SCENE_DURATION_SECONDS), 2)
 
 
 def scene_duration_seconds(scene: EditPlanScene) -> float:

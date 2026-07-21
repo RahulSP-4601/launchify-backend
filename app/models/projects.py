@@ -226,6 +226,14 @@ class EditPlanScene(BaseModel):
     action_class: str = "generic_action"
     scene_role: SceneRole = "action"
     action_timestamp: float | None = None
+    result_anchor_timestamp: float | None = None
+    readable_hold_seconds: float = 0.0
+    establish_end_timestamp: float | None = None
+    focus_start_timestamp: float | None = None
+    focus_end_timestamp: float | None = None
+    settle_end_timestamp: float | None = None
+    layout_mode: str = "auto"
+    show_captions: bool = True
     transition_style: TransitionStyle = "fade"
     transition_duration_seconds: float = 0.32
     captions: list[EditPlanCaption] = Field(default_factory=list)

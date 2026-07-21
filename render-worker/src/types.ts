@@ -70,6 +70,14 @@ export type RenderScene = {
   on_screen_text: string;
   source_excerpt: string;
   action_timestamp: number | null;
+  result_anchor_timestamp?: number | null;
+  readable_hold_seconds?: number;
+  establish_end_timestamp?: number | null;
+  focus_start_timestamp?: number | null;
+  focus_end_timestamp?: number | null;
+  settle_end_timestamp?: number | null;
+  layout_mode?: string;
+  show_captions?: boolean;
   transition_style: "cut" | "fade" | "slide-up" | "focus-push";
   transition_duration_seconds: number;
   captions: RenderCaption[];

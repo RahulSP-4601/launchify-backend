@@ -99,8 +99,8 @@ const SceneComposition: React.FC<{ fastPreview: boolean; payload: RenderPayload;
         <GradientMask fastPreview={fastPreview} />
         <BrowserChrome payload={payload} viewport={viewport} />
       </ViewportFrame>
-      <SceneMeta payload={payload} scene={scene} fastPreview={fastPreview} />
-      {caption ? <CaptionPill payload={payload} caption={caption} /> : null}
+      {shouldRenderSceneMeta(scene) ? <SceneMeta payload={payload} scene={scene} fastPreview={fastPreview} /> : null}
+      {shouldRenderCaption(scene) && caption ? <CaptionPill payload={payload} caption={caption} /> : null}
       {spotlight ? (
         <HighlightBadge
           anchor={spotlight.anchor}
@@ -116,6 +116,14 @@ const SceneComposition: React.FC<{ fastPreview: boolean; payload: RenderPayload;
     </AbsoluteFill>
   );
 };
+
+function shouldRenderSceneMeta(scene: RenderScene) {
+  return !["screen-only", "dashboard-wide"].includes(scene.layout_mode ?? "auto");
+}
+
+function shouldRenderCaption(scene: RenderScene) {
+  return scene.show_captions !== false;
+}
 
 const ViewportFrame: React.FC<{ children: React.ReactNode; fastPreview: boolean }> = ({ children, fastPreview }) => (
   <div style={viewportFrameStyle(fastPreview)}>

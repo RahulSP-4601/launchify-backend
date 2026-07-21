@@ -40,6 +40,14 @@ class LayoutMetrics:
 
 
 def build_scene_composition(scene: EditPlanScene, stage: str) -> PreviewSceneComposition:
+    if scene.layout_mode != "auto":
+        return PreviewSceneComposition(
+            scene.layout_mode,
+            composed_headline(scene),
+            composed_supporting_copy(scene),
+            () if scene.layout_mode in {"screen-only", "dashboard-wide"} else composed_step_badges(scene),
+            scene.show_captions and should_show_captions(scene.layout_mode, stage),
+        )
     headline = composed_headline(scene)
     support = composed_supporting_copy(scene)
     badges = composed_step_badges(scene)

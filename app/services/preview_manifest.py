@@ -169,7 +169,7 @@ def build_manifest_clip(
     source_end = round(max(clip.end, clip.start + MIN_PREVIEW_CLIP_SECONDS), 2)
     trim_end = bounded_trim_end(source_start, source_end, voiceover_segment, quality)
     scene_priority = preview_priority(clip)
-    filtered_caption_events = filtered_captions(clip.scene.captions, source_start, trim_end, quality, voiceover_segment)
+    filtered_caption_events = filtered_captions(clip.scene, source_start, trim_end, quality, voiceover_segment)
     filtered_highlight_events = stage_highlights(clip.stage, clip.scene.highlights, source_start, trim_end, quality)
     filtered_zoom_events = stage_zooms(clip.stage, clip.scene.zooms, source_start, trim_end, quality)
     scene = clip.scene.model_copy(
@@ -206,12 +206,15 @@ def build_manifest_clip(
 
 
 def filtered_captions(
-    captions: list[EditPlanCaption],
+    scene: EditPlanScene,
     clip_start: float,
     clip_end: float,
     quality: str,
     voiceover_segment: PreviewVoiceoverSegment | None,
 ) -> list[EditPlanCaption]:
+    if not scene.show_captions:
+        return []
+    captions = scene.captions
     filtered = [caption for caption in captions if overlaps(caption.start, caption.end, clip_start, clip_end)]
     aligned = [align_caption(caption, clip_start, clip_end, voiceover_segment) for caption in filtered]
     if quality == "preview":

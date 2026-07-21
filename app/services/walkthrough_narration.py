@@ -9,6 +9,10 @@ LEADING_ACTION_WORDS = ("click ", "tap ", "select ", "open ", "choose ", "pick "
 
 
 def scene_voice_line(scene: EditPlanScene) -> str:
+    if scene.layout_mode == "screen-only":
+        return screen_only_line(scene)
+    if scene.layout_mode == "dashboard-wide":
+        return dashboard_wide_line(scene)
     role = scene_role_from_scene(scene)
     label = preferred_label(scene, role)
     if role == "action":
@@ -71,6 +75,17 @@ def auth_line(label: str, scene: EditPlanScene) -> str:
     if "sign up" in lowered and "google" not in lowered:
         return sentence(join_phrases(f"Use {label} to create the account", progress_phrase(scene)))
     return sentence(join_phrases(f"Use {label} to sign in", progress_phrase(scene)))
+
+
+def screen_only_line(scene: EditPlanScene) -> str:
+    combined = f"{scene.on_screen_text} {scene.source_excerpt} {scene.purpose}".lower()
+    if "choose an account" in combined:
+        return sentence("Pick the existing account to continue into the product.")
+    return sentence(compact_phrase(scene.spoken_line or scene.purpose or scene.title))
+
+
+def dashboard_wide_line(scene: EditPlanScene) -> str:
+    return sentence(compact_phrase(scene.spoken_line or scene.purpose or scene.title))
 
 
 def target_phrase(label: str) -> str:
@@ -162,6 +177,8 @@ def progress_phrase(scene: EditPlanScene) -> str:
         return "then move straight into the dashboard"
     if is_dashboard_scene(scene):
         return "so the course options are easy to scan"
+    if scene.layout_mode == "screen-only":
+        return "so the next screen is immediately clear"
     if scene.action_class == "card_selection":
         return "to enter the guided learning path"
     if is_level_scene(scene):

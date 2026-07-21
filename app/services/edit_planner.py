@@ -25,8 +25,10 @@ from app.models.projects import (
 from app.services.canonical_event_scene_builder import source_scene_number
 from app.services.action_classifier import classify_action, event_action_class
 from app.services.caption_designer import build_caption_track
+from app.services.editorial_planner import apply_editorial_direction, direct_scene
 from app.services.edit_plan_guardrails import finalized_edit_plan
 from app.services.event_grounding import focus_box_for_event, normalize_event_timestamp, primary_event_for_window, region_for_box
+from app.services.focus_tracking import smooth_focus_handoffs
 from app.services.motion_director import build_motion_track, offset_for_box
 from app.services.override_manager import apply_manual_overrides
 from app.services.scene_roles import scene_role_from_action_class
@@ -78,7 +80,9 @@ def generate_edit_plan(
     )
     synced_edit = sync_edit_plan_timing(planned_edit, visual_analyses)
     grounded_edit = apply_session_grounding(synced_edit, project.recording_session)
-    overridden_edit = apply_manual_overrides(grounded_edit, normalized_overrides(project.manual_overrides))
+    editorial_edit = apply_editorial_direction(grounded_edit, visual_analyses)
+    focus_stable_edit = smooth_focus_handoffs(editorial_edit)
+    overridden_edit = apply_manual_overrides(focus_stable_edit, normalized_overrides(project.manual_overrides))
     return finalized_edit_plan(project, overridden_edit)
 
 def generate_grounded_edit_plan(
@@ -106,19 +110,13 @@ def require_launch_script(launch_script: LaunchScriptRecord | None) -> LaunchScr
     if launch_script is None:
         raise RuntimeError("Launch script is required before generating the edit plan.")
     return launch_script
-
-
 def require_scene_plan(launch_script: LaunchScriptRecord) -> None:
     if not launch_script.scenes:
         raise RuntimeError("OpenAI returned a launch script without any scenes to plan.")
-
-
 def require_guide(guide: GuideRecord | None) -> GuideRecord:
     if guide is None or not guide.steps:
         raise RuntimeError("Grounded guide is required before generating the grounded edit plan.")
     return guide
-
-
 def build_edit_scene(
     scene: LaunchScriptScene,
     start: float,
@@ -133,7 +131,7 @@ def build_edit_scene(
     policy = build_scene_policy(scene, transcript_slice, visual_analysis, scene_role=scene_role, action_class=action_class)
     captions = build_caption_track(transcript_slice, start, end, project.template_config)
     zooms, highlights = build_motion_track(scene, start, end, policy, project.template_config)
-    return EditPlanScene(
+    planned_scene = EditPlanScene(
         scene_number=scene.scene_number,
         title=f"Scene {scene.scene_number}",
         purpose=scene.purpose,
@@ -155,6 +153,7 @@ def build_edit_scene(
         zooms=zooms,
         highlights=highlights,
     )
+    return direct_scene(planned_scene, visual_analysis)
 
 
 def scene_action_class(
@@ -200,7 +199,7 @@ def build_grounded_scene(
     event_time = normalize_event_timestamp(primary_event.timestamp) if primary_event is not None else start
     action_class = grounded_action_class(step, primary_event)
     scene_role = scene_role_from_action_class(action_class)
-    return EditPlanScene(
+    planned_scene = EditPlanScene(
         scene_number=step.step_index,
         title=step.title or f"Step {step.step_index}",
         purpose=step.instruction,
@@ -222,6 +221,7 @@ def build_grounded_scene(
         zooms=zooms,
         highlights=highlights,
     )
+    return direct_scene(planned_scene, visual_analysis)
 
 
 def grounded_primary_event(
