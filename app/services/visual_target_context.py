@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.models.projects import FrameSignalRecord, UiElementRecord, VisualSceneAnalysisRecord
+from app.services.element_tracker import best_tracked_label
 from app.services.generic_target_labeling import title_case_phrase
 from app.services.inferred_recording_support import intent_overlap_score, low_signal_label, normalize_label, state_like_label
 from app.services.scene_intent_resolver import SceneIntentResolution
@@ -34,6 +35,13 @@ def exact_visual_target_label(
 ) -> str:
     if analysis is None or not entity:
         return ""
+    tracked = best_tracked_label(
+        analysis,
+        preferred_terms={entity},
+        focus_box=analysis.click_target_box or analysis.primary_focus_box or analysis.anchor_box,
+    )
+    if tracked:
+        return tracked
     frame_pool = relevant_frames(analysis, action_timestamp)
     ranked = sorted(
         (

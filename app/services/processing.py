@@ -253,7 +253,7 @@ def generate_inferred_grounded_guide(
         under_grounded=recording_session.grounding_diagnostics.get("under_grounded", ""),
         timeline_coverage_ratio=recording_session.grounding_diagnostics.get("timeline_coverage_ratio", ""),
     )
-    refined_script = refine_launch_script_with_events(refined_script, recording_session.events)
+    refined_script = refine_launch_script_with_events(refined_script, recording_session.events, visual_analyses)
     grounded_project = require_project(job.user_id, job.project_id)
     return synthesize_grounded_guide(grounded_project, transcript), visual_analyses, refined_script
 

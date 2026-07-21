@@ -1,0 +1,38 @@
+{
+  "overall_score": 46,
+  "verdict": "Needs more extraction tuning",
+  "metrics": [
+    {
+      "name": "event_sequence",
+      "score": 0.6,
+      "detail": "actual=['Google Login', 'Log in with Google', 'Select a course', 'Pick your Japanese level before you start learning.', 'Pick your Japanese level before you start learning.'] expected=['Google Login', 'Continue With Google', 'Select A Course', 'Pick your Japanese level before you start learning.']"
+    },
+    {
+      "name": "canonical_script",
+      "score": 1.0,
+      "detail": "actual=['Google Login', 'Continue with Google', 'Select A Course', 'Pick your Japanese level before you start learning.'] expected=['Google Login', 'Continue With Google', 'Select A Course', 'Pick your Japanese level before you start learning.']"
+    },
+    {
+      "name": "canonical_facts",
+      "score": 0.07,
+      "detail": "actual=['Google Login', 'Google Login', 'Google Login', 'Select A Course', 'Select A Course', 'Continue With Google', 'Continue With Google', 'Continue With Google', 'Choose an account', 'Choose an account', 'Select A Course', 'Pick your Japanese level before you start learning.', 'Pick your Japanese level before you start learning.', 'Pick your Japanese level before you start learning.'] expected=['Google Login', 'Continue With Google', 'Select A Course', 'Pick your Japanese level before you start learning.']"
+    },
+    {
+      "name": "screen_transitions",
+      "score": 0.0,
+      "detail": "actual=['result_state', 'result_state'] expected=['account_picker', 'course_catalog', 'difficulty_picker']"
+    },
+    {
+      "name": "grounding_health",
+      "score": 0.65,
+      "detail": "coverage=0.65 under_grounded=false"
+    }
+  ],
+  "findings": [
+    "event_sequence: actual=['Google Login', 'Log in with Google', 'Select a course', 'Pick your Japanese level before you start learning.', 'Pick your Japanese level before you start learning.'] expected=['Google Login', 'Continue With Google', 'Select A Course', 'Pick your Japanese level before you start learning.']",
+    "canonical_facts: actual=['Google Login', 'Google Login', 'Google Login', 'Select A Course', 'Select A Course', 'Continue With Google', 'Continue With Google', 'Continue With Google', 'Choose an account', 'Choose an account', 'Select A Course', 'Pick your Japanese level before you start learning.', 'Pick your Japanese level before you start learning.', 'Pick your Japanese level before you start learning.'] expected=['Google Login', 'Continue With Google', 'Select A Course', 'Pick your Japanese level before you start learning.']",
+    "screen_transitions: actual=['result_state', 'result_state'] expected=['account_picker', 'course_catalog', 'difficulty_picker']",
+    "grounding_health: coverage=0.65 under_grounded=false",
+    "canonical_script_mismatch: launch_script labels diverge from canonical fact labels."
+  ]
+}

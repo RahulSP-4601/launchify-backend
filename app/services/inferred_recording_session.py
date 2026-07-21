@@ -1,8 +1,6 @@
 from __future__ import annotations
-
 import subprocess
 from pathlib import Path
-
 from app.core.config import get_settings
 from app.models.projects import (
     FocusBox,
@@ -16,6 +14,7 @@ from app.models.projects import (
     UiElementRecord,
     VisualSceneAnalysisRecord,
 )
+from app.services.canonical_fact_graph import canonical_artifacts, canonical_events_from_facts
 from app.services.inferred_recording_support import (
     InteractionWindow,
     MIN_WINDOW_SCORE,
@@ -42,6 +41,7 @@ from app.services.auth_chain_recovery import recover_auth_chain_events
 from app.services.guide_event_dedupe import synthetic_event_score
 from app.services.inferred_action_recovery import needs_action_recovery, recover_events_from_analyses
 from app.services.inferred_action_selection import SceneEventCandidate
+from app.services.inferred_canonical_reconciliation import reconcile_canonical_graph_events
 from app.services.inferred_grounding_policy import (
     MIN_CANDIDATE_SIGNAL_COUNT,
     candidate_signal_count,
@@ -61,7 +61,6 @@ from app.services.inferred_timeline_recovery import preserve_sparse_timeline
 from app.services.result_state_selection import supplement_result_state_events
 from app.services.ui_structure_insights import compact_action_target, prefers_state_event
 from app.services.visual_analysis import analysis_map
-
 DEFAULT_VIEWPORT = (1280, 720)
 MAX_EVENTS = 16
 MAX_EVENTS_PER_SCENE = 3
@@ -69,8 +68,6 @@ CANDIDATE_EVIDENCE_THRESHOLD = 0.44
 CLICK_WORDS = frozenset({"click", "tap", "press", "select", "choose", "continue", "open", "start", "launch", "login", "log in"})
 INPUT_WORDS = frozenset({"type", "enter", "write", "search", "email", "password", "name"})
 NAVIGATION_WORDS = frozenset({"page", "screen", "dashboard", "home", "next", "continue", "course"})
-
-
 def infer_recording_session(
     project: ProjectRecord,
     video_path: Path,
@@ -89,10 +86,12 @@ def infer_recording_session(
         viewport_height=viewport_height,
         page_title=project.product_name,
         grounding_diagnostics=recording_diagnostics(events, transcript, list(analyses_by_scene.values())),
+        extraction_artifacts=canonical_artifacts(launch_script, transcript, analyses_by_scene),
         events=events[:MAX_EVENTS],
         started_at="0.0",
         ended_at=f"{max((segment.end for segment in transcript), default=0.0):.2f}",
     )
+
 def build_inferred_events(
     launch_script: LaunchScriptRecord,
     transcript: list[TranscriptSegment],
@@ -100,7 +99,15 @@ def build_inferred_events(
     viewport_width: int,
     viewport_height: int,
 ) -> list[SessionEventRecord]:
+    graph_events = canonical_events_from_facts(
+        launch_script,
+        transcript,
+        analyses_by_scene,
+        viewport_width,
+        viewport_height,
+    )
     deduped = deduped_scene_candidates(launch_script, transcript, analyses_by_scene, viewport_width, viewport_height)
+    deduped = dedupe_events(sorted([*graph_events, *deduped], key=lambda item: item.timestamp))
     if needs_action_recovery(deduped, transcript):
         deduped = recovered_candidate_events(deduped, transcript, analyses_by_scene, viewport_width, viewport_height)
     deduped = select_flow_chains(deduped, launch_script.scenes, analyses_by_scene)
@@ -110,6 +117,7 @@ def build_inferred_events(
         selected = select_global_event_candidates(deduped)
     return finalize_inferred_events(
         preserve_sparse_timeline(selected, deduped, transcript),
+        graph_events,
         launch_script,
         analyses_by_scene,
         viewport_width,
@@ -119,6 +127,7 @@ def build_inferred_events(
 
 def finalize_inferred_events(
     selected: list[SessionEventRecord],
+    graph_events: list[SessionEventRecord],
     launch_script: LaunchScriptRecord,
     analyses_by_scene: dict[int, VisualSceneAnalysisRecord],
     viewport_width: int,
@@ -131,9 +140,17 @@ def finalize_inferred_events(
         viewport_width,
         viewport_height,
     )
-    supplemented = backfill_transcript_scene_events(supplemented, launch_script, analyses_by_scene, dedupe_events)
+    supplemented = backfill_transcript_scene_events(
+        supplemented,
+        launch_script,
+        analyses_by_scene,
+        viewport_width,
+        viewport_height,
+        dedupe_events,
+    )
     refined = refine_event_flow(supplemented, launch_script.scenes, analyses_by_scene)
-    return dedupe_events(recover_auth_chain_events(refined, launch_script, analyses_by_scene))
+    recovered = dedupe_events(recover_auth_chain_events(refined, launch_script, analyses_by_scene, viewport_width, viewport_height))
+    return dedupe_events(reconcile_canonical_graph_events(recovered, graph_events))
 
 
 def deduped_scene_candidates(
@@ -453,9 +470,6 @@ def intent_matching_ui_box(
     if not ranked:
         return None
     return ranked[0].box if intent_overlap_score(ranked[0].label, tokens) >= 0.2 else None
-
-
-
 def video_dimensions(video_path: Path) -> tuple[int, int]:
     settings = get_settings()
     command = [

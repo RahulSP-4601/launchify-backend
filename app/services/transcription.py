@@ -9,7 +9,7 @@ from tempfile import NamedTemporaryFile
 from typing import Callable
 from typing import Any
 from urllib import error, request
-from urllib.parse import urlsplit
+from urllib.parse import SplitResult, urlsplit
 
 from app.core.config import get_settings
 from app.models.projects import TranscriptSegment
@@ -60,15 +60,39 @@ def transcribe_media_file(
     parsed = urlsplit(endpoint)
     if not parsed.hostname:
         raise RuntimeError("Deepgram URL is missing a hostname.")
-    connection = http.client.HTTPSConnection(parsed.hostname, parsed.port, timeout=180)
+    try:
+        return streamed_transcription_request(parsed, transcription_source, transcription_type, settings.deepgram_api_key, heartbeat)
+    except OSError as exc:
+        logger.warning("Streamed Deepgram transcription failed for %s, retrying with urllib upload: %s", source_path.name, exc)
+        return buffered_transcription_request(endpoint, transcription_source, transcription_type, settings.deepgram_api_key, heartbeat)
+    except error.URLError as exc:
+        raise RuntimeError(f"Deepgram transcription failed: {exc.reason}") from exc
+    except TimeoutError as exc:
+        raise RuntimeError("Deepgram transcription request timed out.") from exc
+    finally:
+        if should_cleanup:
+            transcription_source.unlink(missing_ok=True)
+
+
+def streamed_transcription_request(
+    parsed_endpoint: SplitResult,
+    transcription_source: Path,
+    transcription_type: str,
+    api_key: str,
+    heartbeat: Heartbeat | None,
+) -> list[TranscriptSegment]:
+    hostname = parsed_endpoint.hostname
+    if not hostname:
+        raise RuntimeError("Deepgram URL is missing a hostname.")
+    connection = http.client.HTTPSConnection(hostname, parsed_endpoint.port, timeout=180)
     try:
         logger.info(
             "Submitting %s bytes to Deepgram for transcription from %s.",
             transcription_source.stat().st_size,
             transcription_source.name,
         )
-        connection.putrequest("POST", parsed.path + ("?" + parsed.query if parsed.query else ""))
-        connection.putheader("Authorization", f"Token {settings.deepgram_api_key}")
+        connection.putrequest("POST", parsed_endpoint.path + ("?" + parsed_endpoint.query if parsed_endpoint.query else ""))
+        connection.putheader("Authorization", f"Token {api_key}")
         connection.putheader("Content-Type", transcription_type)
         connection.putheader("Content-Length", str(transcription_source.stat().st_size))
         connection.endheaders()
@@ -86,14 +110,39 @@ def transcribe_media_file(
         segments = parse_segments(json.loads(payload))
         logger.info("Deepgram transcription completed with %s transcript segments.", len(segments))
         return segments
-    except error.URLError as exc:
-        raise RuntimeError(f"Deepgram transcription failed: {exc.reason}") from exc
-    except TimeoutError as exc:
-        raise RuntimeError("Deepgram transcription request timed out.") from exc
     finally:
-        if should_cleanup:
-            transcription_source.unlink(missing_ok=True)
         connection.close()
+
+
+def buffered_transcription_request(
+    endpoint: str,
+    transcription_source: Path,
+    transcription_type: str,
+    api_key: str,
+    heartbeat: Heartbeat | None,
+) -> list[TranscriptSegment]:
+    with transcription_source.open("rb") as file_pointer:
+        payload = file_pointer.read()
+    if heartbeat is not None:
+        heartbeat()
+    transcription_request = request.Request(
+        endpoint,
+        data=payload,
+        headers={
+            "Authorization": f"Token {api_key}",
+            "Content-Type": transcription_type,
+        },
+        method="POST",
+    )
+    try:
+        with request.urlopen(transcription_request, timeout=180) as response:
+            parsed_payload = json.loads(response.read().decode("utf-8"))
+    except error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(f"Deepgram transcription failed: {detail}") from exc
+    segments = parse_segments(parsed_payload)
+    logger.info("Deepgram transcription completed with %s transcript segments via urllib fallback.", len(segments))
+    return segments
 
 
 def transcription_source_file(source_path: Path, content_type: str) -> tuple[Path, str, bool]:

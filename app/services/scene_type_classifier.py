@@ -26,17 +26,19 @@ def classify_scene_type(
         return "result_state"
     combined_text = normalize_label(f"{scene.spoken_line} {scene.source_excerpt} {' '.join(labels)}")
     tokens = set(combined_text.split())
-    if has_course_state_signal(labels, tokens):
-        return "course_catalog"
     has_auth_buttons = any(
         phrase in " ".join(labels)
         for phrase in ("log in with google", "login with google", "sign up with google", "google login")
     ) or ({"google"} <= tokens and ({"log", "login"} & tokens or {"sign", "signup"} & tokens))
+    if has_auth_buttons:
+        return "auth_provider"
+    if has_course_state_signal(labels, tokens):
+        return "course_catalog"
     if ("choose account" in " ".join(labels) or {"choose", "account"} <= tokens) and not has_auth_buttons:
         return "account_picker"
-    if {"google", "login"} <= tokens or {"google", "log"} <= tokens:
-        return "auth_provider"
     if resolution.intent in {"auth", "account_existing", "account_create"}:
+        return "auth_provider"
+    if {"google", "login"} <= tokens or {"google", "log"} <= tokens:
         return "auth_provider"
     if resolution.intent == "course":
         return "course_catalog"

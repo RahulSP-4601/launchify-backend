@@ -1,0 +1,19 @@
+{
+  "expected_events": [
+    "Google Login",
+    "Continue With Google",
+    "Select A Course",
+    "Pick your Japanese level before you start learning."
+  ],
+  "expected_canonical_script": [
+    "Google Login",
+    "Continue With Google",
+    "Select A Course",
+    "Pick your Japanese level before you start learning."
+  ],
+  "expected_screen_after": [
+    "account_picker",
+    "course_catalog",
+    "difficulty_picker"
+  ]
+}

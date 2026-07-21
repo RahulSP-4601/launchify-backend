@@ -2,8 +2,8 @@
   "video_path": "/Users/rahulpanchal/Desktop/pronouncly-walkthrough.mov",
   "content_type": "video/quicktime",
   "transcript_segments": 2,
-  "transcript_duration_seconds": 46.02,
-  "script_scene_count": 6,
+  "transcript_duration_seconds": 45.54,
+  "script_scene_count": 4,
   "scene_ranges": [
     [
       10.43,
@@ -15,33 +15,33 @@
     ],
     [
       18.38,
-      23.55
+      23.49
     ],
     [
-      26.33,
-      29.75
+      26.22,
+      29.58
     ],
     [
-      37.46,
-      41.74
+      37.14,
+      41.34
     ],
     [
-      41.74,
-      46.02
+      41.34,
+      45.54
     ]
   ],
   "visual_analysis_count": 6,
-  "recording_event_count": 5,
+  "recording_event_count": 4,
   "grounding_diagnostics": {
-    "source_duration_seconds": "46.02",
-    "inferred_event_count": "5",
-    "meaningful_event_count": "5",
-    "average_event_score": "0.81",
-    "timeline_coverage_ratio": "0.65",
+    "source_duration_seconds": "45.54",
+    "inferred_event_count": "4",
+    "meaningful_event_count": "4",
+    "average_event_score": "0.89",
+    "timeline_coverage_ratio": "0.67",
     "weak_label_ratio": "0.00",
     "low_confidence_ratio": "0.00",
-    "auth_state_ratio": "0.40",
-    "repeated_transcript_ratio": "0.20",
+    "auth_state_ratio": "0.50",
+    "repeated_transcript_ratio": "1.00",
     "visual_scene_count": "6",
     "fallback_scene_count": "0",
     "transcript_fallback_event_count": "0",

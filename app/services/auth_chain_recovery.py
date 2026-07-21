@@ -11,16 +11,27 @@ def recover_auth_chain_events(
     events: list[SessionEventRecord],
     launch_script: LaunchScriptRecord,
     analyses_by_scene: dict[int, VisualSceneAnalysisRecord],
+    viewport_width: int,
+    viewport_height: int,
 ) -> list[SessionEventRecord]:
     auth_scenes = [scene for scene in launch_script.scenes if is_auth_scene(scene)]
     if len(auth_scenes) < 2:
         return events
     recovered = events[:]
     covered = {int(event.metadata.get("scene_number", "0") or 0) for event in events}
+    dominant_branch = auth_scene_branch(auth_scenes)
     for scene in auth_scenes:
         if scene.scene_number in covered:
             continue
-        fallback = transcript_scene_event(scene, analyses_by_scene.get(scene.scene_number), auth_fallback_time(scene, auth_scenes, recovered, analyses_by_scene))
+        if branch_conflicts(auth_scene_intent(scene), dominant_branch):
+            continue
+        fallback = transcript_scene_event(
+            scene,
+            analyses_by_scene.get(scene.scene_number),
+            auth_fallback_time(scene, auth_scenes, recovered, analyses_by_scene),
+            viewport_width,
+            viewport_height,
+        )
         if fallback is None:
             continue
         recovered.append(fallback)
@@ -29,7 +40,30 @@ def recover_auth_chain_events(
 
 
 def is_auth_scene(scene: LaunchScriptScene) -> bool:
-    return resolve_scene_intent(scene.source_excerpt, scene.spoken_line).intent in AUTH_INTENTS
+    return auth_scene_intent(scene) != "generic" or resolve_scene_intent(scene.source_excerpt, scene.spoken_line).intent in AUTH_INTENTS
+
+
+def auth_scene_branch(auth_scenes: list[LaunchScriptScene]) -> str:
+    intents = [auth_scene_intent(scene) for scene in auth_scenes if auth_scene_intent(scene) != "generic"]
+    return intents[-1] if intents else "generic"
+
+
+def auth_scene_intent(scene: LaunchScriptScene) -> str:
+    scene_text = f"{scene.on_screen_text} {scene.source_excerpt} {scene.spoken_line}".lower()
+    if any(token in scene_text for token in ("sign up", "signup", "create account")):
+        return "create"
+    if any(token in scene_text for token in ("log in", "login", "existing", "choose an account")):
+        return "existing"
+    intent = resolve_scene_intent(scene.source_excerpt, scene.spoken_line).intent
+    if intent == "account_existing":
+        return "existing"
+    if intent == "account_create":
+        return "create"
+    return "generic"
+
+
+def branch_conflicts(branch: str, dominant_branch: str) -> bool:
+    return branch != "generic" and dominant_branch != "generic" and branch != dominant_branch
 
 
 def auth_fallback_time(

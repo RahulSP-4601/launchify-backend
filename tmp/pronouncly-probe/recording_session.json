@@ -1,32 +1,509 @@
 {
   "source": "manual_upload_inferred",
   "started_at": "0.0",
-  "ended_at": "46.02",
+  "ended_at": "45.54",
   "viewport_width": 2850,
   "viewport_height": 1552,
   "page_title": "Pronouncly",
   "page_url": "",
   "grounding_diagnostics": {
-    "source_duration_seconds": "46.02",
-    "inferred_event_count": "5",
-    "meaningful_event_count": "5",
-    "average_event_score": "0.81",
-    "timeline_coverage_ratio": "0.65",
+    "source_duration_seconds": "45.54",
+    "inferred_event_count": "4",
+    "meaningful_event_count": "4",
+    "average_event_score": "0.89",
+    "timeline_coverage_ratio": "0.67",
     "weak_label_ratio": "0.00",
     "low_confidence_ratio": "0.00",
-    "auth_state_ratio": "0.40",
-    "repeated_transcript_ratio": "0.20",
+    "auth_state_ratio": "0.50",
+    "repeated_transcript_ratio": "1.00",
     "visual_scene_count": "6",
     "fallback_scene_count": "0",
     "transcript_fallback_event_count": "0",
     "under_grounded": "false"
   },
+  "extraction_artifacts": {
+    "evidence_timeline": [
+      {
+        "timestamp": 10.82,
+        "scene_number": 1,
+        "source": "transcript",
+        "signal_type": "transcript_action",
+        "score": 0.7,
+        "label": "Hey. So we are launching Pronouncely. It's an AI powered land language l",
+        "focus_box": null,
+        "details": {
+          "excerpt": "Hey. So we are launching Pronouncely. It's an AI powered land language learning platform. So to get started, first, you need to go on the Google login button that's on the top righ",
+          "transcript_index": "1"
+        }
+      },
+      {
+        "timestamp": 12.21,
+        "scene_number": 1,
+        "source": "visual",
+        "signal_type": "scene_presence",
+        "score": 0.64,
+        "label": "PRONOUNCLY",
+        "focus_box": {
+          "x": 0.87,
+          "y": 0.03,
+          "width": 0.11,
+          "height": 0.04
+        },
+        "details": {}
+      },
+      {
+        "timestamp": 12.21,
+        "scene_number": 1,
+        "source": "visual",
+        "signal_type": "transition",
+        "score": 0.7,
+        "label": "Google Login",
+        "focus_box": {
+          "x": 0.87,
+          "y": 0.03,
+          "width": 0.11,
+          "height": 0.04
+        },
+        "details": {}
+      },
+      {
+        "timestamp": 12.21,
+        "scene_number": 1,
+        "source": "visual",
+        "signal_type": "click",
+        "score": 0.82,
+        "label": "Google Login",
+        "focus_box": {
+          "x": 0.87,
+          "y": 0.03,
+          "width": 0.11,
+          "height": 0.04
+        },
+        "details": {}
+      },
+      {
+        "timestamp": 13.8,
+        "scene_number": 1,
+        "source": "visual",
+        "signal_type": "transition",
+        "score": 0.452,
+        "label": "Google Login",
+        "focus_box": {
+          "x": 0.87,
+          "y": 0.03,
+          "width": 0.11,
+          "height": 0.04
+        },
+        "details": {}
+      },
+      {
+        "timestamp": 13.8,
+        "scene_number": 1,
+        "source": "visual",
+        "signal_type": "click",
+        "score": 0.77,
+        "label": "Google Login",
+        "focus_box": {
+          "x": 0.87,
+          "y": 0.03,
+          "width": 0.11,
+          "height": 0.04
+        },
+        "details": {}
+      },
+      {
+        "timestamp": 16.19,
+        "scene_number": 2,
+        "source": "visual",
+        "signal_type": "scene_presence",
+        "score": 0.6,
+        "label": "Language learning that finally feels like a premium speaking coach.",
+        "focus_box": {
+          "x": 0.68,
+          "y": 0.45,
+          "width": 0.28,
+          "height": 0.3
+        },
+        "details": {}
+      },
+      {
+        "timestamp": 18.18,
+        "scene_number": 2,
+        "source": "visual",
+        "signal_type": "transition",
+        "score": 0.7,
+        "label": "Create account",
+        "focus_box": {
+          "x": 0.68,
+          "y": 0.45,
+          "width": 0.28,
+          "height": 0.3
+        },
+        "details": {}
+      },
+      {
+        "timestamp": 18.18,
+        "scene_number": 2,
+        "source": "visual",
+        "signal_type": "click",
+        "score": 0.87,
+        "label": "Create account",
+        "focus_box": {
+          "x": 0.68,
+          "y": 0.65,
+          "width": 0.25,
+          "height": 0.07
+        },
+        "details": {}
+      },
+      {
+        "timestamp": 20.93,
+        "scene_number": 3,
+        "source": "visual",
+        "signal_type": "scene_presence",
+        "score": 0.64,
+        "label": "Sign up with Google",
+        "focus_box": {
+          "x": 0.65,
+          "y": 0.35,
+          "width": 0.3,
+          "height": 0.3
+        },
+        "details": {}
+      },
+      {
+        "timestamp": 20.93,
+        "scene_number": 3,
+        "source": "visual",
+        "signal_type": "click",
+        "score": 0.82,
+        "label": "Sign up with Google",
+        "focus_box": {
+          "x": 0.65,
+          "y": 0.55,
+          "width": 0.3,
+          "height": 0.07
+        },
+        "details": {}
+      },
+      {
+        "timestamp": 23.29,
+        "scene_number": 3,
+        "source": "visual",
+        "signal_type": "transition",
+        "score": 0.7,
+        "label": "Choose an account",
+        "focus_box": {
+          "x": 0.1,
+          "y": 0.1,
+          "width": 0.8,
+          "height": 0.8
+        },
+        "details": {}
+      },
+      {
+        "timestamp": 23.29,
+        "scene_number": 3,
+        "source": "visual",
+        "signal_type": "click",
+        "score": 0.72,
+        "label": "Choose an account",
+        "focus_box": {
+          "x": 0.1,
+          "y": 0.1,
+          "width": 0.8,
+          "height": 0.8
+        },
+        "details": {}
+      },
+      {
+        "timestamp": 23.29,
+        "scene_number": 3,
+        "source": "visual",
+        "signal_type": "state_hint",
+        "score": 0.72,
+        "label": "Choose an account",
+        "focus_box": {
+          "x": 0.1,
+          "y": 0.1,
+          "width": 0.8,
+          "height": 0.8
+        },
+        "details": {
+          "structure": "picker"
+        }
+      },
+      {
+        "timestamp": 26.42,
+        "scene_number": 4,
+        "source": "visual",
+        "signal_type": "state_hint",
+        "score": 0.64,
+        "label": "Choose an account",
+        "focus_box": {
+          "x": 0.05,
+          "y": 0.1,
+          "width": 0.9,
+          "height": 0.8
+        },
+        "details": {
+          "structure": "picker"
+        }
+      },
+      {
+        "timestamp": 27.9,
+        "scene_number": 4,
+        "source": "visual",
+        "signal_type": "scene_presence",
+        "score": 0.58,
+        "label": "Choose an account",
+        "focus_box": {
+          "x": 0.05,
+          "y": 0.1,
+          "width": 0.9,
+          "height": 0.8
+        },
+        "details": {}
+      },
+      {
+        "timestamp": 29.38,
+        "scene_number": 4,
+        "source": "visual",
+        "signal_type": "state_hint",
+        "score": 0.68,
+        "label": "Select a course",
+        "focus_box": {
+          "x": 0.05,
+          "y": 0.2,
+          "width": 0.9,
+          "height": 0.6
+        },
+        "details": {
+          "structure": "dashboard"
+        }
+      },
+      {
+        "timestamp": 29.38,
+        "scene_number": 4,
+        "source": "visual",
+        "signal_type": "transition",
+        "score": 0.7,
+        "label": "Select a course",
+        "focus_box": {
+          "x": 0.05,
+          "y": 0.2,
+          "width": 0.9,
+          "height": 0.6
+        },
+        "details": {}
+      },
+      {
+        "timestamp": 33.15,
+        "scene_number": 0,
+        "source": "transcript",
+        "signal_type": "transcript_action",
+        "score": 0.7,
+        "label": "Since I've already created the account, I'll log in to the existing one.",
+        "focus_box": null,
+        "details": {
+          "excerpt": "Since I've already created the account, I'll log in to the existing one. After log in, you can see the five courses. Right now, we have opened the Japan courses, and the rest of th",
+          "transcript_index": "2"
+        }
+      },
+      {
+        "timestamp": 39.24,
+        "scene_number": 5,
+        "source": "visual",
+        "signal_type": "scene_presence",
+        "score": 0.6,
+        "label": "Japanese",
+        "focus_box": {
+          "x": 0.05,
+          "y": 0.3,
+          "width": 0.2,
+          "height": 0.35
+        },
+        "details": {}
+      },
+      {
+        "timestamp": 41.14,
+        "scene_number": 5,
+        "source": "visual",
+        "signal_type": "state_hint",
+        "score": 0.68,
+        "label": "Pick your Japanese level before you start learning.",
+        "focus_box": {
+          "x": 0.05,
+          "y": 0.15,
+          "width": 0.9,
+          "height": 0.7
+        },
+        "details": {
+          "structure": "result"
+        }
+      },
+      {
+        "timestamp": 41.14,
+        "scene_number": 5,
+        "source": "visual",
+        "signal_type": "transition",
+        "score": 0.7,
+        "label": "Pick your Japanese level before you start learning.",
+        "focus_box": {
+          "x": 0.05,
+          "y": 0.15,
+          "width": 0.9,
+          "height": 0.7
+        },
+        "details": {}
+      },
+      {
+        "timestamp": 41.54,
+        "scene_number": 6,
+        "source": "visual",
+        "signal_type": "state_hint",
+        "score": 0.68,
+        "label": "Pick your Japanese level before you start learning.",
+        "focus_box": {
+          "x": 0.05,
+          "y": 0.15,
+          "width": 0.9,
+          "height": 0.7
+        },
+        "details": {
+          "structure": "result"
+        }
+      },
+      {
+        "timestamp": 43.44,
+        "scene_number": 6,
+        "source": "visual",
+        "signal_type": "scene_presence",
+        "score": 0.58,
+        "label": "Pick your Japanese level before you start learning.",
+        "focus_box": {
+          "x": 0.05,
+          "y": 0.15,
+          "width": 0.9,
+          "height": 0.7
+        },
+        "details": {}
+      }
+    ],
+    "canonical_facts": [
+      {
+        "scene_number": 1,
+        "timestamp": 10.82,
+        "event_type": "click",
+        "canonical_label": "Google Login",
+        "raw_target_label": "Google Login",
+        "screen_before": "landing",
+        "screen_after": "auth_provider",
+        "action_class": "auth_action",
+        "focus_box": {
+          "x": 0.87,
+          "y": 0.03,
+          "width": 0.11,
+          "height": 0.04
+        },
+        "confidence": 0.887,
+        "confidence_breakdown": {
+          "event_exists": 0.985,
+          "action_type": 0.795,
+          "target_element": 0.84,
+          "screen_before": 0.795,
+          "screen_after": 0.745,
+          "canonical_step": 0.92,
+          "overall": 0.887
+        }
+      },
+      {
+        "scene_number": 3,
+        "timestamp": 20.93,
+        "event_type": "click",
+        "canonical_label": "Continue With Google",
+        "raw_target_label": "Sign up with Google",
+        "screen_before": "auth_provider",
+        "screen_after": "account_picker",
+        "action_class": "auth_action",
+        "focus_box": {
+          "x": 0.65,
+          "y": 0.55,
+          "width": 0.3,
+          "height": 0.07
+        },
+        "confidence": 0.91,
+        "confidence_breakdown": {
+          "event_exists": 1.0,
+          "action_type": 0.86,
+          "target_element": 0.84,
+          "screen_before": 0.83,
+          "screen_after": 0.86,
+          "canonical_step": 0.92,
+          "overall": 0.91
+        }
+      },
+      {
+        "scene_number": 4,
+        "timestamp": 29.38,
+        "event_type": "click",
+        "canonical_label": "Select A Course",
+        "raw_target_label": "German Coming Soon",
+        "screen_before": "account_picker",
+        "screen_after": "course_catalog",
+        "action_class": "card_selection",
+        "focus_box": {
+          "x": 0.05,
+          "y": 0.2,
+          "width": 0.9,
+          "height": 0.6
+        },
+        "confidence": 0.868,
+        "confidence_breakdown": {
+          "event_exists": 0.955,
+          "action_type": 0.755,
+          "target_element": 0.84,
+          "screen_before": 0.97,
+          "screen_after": 0.755,
+          "canonical_step": 0.92,
+          "overall": 0.868
+        }
+      },
+      {
+        "scene_number": 5,
+        "timestamp": 41.14,
+        "event_type": "focus",
+        "canonical_label": "Pick your Japanese level before you start learning.",
+        "raw_target_label": "Pick your Japanese level before you start learning.",
+        "screen_before": "difficulty_picker",
+        "screen_after": "difficulty_picker",
+        "action_class": "button_click",
+        "focus_box": {
+          "x": 0.05,
+          "y": 0.15,
+          "width": 0.9,
+          "height": 0.7
+        },
+        "confidence": 0.88,
+        "confidence_breakdown": {
+          "event_exists": 1.0,
+          "action_type": 0.755,
+          "target_element": 0.84,
+          "screen_before": 0.83,
+          "screen_after": 0.755,
+          "canonical_step": 0.92,
+          "overall": 0.88
+        }
+      }
+    ],
+    "artifact_version": "v1"
+  },
   "events": [
     {
       "type": "click",
-      "timestamp": 12.21,
-      "x": 2664.75,
-      "y": 69.84,
+      "timestamp": 10.82,
+      "x": 2636.25,
+      "y": 77.6,
       "value": "",
       "url": "",
       "title": "",
@@ -34,112 +511,100 @@
         "selector": "",
         "label": "Google Login",
         "role": "control",
-        "text": "User is guided to click on the 'Google Login' button located at the top right corner of the interface.",
+        "text": "Google Login",
         "href": "",
-        "bbox_x": 2508.0,
-        "bbox_y": 31.040000000000006,
+        "bbox_x": 2479.5,
+        "bbox_y": 46.559999999999995,
         "bbox_width": 313.5,
-        "bbox_height": 77.6
+        "bbox_height": 62.08
       },
       "metadata": {
         "inferred": "true",
         "scene_number": "1",
         "synthetic_selector": "[data-launchify-scene='1']",
-        "score": "1.00",
+        "score": "0.89",
         "action_class": "auth_action",
-        "transcript_excerpt": "Hey. So we are launching Pronouncely. It's an AI powered land language learning platform. So to get started, first, you need to go on the Google login button that's on the top righ",
-        "scene_state": "action"
+        "screen_before": "landing",
+        "screen_after": "auth_provider",
+        "raw_target_label": "Google Login",
+        "canonical_label": "Google Login",
+        "confidence_event_exists": "0.98",
+        "confidence_target": "0.84",
+        "confidence_after": "0.74"
       }
     },
     {
       "type": "click",
-      "timestamp": 20.96,
-      "x": 2208.75,
+      "timestamp": 20.93,
+      "x": 2280.0,
       "y": 907.92,
       "value": "",
       "url": "",
       "title": "",
       "target": {
         "selector": "",
-        "label": "Log in with Google",
+        "label": "Continue With Google",
         "role": "control",
-        "text": "User is shown a login screen with options to sign in with Google, then clicks 'Log in with Google' button, followed by a Google account chooser dialog.",
+        "text": "Sign up with Google",
         "href": "",
-        "bbox_x": 1710.0,
+        "bbox_x": 1852.5,
         "bbox_y": 853.5999999999999,
-        "bbox_width": 997.5,
+        "bbox_width": 855.0,
         "bbox_height": 108.64
       },
       "metadata": {
         "inferred": "true",
         "scene_number": "3",
         "synthetic_selector": "[data-launchify-scene='3']",
-        "score": "0.61",
+        "score": "0.91",
         "action_class": "auth_action",
-        "transcript_excerpt": "i'll log in to the existing one"
+        "screen_before": "auth_provider",
+        "screen_after": "account_picker",
+        "raw_target_label": "Sign up with Google",
+        "canonical_label": "Continue With Google",
+        "confidence_event_exists": "1.00",
+        "confidence_target": "0.84",
+        "confidence_after": "0.86"
       }
     },
     {
-      "type": "focus",
-      "timestamp": 29.55,
-      "x": 1425.0,
+      "type": "click",
+      "timestamp": 29.38,
+      "x": 356.25,
       "y": 776.0,
       "value": "",
       "url": "",
       "title": "",
       "target": {
         "selector": "",
-        "label": "Select a course",
+        "label": "Select A Course",
         "role": "control",
-        "text": "Select a course",
+        "text": "German Coming Soon",
         "href": "",
         "bbox_x": 142.5,
-        "bbox_y": 232.79999999999995,
+        "bbox_y": 310.4,
         "bbox_width": 2565.0,
-        "bbox_height": 1086.4
+        "bbox_height": 931.2
       },
       "metadata": {
         "inferred": "true",
         "scene_number": "4",
         "synthetic_selector": "[data-launchify-scene='4']",
-        "score": "1.00",
-        "action_class": "result_state",
-        "transcript_excerpt": "log in, you can see the five courses",
-        "scene_state": "result_state",
-        "result_label": "Select a course"
-      }
-    },
-    {
-      "type": "click",
-      "timestamp": 37.66,
-      "x": 399.0,
-      "y": 698.4,
-      "value": "",
-      "url": "",
-      "title": "",
-      "target": {
-        "selector": "",
-        "label": "Japanese",
-        "role": "control",
-        "text": "Japanese",
-        "href": "",
-        "bbox_x": 142.5,
-        "bbox_y": 465.59999999999997,
-        "bbox_width": 513.0,
-        "bbox_height": 465.6
-      },
-      "metadata": {
-        "inferred": "true",
-        "scene_number": "5",
-        "synthetic_selector": "[data-launchify-scene='5']",
-        "score": "0.56",
+        "score": "0.87",
         "action_class": "card_selection",
-        "transcript_excerpt": "there are five user is instructed to click on the japanese course card under the japan section"
+        "transcript_excerpt": "with only the japanese course open and others locked",
+        "screen_before": "account_picker",
+        "screen_after": "course_catalog",
+        "raw_target_label": "German Coming Soon",
+        "canonical_label": "Select A Course",
+        "confidence_event_exists": "0.95",
+        "confidence_target": "0.84",
+        "confidence_after": "0.76"
       }
     },
     {
       "type": "focus",
-      "timestamp": 41.94,
+      "timestamp": 41.14,
       "x": 1425.0,
       "y": 776.0,
       "value": "",
@@ -152,17 +617,23 @@
         "text": "Pick your Japanese level before you start learning.",
         "href": "",
         "bbox_x": 142.5,
-        "bbox_y": 388.0,
+        "bbox_y": 232.79999999999995,
         "bbox_width": 2565.0,
-        "bbox_height": 776.0
+        "bbox_height": 1086.4
       },
       "metadata": {
         "inferred": "true",
-        "scene_number": "6",
-        "synthetic_selector": "[data-launchify-scene='6']",
-        "score": "0.86",
-        "action_class": "result_state",
-        "transcript_excerpt": "the Japan course has been opened officially, there are five",
+        "scene_number": "5",
+        "synthetic_selector": "[data-launchify-scene='5']",
+        "score": "0.88",
+        "action_class": "button_click",
+        "screen_before": "difficulty_picker",
+        "screen_after": "difficulty_picker",
+        "raw_target_label": "Pick your Japanese level before you start learning.",
+        "canonical_label": "Pick your Japanese level before you start learning.",
+        "confidence_event_exists": "1.00",
+        "confidence_target": "0.84",
+        "confidence_after": "0.76",
         "scene_state": "result_state",
         "result_label": "Pick your Japanese level before you start learning."
       }

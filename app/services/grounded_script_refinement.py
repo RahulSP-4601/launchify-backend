@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.models.projects import FocusBox, FrameSignalRecord, LaunchScriptRecord, LaunchScriptScene, SessionEventRecord, UiElementRecord, VisualSceneAnalysisRecord
+from app.services.canonical_scene_recovery import recover_canonical_scenes
 from app.services.generic_target_labeling import should_promote_generic_label, title_case_phrase
 from app.services.inferred_recording_support import box_center_delta, normalize_label
 from app.services.scene_intent_resolver import SceneIntentResolution, resolve_scene_intent
@@ -29,11 +30,13 @@ def refine_launch_script_with_visuals(
 def refine_launch_script_with_events(
     launch_script: LaunchScriptRecord,
     events: list[SessionEventRecord] | None,
+    visual_analyses: list[VisualSceneAnalysisRecord] | None = None,
 ) -> LaunchScriptRecord:
     if not events:
         return launch_script
     events_by_scene = preferred_events_by_scene(events)
-    scenes = [refined_scene_from_event(scene, events_by_scene.get(scene.scene_number)) for scene in launch_script.scenes]
+    canonical_scenes = recover_canonical_scenes(launch_script, events, visual_analyses)
+    scenes = [refined_scene_from_event(scene, events_by_scene.get(scene.scene_number)) for scene in canonical_scenes]
     return LaunchScriptRecord(
         hook=launch_script.hook,
         summary=launch_script.summary,
@@ -65,12 +68,12 @@ def refined_scene_from_event(
     scene: LaunchScriptScene,
     event: SessionEventRecord | None,
 ) -> LaunchScriptScene:
-    label = event_scene_label(event)
+    label = preferred_scene_label(scene, event)
     if not label:
         return scene
     return LaunchScriptScene(
         scene_number=scene.scene_number,
-        purpose=event_scene_purpose(label, event),
+        purpose=preferred_scene_purpose(scene, label, event),
         spoken_line=scene.spoken_line,
         on_screen_text=label,
         source_excerpt=label,
@@ -103,9 +106,20 @@ def event_scene_label(event: SessionEventRecord | None) -> str:
     if event is None:
         return ""
     return (
-        event.target.label.strip()
+        event.metadata.get("canonical_label", "").strip()
+        or event.target.label.strip()
         or event.metadata.get("result_label", "").strip()
         or event.target.text.strip()
+    )
+
+
+def event_scene_context(event: SessionEventRecord | None) -> str:
+    if event is None:
+        return ""
+    return (
+        event.metadata.get("screen_after", "").strip()
+        or event.metadata.get("screen_before", "").strip()
+        or event.target.label.strip()
     )
 
 
@@ -114,9 +128,54 @@ def event_scene_purpose(
     event: SessionEventRecord | None,
 ) -> str:
     clean_label = label.strip().rstrip(".")
+    context = event_scene_context(event)
+    if context == "course_catalog":
+        return "Show the viewer the course catalog before the next guided selection."
+    if context == "difficulty_picker":
+        return "Show the viewer the level picker that opens after the selected course."
+    if context == "account_picker":
+        return "Show the viewer the account chooser that continues the sign-in path."
     if event is not None and event.type == "focus":
         return f"Show the viewer the {clean_label} screen."
     return f"Capture the product action on {clean_label}."
+
+
+def preferred_scene_label(
+    scene: LaunchScriptScene,
+    event: SessionEventRecord | None,
+) -> str:
+    event_label = event_scene_label(event)
+    if preserve_screen_label(scene, event, event_label):
+        return scene.on_screen_text.strip()
+    return event_label or scene.on_screen_text.strip()
+
+
+def preferred_scene_purpose(
+    scene: LaunchScriptScene,
+    label: str,
+    event: SessionEventRecord | None,
+) -> str:
+    if preserve_screen_label(scene, event, event_scene_label(event)):
+        return scene.purpose
+    return event_scene_purpose(label, event)
+
+
+def preserve_screen_label(
+    scene: LaunchScriptScene,
+    event: SessionEventRecord | None,
+    event_label: str,
+) -> bool:
+    screen_label = scene.on_screen_text.strip()
+    if not screen_label or not event_label or event is None:
+        return False
+    if screen_label == event_label:
+        return False
+    if event is not None and event.metadata.get("canonical_label", "").strip() == event_label:
+        return False
+    screen_key = normalize_label(screen_label)
+    return screen_key in {"continue with google", "select a course", "choose an account"} or (
+        event.type == "focus" and screen_key.startswith("pick your")
+    )
 
 
 def refined_scene_label(
@@ -275,12 +334,17 @@ def nearest_click_label(frame: FrameSignalRecord) -> str:
 
 def login_action_label(label: str) -> bool:
     normalized = normalize_label(label)
-    return "log in" in normalized or "login" in normalized or "sign in" in normalized
+    return (
+        "log in" in normalized
+        or "login" in normalized
+        or "sign in" in normalized
+        or "continue with google" in normalized
+    )
 
 
 def signup_action_label(label: str) -> bool:
     normalized = normalize_label(label)
-    return "sign up" in normalized or "create account" in normalized or "continue with google" in normalized
+    return "sign up" in normalized or "create account" in normalized
 
 
 def click_label_rank(

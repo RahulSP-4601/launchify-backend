@@ -85,7 +85,7 @@ def main() -> int:
     print("[4/4] Inferring grounded recording session events")
     recording_session = infer_recording_session(project, video_path, launch_script, transcript, visual_analyses)
     if recording_session is not None:
-        refined_launch_script = refine_launch_script_with_events(refined_launch_script, recording_session.events)
+        refined_launch_script = refine_launch_script_with_events(refined_launch_script, recording_session.events, visual_analyses)
         write_json(output_dir / "launch_script.json", refined_launch_script.model_dump(mode="json"))
         write_json(output_dir / "recording_session.json", recording_session.model_dump(mode="json"))
 

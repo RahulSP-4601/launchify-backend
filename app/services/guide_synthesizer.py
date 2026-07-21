@@ -337,7 +337,7 @@ def reconcile_grounded_guide(
     article_steps: list[ArticleStepRecord] = []
     for cluster, (step_start, step_end) in zip(clusters, ranges, strict=False):
         model_step = matched_steps.get(cluster.index)
-        label = cluster.event.target.label or cluster.event.target.text or readable_selector(cluster.event.target.selector)
+        label = canonical_step_label(cluster.event)
         instruction = (model_step.instruction if model_step is not None and model_step.instruction.strip() else build_instruction(cluster.event, label)).strip()
         narration = (model_step.narration if model_step is not None and model_step.narration.strip() else cluster.transcript_excerpt or instruction).strip()
         on_screen_text = (model_step.on_screen_text if model_step is not None and model_step.on_screen_text.strip() else label or instruction).strip()
@@ -382,6 +382,18 @@ def contextual_cluster_ranges(
 
 
 def build_instruction(event: SessionEventRecord, label: str) -> str:
+    screen_after = event.metadata.get("screen_after", "").strip()
+    canonical = event.metadata.get("canonical_label", "").strip()
+    if canonical == "Continue With Google":
+        return "Continue with Google to keep the existing sign-in flow moving."
+    if canonical == "Select A Course":
+        return "Open the course catalog and choose the learning path to continue."
+    if screen_after == "difficulty_picker":
+        return f"Select {label or 'the course'} to open the level picker."
+    if screen_after == "course_catalog":
+        return f"Complete {label or 'the sign-in step'} to reach the course catalog."
+    if screen_after == "account_picker":
+        return f"Continue on {label or 'the auth option'} to reach the account chooser."
     if event.type == "input":
         entered = f" and enter '{event.value}'" if event.value else ""
         return f"Focus on {label or 'the input'}{entered}."
@@ -397,6 +409,15 @@ def build_instruction(event: SessionEventRecord, label: str) -> str:
 def readable_selector(selector: str) -> str:
     clean = selector.replace("#", " ").replace(".", " ").replace(">", " ").strip()
     return " ".join(part for part in clean.split() if part)[:60]
+
+
+def canonical_step_label(event: SessionEventRecord) -> str:
+    return (
+        event.metadata.get("canonical_label", "").strip()
+        or event.target.label
+        or event.target.text
+        or readable_selector(event.target.selector)
+    )
 
 
 def launch_script_from_guide(guide: GuideRecord) -> LaunchScriptRecord:

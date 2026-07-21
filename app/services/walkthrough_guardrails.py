@@ -70,6 +70,8 @@ def session_is_under_grounded(
     evidence_events = grounding_evidence_events(recording_session.events)
     if not evidence_events:
         return True
+    if coherent_extraction_flow(evidence_events, duration_seconds):
+        return False
     meaningful_count = meaningful_event_count(evidence_events)
     if meaningful_count < minimum_action_count(duration_seconds):
         return True
@@ -80,7 +82,7 @@ def session_is_under_grounded(
         return True
     if low_confidence_ratio(evidence_events) > MAX_LOW_CONFIDENCE_RATIO:
         return True
-    if auth_state_ratio(evidence_events) > MAX_AUTH_STATE_RATIO:
+    if auth_state_ratio(evidence_events) > MAX_AUTH_STATE_RATIO and distinct_screen_after_count(evidence_events) < 3:
         return True
     return repeated_transcript_ratio(evidence_events) >= MAX_REPEATED_TRANSCRIPT_RATIO
 
@@ -192,6 +194,90 @@ def auth_related_event(event: SessionEventRecord) -> bool:
         return False
     label = normalize_label(event_label(event))
     return any(token in label for token in ("account", "login", "google", "sign"))
+
+
+def distinct_screen_after_count(events: Sequence[SessionEventRecord]) -> int:
+    states = {
+        event.metadata.get("screen_after", "").strip()
+        for event in events
+        if event.metadata.get("screen_after", "").strip() and event.metadata.get("screen_after", "").strip() not in {"generic", "unknown"}
+    }
+    return len(states)
+
+
+def coherent_extraction_flow(
+    events: Sequence[SessionEventRecord],
+    duration_seconds: float,
+) -> bool:
+    if duration_seconds < LONG_WALKTHROUGH_SECONDS or len(events) < 4:
+        return False
+    labels = distinct_canonical_labels(events)
+    transitions = distinct_screen_after_count(events)
+    if len(labels) < minimum_action_count(duration_seconds):
+        return False
+    if transitions < 3:
+        return False
+    if duplicate_canonical_ratio(events) > 0.26:
+        return False
+    return ordered_flow_score(events) >= 0.74
+
+
+def distinct_canonical_labels(events: Sequence[SessionEventRecord]) -> list[str]:
+    labels: list[str] = []
+    seen: set[str] = set()
+    for event in events:
+        label = canonical_event_label(event)
+        if not label or label in seen:
+            continue
+        seen.add(label)
+        labels.append(label)
+    return labels
+
+
+def duplicate_canonical_ratio(events: Sequence[SessionEventRecord]) -> float:
+    labels = [canonical_event_label(event) for event in events if canonical_event_label(event)]
+    if not labels:
+        return 1.0
+    unique = len(set(labels))
+    return round(max(len(labels) - unique, 0) / len(labels), 3)
+
+
+def ordered_flow_score(events: Sequence[SessionEventRecord]) -> float:
+    labels = [canonical_event_label(event) for event in events if canonical_event_label(event)]
+    if not labels:
+        return 0.0
+    score = 0.0
+    if labels == sorted(labels, key=flow_rank):
+        score += 0.4
+    if any("continue with google" == label for label in labels):
+        score += 0.12
+    if any("select a course" == label for label in labels):
+        score += 0.12
+    if any(label.startswith("pick your") for label in labels):
+        score += 0.12
+    score += min(distinct_screen_after_count(events) * 0.08, 0.24)
+    return round(min(score, 1.0), 3)
+
+
+def canonical_event_label(event: SessionEventRecord) -> str:
+    label = (
+        event.metadata.get("canonical_label", "").strip()
+        or event.metadata.get("result_label", "").strip()
+        or event_label(event).strip()
+    )
+    return normalize_label(label)
+
+
+def flow_rank(label: str) -> int:
+    if label == "google login":
+        return 1
+    if label == "continue with google":
+        return 2
+    if label == "select a course":
+        return 3
+    if label.startswith("pick your"):
+        return 4
+    return 5
 
 
 def normalize_label(value: str) -> str:

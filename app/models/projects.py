@@ -72,6 +72,7 @@ class RecordingSessionRecord(BaseModel):
     page_title: str = ""
     page_url: str = ""
     grounding_diagnostics: dict[str, str] = Field(default_factory=dict)
+    extraction_artifacts: dict[str, object] = Field(default_factory=dict)
     events: list[SessionEventRecord] = Field(default_factory=list)
 
 

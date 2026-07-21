@@ -14,44 +14,28 @@
       "estimated_duration_seconds": 3.57
     },
     {
-      "scene_number": 2,
-      "purpose": "Capture the product action on Sign up with Google.",
-      "spoken_line": "you click it, just you you need to create an account",
-      "on_screen_text": "Sign up with Google",
-      "source_excerpt": "Sign up with Google",
-      "estimated_duration_seconds": 4.38
-    },
-    {
       "scene_number": 3,
-      "purpose": "Capture the product action on Log in with Google.",
+      "purpose": "Show the viewer the account chooser that continues the sign-in path.",
       "spoken_line": "log in with the existing one Since I've already created the account",
-      "on_screen_text": "Log in with Google",
-      "source_excerpt": "Log in with Google",
-      "estimated_duration_seconds": 5.17
+      "on_screen_text": "Continue With Google",
+      "source_excerpt": "Continue With Google",
+      "estimated_duration_seconds": 5.11
     },
     {
       "scene_number": 4,
-      "purpose": "Show the viewer the Select a course screen.",
+      "purpose": "Show the viewer the course catalog before the next guided selection.",
       "spoken_line": "log in, you can see the five courses",
-      "on_screen_text": "Select a course",
-      "source_excerpt": "Select a course",
-      "estimated_duration_seconds": 3.42
+      "on_screen_text": "Select A Course",
+      "source_excerpt": "Select A Course",
+      "estimated_duration_seconds": 3.36
     },
     {
       "scene_number": 5,
-      "purpose": "Capture the product action on Japanese.",
+      "purpose": "Show the viewer the level picker that opens after the selected course.",
       "spoken_line": "under Japan click on the Japan courses And",
-      "on_screen_text": "Japanese",
-      "source_excerpt": "Japanese",
-      "estimated_duration_seconds": 4.28
-    },
-    {
-      "scene_number": 6,
-      "purpose": "Show the viewer the Pick your Japanese level before you start learning screen.",
-      "spoken_line": "the Japan course has been opened officially, there are five",
       "on_screen_text": "Pick your Japanese level before you start learning.",
       "source_excerpt": "Pick your Japanese level before you start learning.",
-      "estimated_duration_seconds": 4.28
+      "estimated_duration_seconds": 4.2
     }
   ],
   "cta": "Turn rough recordings into polished product walkthroughs.",
