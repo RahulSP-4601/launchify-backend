@@ -4,6 +4,7 @@ from typing import Any, Protocol, Sequence
 
 from app.models.projects import ArticleStepRecord, GuideRecord, GuideStepRecord, ProjectRecord, RecordingSessionRecord, SessionEventRecord
 from app.services.action_classifier import event_action_class
+from app.services.editorial_labels import canonical_highlight_label, canonical_on_screen_text, canonical_step_title, specific_target_label
 from app.services.event_grounding import normalize_event_timestamp
 from app.services.walkthrough_text_normalizer import normalized_step
 
@@ -29,10 +30,12 @@ def compile_guide_from_clusters(
     article_steps: list[ArticleStepRecord] = []
     for cluster, (step_start, step_end) in zip(clusters, ranges, strict=False):
         label = cluster.event.target.label or cluster.event.target.text or readable_selector(cluster.event.target.selector)
+        action_class = event_action_class(cluster.event)
+        specific_target = specific_target_label(label=label, action_class=action_class, transcript_excerpt=cluster.transcript_excerpt)
         instruction = build_instruction(cluster.event, label)
         narration = compiler_narration(cluster.transcript_excerpt, instruction)
-        title = compiler_title(label, cluster.index)
-        on_screen_text = label or title
+        title = compiler_title(label, cluster.index, action_class, cluster.event.type)
+        on_screen_text = specific_target or canonical_on_screen_text(label=label, title=title)
         steps.append(
             normalized_step(GuideStepRecord(
                 step_index=cluster.index,
@@ -40,14 +43,15 @@ def compile_guide_from_clusters(
                 instruction=instruction,
                 narration=narration,
                 on_screen_text=on_screen_text,
+                specific_target_label=specific_target,
                 start=step_start,
                 end=step_end,
                 event_type=cluster.event.type,
                 focus_selector=cluster.event.target.selector,
                 focus_label=label,
-                highlight_label=(label or title)[:48],
+                highlight_label=(specific_target or canonical_highlight_label(label=label, title=title))[:48],
                 source_excerpt=cluster.transcript_excerpt or label,
-                action_class=event_action_class(cluster.event),
+                action_class=action_class,
             ))
         )
         article_steps.append(ArticleStepRecord(step_index=cluster.index, title=title, body=instruction))
@@ -60,8 +64,8 @@ def compile_guide_from_clusters(
     )
 
 
-def compiler_title(label: str, index: int) -> str:
-    return label or f"Step {index}"
+def compiler_title(label: str, index: int, action_class: str, event_type: str) -> str:
+    return canonical_step_title(label=label, action_class=action_class, event_type=event_type) or f"Step {index}"
 
 
 def compiler_narration(transcript_excerpt: str, instruction: str) -> str:

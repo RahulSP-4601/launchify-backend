@@ -18,14 +18,17 @@ from app.models.projects import (
     RecordingSessionRecord,
     SessionEventRecord,
     TranscriptSegment,
+    VisualSceneAnalysisRecord,
 )
 from app.services.action_classifier import event_action_class
 from app.services.event_grounding import normalize_event_timestamp
 from app.services.guide_compiler import compile_guide_from_clusters
 from app.services.guide_event_normalizer import MEANINGFUL_EVENT_TYPES, normalize_events
 from app.services.guide_recovery import needs_cluster_recovery, recovered_step_seeds
+from app.services.guide_synthesis_reconciliation import launch_script_from_guide, reconcile_grounded_guide
 from app.services.guide_timing_ranges import contextual_step_ranges
 from app.services.script_writer import describe_transport_error, extract_message_content, openai_headers
+from app.services.visual_analysis import analysis_map
 from app.services.walkthrough_guardrails import guide_is_under_grounded, recording_duration_seconds
 CLUSTER_GAP_SECONDS = 2.5
 MIN_STEP_DURATION_SECONDS = 0.8
@@ -46,6 +49,7 @@ class EventCluster:
 def synthesize_grounded_guide(
     project: ProjectRecord,
     transcript: Sequence[TranscriptSegment],
+    visual_analyses: Sequence[VisualSceneAnalysisRecord] | None = None,
 ) -> tuple[GuideRecord, LaunchScriptRecord]:
     session = require_session(project.recording_session)
     normalized_events = normalize_events(session.events, transcript)
@@ -56,8 +60,8 @@ def synthesize_grounded_guide(
         recovered = recovered_clusters(normalized_events, transcript)
         if len(recovered) > len(clusters):
             clusters = recovered
-    guide = request_grounded_guide(project, transcript, session, clusters)
-    launch_script = launch_script_from_guide(guide)
+    guide = request_grounded_guide(project, transcript, session, clusters, visual_analyses)
+    launch_script = launch_script_from_guide(guide, MIN_STEP_DURATION_SECONDS)
     return guide, launch_script
 
 
@@ -160,6 +164,7 @@ def request_grounded_guide(
     transcript: Sequence[TranscriptSegment],
     session: RecordingSessionRecord,
     clusters: Sequence[EventCluster],
+    visual_analyses: Sequence[VisualSceneAnalysisRecord] | None = None,
 ) -> GuideRecord:
     settings = get_settings()
     if not settings.openai_api_key:
@@ -198,7 +203,7 @@ def request_grounded_guide(
         guide = GuideRecord.model_validate(parse_openai_guide_payload(payload))
     except ValidationError as exc:
         raise RuntimeError("OpenAI returned an invalid grounded guide structure.") from exc
-    reconciled = reconcile_grounded_guide(guide, clusters, session)
+    reconciled = reconcile_grounded_guide(guide, clusters, contextual_cluster_ranges(clusters, session), visual_analyses)
     if guide_is_under_grounded(reconciled, recording_duration_seconds(session, transcript)):
         return fallback_guide(project, clusters, session)
     return reconciled
@@ -324,119 +329,9 @@ def fallback_guide(
 ) -> GuideRecord:
     return compile_guide_from_clusters(project, clusters, session, "Fallback guide used because OpenAI grounded synthesis was unavailable.")
 
-def reconcile_grounded_guide(
-    guide: GuideRecord,
-    clusters: Sequence[EventCluster],
-    session: RecordingSessionRecord | None = None,
-) -> GuideRecord:
-    if not clusters:
-        return guide
-    matched_steps = {step.step_index: step for step in guide.steps}
-    ranges = contextual_cluster_ranges(clusters, session)
-    steps: list[GuideStepRecord] = []
-    article_steps: list[ArticleStepRecord] = []
-    for cluster, (step_start, step_end) in zip(clusters, ranges, strict=False):
-        model_step = matched_steps.get(cluster.index)
-        label = canonical_step_label(cluster.event)
-        instruction = (model_step.instruction if model_step is not None and model_step.instruction.strip() else build_instruction(cluster.event, label)).strip()
-        narration = (model_step.narration if model_step is not None and model_step.narration.strip() else cluster.transcript_excerpt or instruction).strip()
-        on_screen_text = (model_step.on_screen_text if model_step is not None and model_step.on_screen_text.strip() else label or instruction).strip()
-        title = (model_step.title if model_step is not None and model_step.title.strip() else label or f"Step {cluster.index}").strip()
-        highlight = (model_step.highlight_label if model_step is not None and model_step.highlight_label.strip() else label[:48]).strip()
-        steps.append(GuideStepRecord(
-            step_index=cluster.index,
-            title=title,
-            instruction=instruction,
-            narration=narration,
-            on_screen_text=on_screen_text,
-            start=step_start,
-            end=step_end,
-            event_type=cluster.event.type,
-            focus_selector=cluster.event.target.selector,
-            focus_label=label,
-            highlight_label=highlight,
-            source_excerpt=cluster.transcript_excerpt or label,
-            action_class=event_action_class(cluster.event),
-        ))
-        article_steps.append(ArticleStepRecord(
-            step_index=cluster.index,
-            title=title,
-            body=instruction,
-        ))
-    notes = list(
-        dict.fromkeys(
-            [
-                *guide.generation_notes,
-                "Grounded step timing was expanded into continuous walkthrough ranges anchored to captured actions.",
-            ]
-        )
-    )
-    return guide.model_copy(update={"steps": steps, "article_steps": article_steps, "generation_notes": notes})
-
 
 def contextual_cluster_ranges(
     clusters: Sequence[EventCluster],
     session: RecordingSessionRecord | None,
 ) -> list[tuple[float, float]]:
     return contextual_step_ranges(clusters, session)
-
-
-def build_instruction(event: SessionEventRecord, label: str) -> str:
-    screen_after = event.metadata.get("screen_after", "").strip()
-    canonical = event.metadata.get("canonical_label", "").strip()
-    if canonical == "Continue With Google":
-        return "Continue with Google to keep the existing sign-in flow moving."
-    if canonical == "Select A Course":
-        return "Open the course catalog and choose the learning path to continue."
-    if screen_after == "difficulty_picker":
-        return f"Select {label or 'the course'} to open the level picker."
-    if screen_after == "course_catalog":
-        return f"Complete {label or 'the sign-in step'} to reach the course catalog."
-    if screen_after == "account_picker":
-        return f"Continue on {label or 'the auth option'} to reach the account chooser."
-    if event.type == "input":
-        entered = f" and enter '{event.value}'" if event.value else ""
-        return f"Focus on {label or 'the input'}{entered}."
-    if event.type in {"keypress", "keydown"}:
-        return f"Confirm the action on {label or 'the active control'}."
-    if event.type == "navigation":
-        return f"Navigate to {label or 'the next view'}."
-    if event.type == "focus":
-        return f"Move attention to {label or 'the active field'}."
-    return f"Click {label or 'the highlighted control'}."
-
-
-def readable_selector(selector: str) -> str:
-    clean = selector.replace("#", " ").replace(".", " ").replace(">", " ").strip()
-    return " ".join(part for part in clean.split() if part)[:60]
-
-
-def canonical_step_label(event: SessionEventRecord) -> str:
-    return (
-        event.metadata.get("canonical_label", "").strip()
-        or event.target.label
-        or event.target.text
-        or readable_selector(event.target.selector)
-    )
-
-
-def launch_script_from_guide(guide: GuideRecord) -> LaunchScriptRecord:
-    scenes = [
-        LaunchScriptScene(
-            scene_number=step.step_index,
-            purpose=step.instruction,
-            spoken_line=step.narration,
-            on_screen_text=step.on_screen_text,
-            source_excerpt=step.source_excerpt or step.focus_label or step.title,
-            estimated_duration_seconds=max(round(step.end - step.start, 2), MIN_STEP_DURATION_SECONDS),
-        )
-        for step in guide.steps
-    ]
-    return LaunchScriptRecord(
-        hook=guide.title,
-        summary=guide.summary,
-        title_options=[guide.title, f"{guide.title} in minutes", f"How {guide.title.lower()}"][:3],
-        scenes=scenes,
-        cta="Turn rough recordings into polished launch videos.",
-        notes=guide.generation_notes,
-    )

@@ -12,7 +12,7 @@ def tracked_focus_box(
     fallback: FocusBox | None = None,
 ) -> FocusBox | None:
     if analysis is None or not analysis.frames:
-        return fallback or analysis_anchor_box(analysis)
+        return tightened_box(fallback or analysis_anchor_box(analysis), fallback)
     action_boxes = candidate_boxes(analysis, focus_start - 0.12, focus_end)
     result_boxes = candidate_boxes(
         analysis,
@@ -20,12 +20,12 @@ def tracked_focus_box(
         min(analysis.end, (result_anchor or focus_end) + 0.42),
     )
     if action_boxes and result_boxes:
-        return blended_box(average_box(action_boxes[:3]), average_box(result_boxes[:3]), result_weight=0.58)
+        return tightened_box(blended_box(average_box(action_boxes[:3]), average_box(result_boxes[:3]), result_weight=0.58), fallback)
     if action_boxes:
-        return average_box(action_boxes[:3])
+        return tightened_box(average_box(action_boxes[:3]), fallback)
     if result_boxes:
-        return average_box(result_boxes[:3])
-    return fallback or analysis_anchor_box(analysis)
+        return tightened_box(average_box(result_boxes[:3]), fallback)
+    return tightened_box(fallback or analysis_anchor_box(analysis), fallback)
 
 
 def smooth_focus_handoffs(edit_plan: EditPlanRecord) -> EditPlanRecord:
@@ -94,8 +94,8 @@ def candidate_boxes(
             continue
         for box in (
             frame.click_target_box,
+            tightened_cursor_focus(frame.cursor_box),
             frame.dominant_box,
-            frame.cursor_box if compact_box(frame.cursor_box) else None,
         ):
             if isinstance(box, FocusBox) and plausible_box(box):
                 boxes.append(box)
@@ -127,6 +127,42 @@ def compact_box(box: FocusBox | None) -> bool:
 def plausible_box(box: FocusBox) -> bool:
     area = box.width * box.height
     return 0.002 <= area <= 0.35
+
+
+def tightened_box(box: FocusBox | None, fallback: FocusBox | None) -> FocusBox | None:
+    if box is None:
+        return fallback
+    area = box.width * box.height
+    if area <= 0.18:
+        return box
+    if fallback is not None and fallback is not box and (fallback.width * fallback.height) <= 0.18:
+        return fallback
+    center_x = box.x + box.width / 2
+    center_y = box.y + box.height / 2
+    tightened_width = min(max(box.width * 0.42, 0.1), 0.24)
+    tightened_height = min(max(box.height * 0.34, 0.08), 0.2)
+    return centered_box(center_x, center_y, tightened_width, tightened_height)
+
+
+def tightened_cursor_focus(box: FocusBox | None) -> FocusBox | None:
+    if box is None or not compact_box(box):
+        return None
+    center_x = box.x + box.width / 2
+    center_y = box.y + box.height / 2
+    return centered_box(center_x, center_y, 0.12, 0.1)
+
+
+def centered_box(center_x: float, center_y: float, width: float, height: float) -> FocusBox:
+    clamped_width = min(max(width, 0.04), 0.32)
+    clamped_height = min(max(height, 0.04), 0.28)
+    x = min(max(center_x - clamped_width / 2, 0.0), 1.0 - clamped_width)
+    y = min(max(center_y - clamped_height / 2, 0.0), 1.0 - clamped_height)
+    return FocusBox(
+        x=round(x, 4),
+        y=round(y, 4),
+        width=round(clamped_width, 4),
+        height=round(clamped_height, 4),
+    )
 
 
 def average_box(boxes: list[FocusBox]) -> FocusBox:

@@ -82,6 +82,7 @@ class GuideStepRecord(BaseModel):
     instruction: str
     narration: str
     on_screen_text: str
+    specific_target_label: str = ""
     start: float = Field(ge=0.0)
     end: float = Field(ge=0.0)
     event_type: str = ""
@@ -112,6 +113,7 @@ class LaunchScriptScene(BaseModel):
     purpose: str
     spoken_line: str
     on_screen_text: str
+    specific_target_label: str = ""
     source_excerpt: str
     estimated_duration_seconds: float
 
@@ -222,6 +224,7 @@ class EditPlanScene(BaseModel):
     visual_summary: str
     spoken_line: str
     on_screen_text: str
+    specific_target_label: str = ""
     source_excerpt: str
     action_class: str = "generic_action"
     scene_role: SceneRole = "action"

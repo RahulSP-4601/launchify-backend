@@ -1,7 +1,5 @@
 from __future__ import annotations
-import subprocess
 from pathlib import Path
-from app.core.config import get_settings
 from app.models.projects import (
     FocusBox,
     FrameSignalRecord,
@@ -38,7 +36,6 @@ from app.services.inferred_recording_support import (
     transcript_window,
 )
 from app.services.auth_chain_recovery import recover_auth_chain_events
-from app.services.guide_event_dedupe import synthetic_event_score
 from app.services.inferred_action_recovery import needs_action_recovery, recover_events_from_analyses
 from app.services.inferred_action_selection import SceneEventCandidate
 from app.services.inferred_canonical_reconciliation import reconcile_canonical_graph_events
@@ -62,7 +59,6 @@ from app.services.inferred_timeline_recovery import preserve_sparse_timeline
 from app.services.result_state_selection import supplement_result_state_events
 from app.services.ui_structure_insights import compact_action_target, prefers_state_event
 from app.services.visual_analysis import analysis_map
-DEFAULT_VIEWPORT = (1280, 720)
 MAX_EVENTS = 16
 MAX_EVENTS_PER_SCENE = 3
 CANDIDATE_EVIDENCE_THRESHOLD = 0.44
@@ -154,7 +150,8 @@ def finalize_inferred_events(
     recovered = dedupe_events(recover_auth_chain_events(refined, launch_script, analyses_by_scene, viewport_width, viewport_height))
     reconciled = dedupe_events(reconcile_canonical_graph_events(recovered, graph_events))
     grounded = annotate_event_grounding(reconciled, analyses_by_scene)
-    return dedupe_events(validate_event_grounding(grounded, analyses_by_scene))
+    validated = dedupe_events(validate_event_grounding(grounded, analyses_by_scene))
+    return collapse_semantic_tail_events(validated)
 def deduped_scene_candidates(
     launch_script: LaunchScriptRecord,
     transcript: list[TranscriptSegment],
@@ -464,31 +461,4 @@ def intent_matching_ui_box(
     if not ranked:
         return None
     return ranked[0].box if intent_overlap_score(ranked[0].label, tokens) >= 0.2 else None
-def video_dimensions(video_path: Path) -> tuple[int, int]:
-    settings = get_settings()
-    command = [
-        settings.ffprobe_binary,
-        "-v",
-        "error",
-        "-select_streams",
-        "v:0",
-        "-show_entries",
-        "stream=width,height",
-        "-of",
-        "csv=p=0:s=x",
-        str(video_path),
-    ]
-    try:
-        result = subprocess.run(
-            command,
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=settings.ffmpeg_timeout_seconds,
-        )
-        width_text, height_text = result.stdout.strip().split("x", maxsplit=1)
-        width = max(int(width_text), 1)
-        height = max(int(height_text), 1)
-        return width, height
-    except (FileNotFoundError, ValueError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-        return DEFAULT_VIEWPORT
+from app.services.inferred_recording_utilities import collapse_semantic_tail_events, video_dimensions

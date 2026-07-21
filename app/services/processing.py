@@ -255,7 +255,7 @@ def generate_inferred_grounded_guide(
     )
     refined_script = refine_launch_script_with_events(refined_script, recording_session.events, visual_analyses)
     grounded_project = require_project(job.user_id, job.project_id)
-    return synthesize_grounded_guide(grounded_project, transcript), visual_analyses, refined_script
+    return synthesize_grounded_guide(grounded_project, transcript, visual_analyses), visual_analyses, refined_script
 
 
 def inferred_walkthrough_fallback(

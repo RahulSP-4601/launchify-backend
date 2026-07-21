@@ -12,6 +12,7 @@ def reconcile_edit_plan_to_voiceover(
 ) -> tuple[EditPlanRecord, VoiceoverRecord]:
     if voiceover.status != "ready" or not voiceover.clips or not edit_plan.scenes:
         return edit_plan, voiceover
+    active_scene_numbers = {scene.scene_number for scene in edit_plan.scenes}
     clips_by_scene = {clip.scene_number: clip for clip in voiceover.clips if clip.audio_storage_path}
     reconciled_scenes: list[EditPlanScene] = []
     updated_clips: list[VoiceoverClipRecord] = []
@@ -32,7 +33,7 @@ def reconcile_edit_plan_to_voiceover(
                 "render_spec": updated_render_spec(edit_plan.render_spec, total_duration),
             }
         ),
-        rebuild_voiceover_timeline(voiceover, updated_clips),
+        rebuild_voiceover_timeline(voiceover, updated_clips, active_scene_numbers),
     )
 
 
@@ -51,9 +52,14 @@ def scene_duration_seconds(scene: EditPlanScene) -> float:
 def rebuild_voiceover_timeline(
     voiceover: VoiceoverRecord,
     updated_clips: list[VoiceoverClipRecord],
+    active_scene_numbers: set[int],
 ) -> VoiceoverRecord:
     clips_by_scene = {clip.scene_number: clip for clip in updated_clips}
-    clips = [clips_by_scene.get(clip.scene_number, clip) for clip in voiceover.clips]
+    clips = [
+        clips_by_scene.get(clip.scene_number, clip)
+        for clip in voiceover.clips
+        if clip.scene_number in active_scene_numbers
+    ]
     cues = cue_track(clips)
     duration_seconds = round(max((clip.start + clip.duration_seconds for clip in clips), default=0.0), 2)
     return voiceover.model_copy(update={"clips": clips, "cues": cues, "duration_seconds": duration_seconds})

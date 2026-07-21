@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from app.models.projects import EditPlanScene
+from app.services.editorial_flow import AUTH_FAMILY, CONFIG_FAMILY, FlowSceneContext, RESULT_FAMILY, SELECTION_FAMILY
+from app.services.editorial_trim_signals import TrimSignals, suggested_bridge, suggested_max_duration, suggested_post_hold, suggested_pre_roll, trim_signals
 
 RESULT_WORDS = frozenset({"see", "view", "available", "logged", "shown", "displayed", "appears", "will", "now"})
 EXPLANATION_WORDS = frozenset({"because", "here", "notice", "right", "you", "this", "where"})
-MAX_GUIDED_CLIP_SECONDS = 8.4
+MAX_GUIDED_CLIP_SECONDS = 11.6
 
 
 def action_result_window(
@@ -44,6 +46,33 @@ def step_clip_window(scene: EditPlanScene) -> tuple[float, float]:
         ),
     )
     return bounded_action_window(scene.start, scene.end, clip_start, clip_end, scene.action_timestamp)
+
+
+def step_clip_window_with_context(
+    scene: EditPlanScene,
+    context: FlowSceneContext | None,
+) -> tuple[float, float]:
+    clip_start, clip_end = step_clip_window(scene)
+    if context is None:
+        return clip_start, clip_end
+    action_time = scene.action_timestamp or scene.start
+    signals = trim_signals(scene, context)
+    scene_window_end = expanded_scene_end(scene, context, signals)
+    clip_start = max(scene.start, action_time - suggested_pre_roll(scene, signals))
+    clip_end = min(
+        scene_window_end,
+        max(
+            clip_end,
+            action_time + suggested_post_hold(scene, signals),
+            contextual_post_end(scene, context, action_time),
+        ),
+    )
+    if context.next_scene is not None and should_preserve_handoff(scene, context):
+        bridge_gap = max(handoff_gap(scene, context), suggested_bridge(scene, signals))
+        clip_end = min(scene_window_end, max(clip_end, context.next_scene.start - bridge_gap))
+    if context.previous_scene is not None and context.family == AUTH_FAMILY and not context.is_first:
+        clip_start = max(scene.start, min(clip_start, action_time - 0.95))
+    return bounded_action_window(scene.start, scene_window_end, clip_start, clip_end, action_time, suggested_max_duration(scene, signals))
 
 
 def result_hold_seconds(spoken_line: str, duration: float, scene_role: str = "action") -> float:
@@ -125,11 +154,74 @@ def bounded_action_window(
     clip_start: float,
     clip_end: float,
     action_time: float,
+    max_duration: float = MAX_GUIDED_CLIP_SECONDS,
 ) -> tuple[float, float]:
-    if clip_end - clip_start <= MAX_GUIDED_CLIP_SECONDS:
+    if clip_end - clip_start <= max_duration:
         return round(clip_start, 2), round(clip_end, 2)
     centered_start = max(scene_start, action_time - 1.5)
-    centered_end = min(scene_end, max(action_time + 3.4, centered_start + MAX_GUIDED_CLIP_SECONDS))
-    if centered_end - centered_start > MAX_GUIDED_CLIP_SECONDS:
-        centered_end = centered_start + MAX_GUIDED_CLIP_SECONDS
+    centered_end = min(scene_end, max(action_time + 5.2, centered_start + max_duration))
+    if centered_end - centered_start > max_duration:
+        centered_end = centered_start + max_duration
     return round(centered_start, 2), round(centered_end, 2)
+
+
+def contextual_pre_roll(scene: EditPlanScene, context: FlowSceneContext) -> float:
+    if context.family == AUTH_FAMILY:
+        return 0.45 if context.is_first else 0.3
+    if context.family == SELECTION_FAMILY:
+        return 0.35
+    if context.family == CONFIG_FAMILY:
+        return 0.22
+    return 0.18
+
+
+def contextual_post_end(scene: EditPlanScene, context: FlowSceneContext, action_time: float) -> float:
+    anchor_time = scene.result_anchor_timestamp or action_time
+    hold = result_hold_seconds(scene.spoken_line, max(scene.end - scene.start, 0.8), scene.scene_role)
+    if context.family == AUTH_FAMILY:
+        return anchor_time + hold + (1.1 if context.is_first else 1.45)
+    if context.family == SELECTION_FAMILY:
+        return anchor_time + hold + (1.55 if not context.is_last else 1.2)
+    if context.family == CONFIG_FAMILY:
+        return anchor_time + hold + 1.0
+    if context.family == RESULT_FAMILY:
+        return anchor_time + hold + 0.85
+    return anchor_time + hold + 0.55
+
+
+def expanded_scene_end(scene: EditPlanScene, context: FlowSceneContext, signals: TrimSignals) -> float:
+    if context.next_scene is None:
+        return scene.end
+    gap = max(context.next_scene.start - scene.end, 0.0)
+    if gap <= 0.0:
+        return scene.end
+    if context.family == AUTH_FAMILY:
+        extension = min(gap - handoff_gap(scene, context), suggested_max_duration(scene, signals) - max(scene.end - scene.start, 0.8))
+        return max(scene.end, scene.end + max(extension, 0.0))
+    if context.family == SELECTION_FAMILY:
+        extension = min(gap - handoff_gap(scene, context), suggested_max_duration(scene, signals) - max(scene.end - scene.start, 0.8))
+        return max(scene.end, scene.end + max(extension, 0.0))
+    if context.family == RESULT_FAMILY:
+        extension = min(gap - handoff_gap(scene, context), suggested_max_duration(scene, signals) - max(scene.end - scene.start, 0.8))
+        return max(scene.end, scene.end + max(extension, 0.0))
+    return scene.end
+
+
+def should_preserve_handoff(scene: EditPlanScene, context: FlowSceneContext) -> bool:
+    if context.next_scene is None:
+        return False
+    if context.family == AUTH_FAMILY:
+        return True
+    if context.family == SELECTION_FAMILY and context.next_scene.start - scene.end <= 8.8:
+        return True
+    return scene.scene_role == "action" and context.next_scene.scene_role == "result"
+
+
+def handoff_gap(scene: EditPlanScene, context: FlowSceneContext) -> float:
+    if context.family == AUTH_FAMILY:
+        return 0.36
+    if context.family == SELECTION_FAMILY:
+        return 0.42
+    if context.family == CONFIG_FAMILY:
+        return 0.3
+    return 0.24

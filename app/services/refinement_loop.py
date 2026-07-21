@@ -10,13 +10,15 @@ from app.models.projects import (
     QualityIssueRecord,
     QualityReportRecord,
 )
+from app.services.editorial_balance import rebalance_editorial_pacing
+from app.services.editorial_sequence import repair_editorial_sequence
 from app.services.quality_assessor import build_quality_report
 
 REFINEMENT_ROUNDS = 2
 
 
 def refine_edit_plan(project: ProjectRecord, edit_plan: EditPlanRecord) -> tuple[EditPlanRecord, QualityReportRecord]:
-    refined_plan = edit_plan
+    refined_plan = rebalance_editorial_pacing(repair_editorial_sequence(edit_plan))
     report = build_quality_report(project, refined_plan)
     if should_defer_export(report):
         return refined_plan, report
@@ -31,6 +33,7 @@ def refine_edit_plan(project: ProjectRecord, edit_plan: EditPlanRecord) -> tuple
                 ]
             }
         )
+        refined_plan = rebalance_editorial_pacing(repair_editorial_sequence(refined_plan))
         report = build_quality_report(project, refined_plan)
     return refined_plan, report
 

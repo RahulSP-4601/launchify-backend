@@ -1,0 +1,101 @@
+{
+  "title": "Getting Started with Pronouncly: Launch Guide",
+  "summary": "This guide walks you through logging into Pronouncly, selecting the Japanese course, and preparing to start your language learning journey.",
+  "source": "Pronouncly Phase 4 Probe video",
+  "steps": [
+    {
+      "step_index": 1,
+      "title": "Google Login",
+      "instruction": "Click Google Login on the landing page to start authentication.",
+      "narration": "Click the Google login action to begin from the landing page.",
+      "on_screen_text": "Google Login",
+      "specific_target_label": "",
+      "start": 10.6,
+      "end": 17.5,
+      "event_type": "click",
+      "focus_selector": "",
+      "focus_label": "Google Login",
+      "highlight_label": "Login Button",
+      "source_excerpt": "Hey. So we are launching Pronouncely. It's an AI powered land language learning platform. So to get started, first, you need to go on the Google login button that's on the top right. Once you click it, just you you need to create an account or you can log in with the existing one.",
+      "action_class": "auth_action"
+    },
+    {
+      "step_index": 2,
+      "title": "Continue With Google",
+      "instruction": "Continue with Google to move forward with the existing account sign-in flow.",
+      "narration": "Continue with Google to sign in with the existing account.",
+      "on_screen_text": "Continue With Google",
+      "specific_target_label": "",
+      "start": 26.31,
+      "end": 29.37,
+      "event_type": "click",
+      "focus_selector": "",
+      "focus_label": "Continue With Google",
+      "highlight_label": "Google Login",
+      "source_excerpt": "Since I've already created the account, I'll log in to the existing one. After log in, you can see the five courses. Right now, we have opened the Japan courses, and the rest of the four courses are coming soon. So under Japan click on the Japan courses. And once the Japan course has been opened so, officially, there are five",
+      "action_class": "auth_action"
+    },
+    {
+      "step_index": 3,
+      "title": "Select A Course",
+      "instruction": "Choose the Japanese course to continue into setup.",
+      "narration": "Open the Japanese course to continue into setup.",
+      "on_screen_text": "Japanese",
+      "specific_target_label": "Japanese",
+      "start": 29.37,
+      "end": 36.27,
+      "event_type": "click",
+      "focus_selector": "",
+      "focus_label": "Select A Course",
+      "highlight_label": "Japanese",
+      "source_excerpt": "Since I've already created the account, I'll log in to the existing one. After log in, you can see the five courses. Right now, we have opened the Japan courses, and the rest of the four courses are coming soon. So under Japan click on the Japan courses. And once the Japan course has been opened so, officially, there are five",
+      "action_class": "card_selection"
+    },
+    {
+      "step_index": 4,
+      "title": "Choose Your Japanese Level",
+      "instruction": "Choose the starting level before the lesson begins.",
+      "narration": "Choose the level that matches the learner's starting point.",
+      "on_screen_text": "Pick Your Japanese Level",
+      "specific_target_label": "",
+      "start": 41.32,
+      "end": 45.67,
+      "event_type": "focus",
+      "focus_selector": "",
+      "focus_label": "Pick your Japanese level before you start learning.",
+      "highlight_label": "Level Selection",
+      "source_excerpt": "Since I've already created the account, I'll log in to the existing one. After log in, you can see the five courses. Right now, we have opened the Japan courses, and the rest of the four courses are coming soon. So under Japan click on the Japan courses. And once the Japan course has been opened so, officially, there are five",
+      "action_class": "button_click"
+    }
+  ],
+  "article_steps": [
+    {
+      "step_index": 1,
+      "title": "Google Login",
+      "body": "Click Google Login on the landing page to start authentication."
+    },
+    {
+      "step_index": 2,
+      "title": "Continue With Google",
+      "body": "Continue with Google to move forward with the existing account sign-in flow."
+    },
+    {
+      "step_index": 3,
+      "title": "Select A Course",
+      "body": "Choose the Japanese course to continue into setup."
+    },
+    {
+      "step_index": 4,
+      "title": "Choose Your Japanese Level",
+      "body": "Choose the starting level before the lesson begins."
+    }
+  ],
+  "generation_notes": [
+    "Followed the chronological order of events strictly as per timestamps.",
+    "Merged related clicks into cohesive steps where appropriate.",
+    "Used concise, premium on-screen text for clarity and impact.",
+    "Narration is clear and launch-ready for internal QA use.",
+    "No UI elements or steps were invented beyond the event log and transcript.",
+    "Grounded step timing was expanded into continuous walkthrough ranges anchored to captured actions."
+  ]
+}

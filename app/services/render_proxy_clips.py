@@ -9,7 +9,7 @@ from app.services.walkthrough_guardrails import guide_is_under_grounded, recordi
 
 MIN_CLIP_DURATION_SECONDS = 0.45
 CLIP_PADDING_SECONDS = 0.1
-MAX_CLIP_DURATION_SECONDS = 3.4
+MAX_CLIP_DURATION_SECONDS = 5.8
 MERGE_GAP_SECONDS = 0.18
 MIN_ACTION_REEL_SECONDS = 12.0
 MIN_SOURCE_COVERAGE_RATIO = 0.6
@@ -17,9 +17,9 @@ MIN_WALKTHROUGH_CLIP_SECONDS = 1.2
 CHAPTER_GAP_SECONDS = 0.75
 CHAPTER_LEAD_SECONDS = 0.35
 CHAPTER_TAIL_SECONDS = 0.9
-TARGET_WALKTHROUGH_COVERAGE_RATIO = 0.62
-TARGET_WALKTHROUGH_SCENE_SECONDS = 4.8
-TARGET_RESULT_SCENE_SECONDS = 5.4
+TARGET_WALKTHROUGH_COVERAGE_RATIO = 0.72
+TARGET_WALKTHROUGH_SCENE_SECONDS = 6.6
+TARGET_RESULT_SCENE_SECONDS = 7.4
 
 
 @dataclass(frozen=True)
@@ -177,7 +177,7 @@ def chapter_scene_bounds(
     previous_end: float,
     source_end: float,
 ) -> tuple[float, float]:
-    clip_start = chapter_start if scene.start <= chapter_start + 0.02 else max(previous_end, scene.start)
+    clip_start = chapter_start if scene.start <= chapter_start + 0.02 else max(previous_end, scene.start - scene_lead(scene))
     if next_scene is None:
         clip_end = chapter_end
     else:
@@ -198,18 +198,32 @@ def chapter_tail(scene: EditPlanScene) -> float:
     if scene.scene_role == "result":
         return CHAPTER_TAIL_SECONDS + 0.35
     if scene.action_class in {"auth_action", "navigation", "tab_switch"}:
-        return CHAPTER_TAIL_SECONDS + 0.2
+        return CHAPTER_TAIL_SECONDS + 0.55
+    if scene.action_class == "card_selection":
+        return CHAPTER_TAIL_SECONDS + 0.8
     return CHAPTER_TAIL_SECONDS
 
 
 def carried_scene_gap(scene: EditPlanScene, next_scene: EditPlanScene) -> float:
     if scene.action_class == "auth_action":
-        return 0.85
+        return 1.4
     if scene.action_class == "card_selection" and next_scene.scene_role == "result":
-        return 0.8
+        return 1.8
+    if scene.action_class == "card_selection" and next_scene.action_class in {"button_click", "focus", "generic_action"}:
+        return 2.1
     if scene.scene_role == "action" and next_scene.scene_role == "result":
-        return 0.7
+        return 1.2
     return CHAPTER_GAP_SECONDS
+
+
+def scene_lead(scene: EditPlanScene) -> float:
+    if scene.action_class == "auth_action":
+        return 0.45
+    if scene.action_class == "card_selection":
+        return 0.55
+    if scene.scene_role == "result":
+        return 0.22
+    return 0.28
 
 
 def rebalance_walkthrough_coverage(

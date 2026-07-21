@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.models.projects import EditPlanHighlight, EditPlanRecord, EditPlanScene, EditPlanZoom
+from app.models.projects import EditPlanHighlight, EditPlanRecord, EditPlanScene, EditPlanZoom, FocusBox
 
 CALM_LAYOUTS = {"screen-only", "dashboard-wide"}
 
@@ -24,6 +24,16 @@ def direct_scene_camera(scene: EditPlanScene) -> EditPlanScene:
 
 
 def calm_scene(scene: EditPlanScene) -> EditPlanScene:
+    if should_preserve_calm_motion(scene):
+        return scene.model_copy(
+            update={
+                "camera_mode": "focus",
+                "zooms": seeded_calm_zooms(scene),
+                "highlights": seeded_calm_highlights(scene),
+                "transition_style": "fade",
+                "transition_duration_seconds": 0.24,
+            }
+        )
     return scene.model_copy(
         update={
             "camera_mode": "static",
@@ -93,3 +103,63 @@ def scene_transition_duration(scene: EditPlanScene) -> float:
     if scene.layout_mode == "split-right":
         return min(max(scene.transition_duration_seconds, 0.28), 0.36)
     return min(scene.transition_duration_seconds, 0.32)
+
+
+def should_preserve_calm_motion(scene: EditPlanScene) -> bool:
+    if scene.scene_role != "action":
+        return False
+    if scene.action_class not in {"button_click", "focus"}:
+        return False
+    combined = " ".join(part.lower() for part in (scene.title, scene.on_screen_text, scene.purpose) if part)
+    return any(token in combined for token in ("level", "settings", "preferences", "plan", "workspace", "role", "template", "setup"))
+
+
+def seeded_calm_zooms(scene: EditPlanScene) -> list[EditPlanZoom]:
+    aligned = beat_aligned_zooms(scene)
+    if aligned:
+        return aligned
+    focus_box = default_setup_focus_box()
+    focus_start = round(scene.focus_start_timestamp or scene.start, 2)
+    focus_end = round(scene.focus_end_timestamp or min(scene.end, focus_start + 1.0), 2)
+    settle_end = round(scene.settle_end_timestamp or min(scene.end, focus_end + 0.7), 2)
+    return [
+        EditPlanZoom(
+            start=focus_start,
+            end=settle_end,
+            scale=1.07,
+            focus_region="center",
+            reason="calm setup focus",
+            confidence=0.72,
+            focus_box=focus_box,
+            x_offset=0.0,
+            y_offset=0.0,
+            hold_ratio=0.82,
+            smoothing=0.18,
+        )
+    ]
+
+
+def seeded_calm_highlights(scene: EditPlanScene) -> list[EditPlanHighlight]:
+    aligned = beat_aligned_highlights(scene)
+    if aligned:
+        return aligned
+    focus_box = default_setup_focus_box()
+    focus_start = round(scene.focus_start_timestamp or scene.start, 2)
+    focus_end = round(min(scene.end, (scene.focus_end_timestamp or focus_start + 0.95)), 2)
+    return [
+        EditPlanHighlight(
+            start=focus_start,
+            end=focus_end,
+            label=(scene.on_screen_text or scene.title or "Setup")[:48],
+            style="soft-glow",
+            anchor_region="center",
+            confidence=0.72,
+            focus_box=focus_box,
+            placement_preference="avoid-ui-cover",
+            ui_label=scene.on_screen_text or scene.title,
+        )
+    ]
+
+
+def default_setup_focus_box() -> FocusBox:
+    return FocusBox(x=0.24, y=0.2, width=0.52, height=0.32)

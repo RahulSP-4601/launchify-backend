@@ -1,0 +1,73 @@
+{
+  "provider": "deepgram",
+  "model": "aura-2-thalia-en",
+  "mode": "original",
+  "status": "disabled",
+  "script": "Click Google Login to get started. Continue with Google to sign in quickly. Open the Japanese course to choose your level next. Choose Your Japanese Level before you begin.",
+  "cues": [
+    {
+      "scene_number": 1,
+      "start": 0.0,
+      "end": 9.25,
+      "text": "Click Google Login to get started.",
+      "duration_seconds": 9.25
+    },
+    {
+      "scene_number": 2,
+      "start": 9.25,
+      "end": 12.57,
+      "text": "Continue with Google to sign in quickly.",
+      "duration_seconds": 3.32
+    },
+    {
+      "scene_number": 3,
+      "start": 12.57,
+      "end": 21.49,
+      "text": "Open the Japanese course to choose your level next.",
+      "duration_seconds": 8.92
+    },
+    {
+      "scene_number": 4,
+      "start": 21.49,
+      "end": 25.84,
+      "text": "Choose Your Japanese Level before you begin.",
+      "duration_seconds": 4.35
+    }
+  ],
+  "clips": [
+    {
+      "scene_number": 1,
+      "start": 10.6,
+      "end": 19.85,
+      "text": "Click Google Login to get started.",
+      "duration_seconds": 9.25,
+      "audio_storage_path": ""
+    },
+    {
+      "scene_number": 2,
+      "start": 26.31,
+      "end": 29.63,
+      "text": "Continue with Google to sign in quickly.",
+      "duration_seconds": 3.32,
+      "audio_storage_path": ""
+    },
+    {
+      "scene_number": 3,
+      "start": 29.37,
+      "end": 38.29,
+      "text": "Open the Japanese course to choose your level next.",
+      "duration_seconds": 8.92,
+      "audio_storage_path": ""
+    },
+    {
+      "scene_number": 4,
+      "start": 41.32,
+      "end": 45.67,
+      "text": "Choose Your Japanese Level before you begin.",
+      "duration_seconds": 4.35,
+      "audio_storage_path": ""
+    }
+  ],
+  "audio_storage_path": "",
+  "duration_seconds": 25.84
+}

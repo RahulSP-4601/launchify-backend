@@ -71,14 +71,16 @@ def infer_layout_mode(
         scene.purpose,
         " ".join(visual_analysis.visible_labels) if visual_analysis is not None else "",
     )
-    if "choose an account" in combined or ("account" in combined and scene.action_class == "auth_action"):
+    if is_account_picker_scene(scene):
         return "screen-only"
+    if scene.scene_role == "action" and scene.action_class in {"auth_action", "card_selection"}:
+        return "split-right"
+    if is_setup_scene(scene):
+        return setup_layout_mode(scene, visual_analysis)
     if scene.scene_role == "result" and any(token in combined for token in ("select a course", "pick your", "choose a course", "dashboard")):
         return "screen-only"
     if scene.scene_role == "result" and any(token in combined for token in ("select a course", "dashboard", "course", "japanese", "level")):
         return "dashboard-wide"
-    if scene.action_class in {"auth_action", "card_selection"}:
-        return "split-right"
     if scene.scene_role == "result":
         return "dashboard-wide"
     return "feature-center"
@@ -155,18 +157,25 @@ def stable_focus_box(
     beats: EditorialBeatPlan,
 ) -> FocusBox | None:
     existing = primary_scene_focus_box(scene)
-    return tracked_focus_box(
+    tracked = tracked_focus_box(
         visual_analysis,
         focus_start=beats.focus_start,
         focus_end=beats.focus_end,
         result_anchor=beats.result_anchor,
         fallback=existing,
     )
+    if tracked is not None:
+        return tracked
+    if scene.scene_role == "action" and is_setup_scene(scene):
+        return fallback_setup_focus_box()
+    return None
 
 
 def should_show_captions(scene: EditPlanScene, layout_mode: str) -> bool:
     if not scene.show_captions:
         return False
+    if layout_mode == "split-right":
+        return True
     if layout_mode == "screen-only":
         return True
     if layout_mode == "feature-center":
@@ -201,9 +210,9 @@ def premium_caption_text(scene: EditPlanScene, layout_mode: str) -> str:
     if layout_mode in SCREEN_ONLY_LAYOUTS:
         return ""
     if scene.action_class == "auth_action":
-        return "Start with one clean login, then continue into onboarding."
+        return compact_caption_text(scene.spoken_line or scene.on_screen_text or scene.title)
     if scene.action_class == "card_selection":
-        return "Choose the course card that starts the guided path."
+        return compact_caption_text(scene.spoken_line or scene.on_screen_text or scene.title)
     if scene.scene_role == "result":
         return compact_caption_text(scene.purpose or scene.on_screen_text or scene.spoken_line)
     return compact_caption_text(scene.spoken_line or scene.purpose)
@@ -211,29 +220,32 @@ def premium_caption_text(scene: EditPlanScene, layout_mode: str) -> str:
 
 def polished_spoken_line(scene: EditPlanScene, layout_mode: str) -> str:
     if layout_mode == "screen-only":
-        if "account" in normalized_text(scene.on_screen_text, scene.source_excerpt, scene.purpose):
+        if is_account_picker_scene(scene):
             return "Pick the existing account to keep moving."
+        if is_setup_scene(scene) and scene.on_screen_text:
+            return compact_caption_text(f"{scene.on_screen_text} before you begin.") or scene.spoken_line
     return compact_caption_text(scene.spoken_line or scene.purpose) or scene.spoken_line
 
 
 def calibrated_zooms(scene: EditPlanScene, layout_mode: str, beats: EditorialBeatPlan, focus_box: FocusBox | None) -> list[EditPlanZoom]:
-    if not scene.zooms:
-        return []
     if layout_mode == "screen-only":
-        return []
+        return subtle_screen_zoom(scene, beats, focus_box, scene.zooms[:1])
+    if not scene.zooms:
+        return seeded_dynamic_zooms(scene, layout_mode, beats, focus_box)
     tuned: list[EditPlanZoom] = []
-    for zoom in scene.zooms[:2]:
-        scale = min(zoom.scale, 1.1 if layout_mode == "dashboard-wide" else 1.16)
+    action_peak_scale, settle_scale = zoom_profile(scene, layout_mode)
+    for index, zoom in enumerate(scene.zooms[:2]):
+        target_scale = action_peak_scale if index == 0 else settle_scale
         start = max(scene.start, beats.focus_start if zoom.start <= beats.focus_start else zoom.start)
-        end = min(scene.end, max(zoom.end, beats.focus_end))
+        end = min(scene.end, max(zoom.end, beats.focus_end if index == 0 else beats.settle_end))
         tuned.append(
             zoom.model_copy(
                 update={
                     "start": round(start, 2),
                     "end": round(end, 2),
-                    "scale": scale,
-                    "smoothing": max(zoom.smoothing, 0.14),
-                    "hold_ratio": max(zoom.hold_ratio, 0.72),
+                    "scale": min(max(zoom.scale, target_scale - 0.02), target_scale),
+                    "smoothing": max(zoom.smoothing, 0.16 if scene.action_class == "card_selection" else 0.14),
+                    "hold_ratio": max(zoom.hold_ratio, 0.76 if scene.action_class == "card_selection" else 0.72),
                     "focus_box": focus_box or zoom.focus_box,
                 }
             )
@@ -243,29 +255,66 @@ def calibrated_zooms(scene: EditPlanScene, layout_mode: str, beats: EditorialBea
 
 def calibrated_highlights(scene: EditPlanScene, layout_mode: str, beats: EditorialBeatPlan, focus_box: FocusBox | None) -> list[EditPlanHighlight]:
     if layout_mode in SCREEN_ONLY_LAYOUTS:
-        return []
+        return screen_only_highlights(scene, beats, focus_box)
     if scene.scene_role == "result":
         return []
     highlights = scene.highlights[:1]
     if not highlights and focus_box is not None:
-        return [
-            EditPlanHighlight(
-                start=round(beats.focus_start, 2),
-                end=round(beats.focus_end, 2),
-                label=compact_caption_text(scene.on_screen_text or scene.title or scene.purpose),
-                style="soft-glow",
-                anchor_region="center",
-                confidence=0.84,
-                focus_box=focus_box,
-                placement_preference="avoid-ui-cover",
-                ui_label=scene.on_screen_text or scene.title,
-            )
-        ]
-    return [highlight.model_copy(update={"start": round(max(highlight.start, beats.focus_start), 2), "end": round(min(max(highlight.end, beats.focus_end), scene.end), 2), "focus_box": focus_box or highlight.focus_box}) for highlight in highlights]
+        return [seeded_highlight(scene, beats, focus_box)]
+    return [retimed_highlight(highlight, scene, beats, focus_box) for highlight in highlights]
+
+
+def screen_only_highlights(scene: EditPlanScene, beats: EditorialBeatPlan, focus_box: FocusBox | None) -> list[EditPlanHighlight]:
+    if scene.scene_role != "action" or not is_setup_scene(scene) or focus_box is None:
+        return []
+    return [build_highlight(scene, round(beats.focus_start, 2), round(min(beats.settle_end, beats.focus_start + 1.1), 2), 0.82, focus_box)]
+
+
+def seeded_highlight(scene: EditPlanScene, beats: EditorialBeatPlan, focus_box: FocusBox) -> EditPlanHighlight:
+    return build_highlight(
+        scene,
+        round(beats.focus_start, 2),
+        round(min(beats.focus_end, beats.focus_start + highlight_duration_seconds(scene)), 2),
+        0.84,
+        focus_box,
+    )
+
+
+def retimed_highlight(
+    highlight: EditPlanHighlight,
+    scene: EditPlanScene,
+    beats: EditorialBeatPlan,
+    focus_box: FocusBox | None,
+) -> EditPlanHighlight:
+    start = round(max(highlight.start, beats.focus_start), 2)
+    end = round(min(max(highlight.end, beats.focus_end), scene.end, start + highlight_duration_seconds(scene)), 2)
+    return highlight.model_copy(update={"start": start, "end": end, "focus_box": focus_box or highlight.focus_box})
+
+
+def build_highlight(
+    scene: EditPlanScene,
+    start: float,
+    end: float,
+    confidence: float,
+    focus_box: FocusBox,
+) -> EditPlanHighlight:
+    return EditPlanHighlight(
+        start=start,
+        end=end,
+        label=compact_caption_text(scene.on_screen_text or scene.title or scene.purpose),
+        style="soft-glow",
+        anchor_region="center",
+        confidence=confidence,
+        focus_box=focus_box,
+        placement_preference="avoid-ui-cover",
+        ui_label=scene.on_screen_text or scene.title,
+    )
 
 
 def prefer_static_camera(scene: EditPlanScene, layout_mode: str) -> bool:
-    return layout_mode in SCREEN_ONLY_LAYOUTS or (scene.scene_role == "result" and not scene.highlights)
+    if layout_mode in SCREEN_ONLY_LAYOUTS:
+        return not (scene.scene_role == "action" and is_setup_scene(scene))
+    return scene.scene_role == "result" and not scene.highlights
 
 
 def editorial_decision_summary(
@@ -296,3 +345,126 @@ def primary_scene_focus_box(scene: EditPlanScene) -> FocusBox | None:
     if scene.zooms and scene.zooms[0].focus_box is not None:
         return scene.zooms[0].focus_box
     return None
+
+
+def is_account_picker_scene(scene: EditPlanScene) -> bool:
+    combined = normalized_text(scene.on_screen_text, scene.purpose)
+    return any(marker in combined for marker in ("choose an account", "account picker", "account chooser"))
+
+
+def is_setup_scene(scene: EditPlanScene) -> bool:
+    combined = normalized_text(scene.title, scene.on_screen_text, scene.purpose)
+    return scene.action_class in {"button_click", "focus"} and any(
+        token in combined for token in ("level", "settings", "preferences", "plan", "workspace", "role", "template", "setup")
+    )
+
+
+def setup_layout_mode(
+    scene: EditPlanScene,
+    visual_analysis: VisualSceneAnalysisRecord | None,
+) -> str:
+    label_count = len(visual_analysis.visible_labels) if visual_analysis is not None else 0
+    duration = max(scene.render_duration_seconds or (scene.end - scene.start), 0.8)
+    if scene.scene_role == "result":
+        return "screen-only"
+    if label_count >= 4 or duration >= 3.0:
+        return "screen-only"
+    return "feature-center"
+
+
+def highlight_duration_seconds(scene: EditPlanScene) -> float:
+    if scene.action_class == "auth_action":
+        return 1.45
+    if scene.action_class == "card_selection":
+        return 1.35
+    return 1.15
+
+
+def fallback_setup_focus_box() -> FocusBox:
+    return FocusBox(x=0.24, y=0.2, width=0.52, height=0.32)
+
+
+def zoom_profile(scene: EditPlanScene, layout_mode: str) -> tuple[float, float]:
+    if layout_mode == "dashboard-wide":
+        return 1.08, 1.05
+    if scene.action_class == "auth_action":
+        return 1.14, 1.08
+    if scene.action_class == "card_selection":
+        return 1.18, 1.1
+    if is_setup_scene(scene):
+        return 1.1, 1.06
+    return 1.12, 1.07
+
+
+def subtle_screen_zoom(
+    scene: EditPlanScene,
+    beats: EditorialBeatPlan,
+    focus_box: FocusBox | None,
+    existing: list[EditPlanZoom],
+) -> list[EditPlanZoom]:
+    if not (scene.scene_role == "action" and is_setup_scene(scene) and focus_box is not None):
+        return []
+    base = existing[0] if existing else EditPlanZoom(
+        start=scene.start,
+        end=scene.end,
+        scale=1.0,
+        focus_region="center",
+        reason="editorial setup focus",
+        confidence=0.78,
+        focus_box=focus_box,
+        x_offset=0.0,
+        y_offset=0.0,
+        hold_ratio=0.82,
+        smoothing=0.18,
+    )
+    return [
+        base.model_copy(
+            update={
+                "start": round(beats.focus_start, 2),
+                "end": round(min(scene.end, max(beats.settle_end, beats.focus_start + 1.2)), 2),
+                "scale": 1.07,
+                "focus_box": focus_box,
+                "hold_ratio": max(base.hold_ratio, 0.82),
+                "smoothing": max(base.smoothing, 0.18),
+            }
+        )
+    ]
+
+
+def seeded_dynamic_zooms(
+    scene: EditPlanScene,
+    layout_mode: str,
+    beats: EditorialBeatPlan,
+    focus_box: FocusBox | None,
+) -> list[EditPlanZoom]:
+    if focus_box is None:
+        return []
+    action_peak_scale, settle_scale = zoom_profile(scene, layout_mode)
+    return [
+        EditPlanZoom(
+            start=round(beats.focus_start, 2),
+            end=round(beats.focus_end, 2),
+            scale=action_peak_scale,
+            focus_region="center",
+            reason="editorial action focus",
+            confidence=0.8,
+            focus_box=focus_box,
+            x_offset=0.0,
+            y_offset=0.0,
+            hold_ratio=0.76,
+            smoothing=0.16,
+        ),
+        EditPlanZoom(
+            start=round(beats.focus_end, 2),
+            end=round(beats.settle_end, 2),
+            scale=settle_scale,
+            focus_region="center",
+            reason="editorial settle hold",
+            confidence=0.76,
+            focus_box=focus_box,
+            x_offset=0.0,
+            y_offset=0.0,
+            hold_ratio=0.8,
+            smoothing=0.18,
+        ),
+    ]

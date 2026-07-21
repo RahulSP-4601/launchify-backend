@@ -41,7 +41,9 @@ def action_line(scene: EditPlanScene, label: str) -> str:
         return sentence(join_phrases(f"Open {focus}", progress_phrase(scene)))
     if action_class == "auth_action":
         return auth_line(focus, scene)
-    lead = f"Choose {focus}" if action_class == "card_selection" else f"Select {focus}"
+    if action_class == "card_selection":
+        return sentence(join_phrases(f"Open {focus}", selection_progress_phrase(scene)))
+    lead = f"Choose {focus}" if action_class == "button_click" else f"Select {focus}"
     return sentence(join_phrases(lead, progress_phrase(scene)))
 
 
@@ -52,7 +54,7 @@ def result_line(scene: EditPlanScene, label: str) -> str:
     if is_dashboard_scene(scene):
         return sentence("Land on the course dashboard so every available learning path is clear.")
     if is_level_scene(scene):
-        return sentence("Open the Japanese path and review the starting level before the lesson begins.")
+        return sentence("Review the starting level screen before the lesson begins.")
     if scene.action_class in {"navigation", "auth_action", "tab_switch"}:
         return sentence(join_phrases(f"You'll land on {focus}", progress_phrase(scene)))
     if scene.purpose and not transcript_like_label(scene.purpose):
@@ -68,18 +70,19 @@ def explanation_line(scene: EditPlanScene, label: str) -> str:
 
 def auth_line(label: str, scene: EditPlanScene) -> str:
     lowered = label.lower()
-    if "account" in scene.on_screen_text.lower() or "account" in scene.source_excerpt.lower():
+    if is_account_picker_scene(scene):
         return sentence("Pick the existing Google account to continue straight into the product.")
+    if "google login" in lowered or ("login" in lowered and "continue" not in lowered):
+        return sentence(join_phrases("Click Google Login to start from the landing page", progress_phrase(scene)))
     if "google" in lowered:
-        return sentence(join_phrases("Continue with Google for a clean login", progress_phrase(scene)))
+        return sentence(join_phrases("Continue with Google for a clean sign-in", progress_phrase(scene)))
     if "sign up" in lowered and "google" not in lowered:
         return sentence(join_phrases(f"Use {label} to create the account", progress_phrase(scene)))
     return sentence(join_phrases(f"Use {label} to sign in", progress_phrase(scene)))
 
 
 def screen_only_line(scene: EditPlanScene) -> str:
-    combined = f"{scene.on_screen_text} {scene.source_excerpt} {scene.purpose}".lower()
-    if "choose an account" in combined:
+    if is_account_picker_scene(scene):
         return sentence("Pick the existing account to continue into the product.")
     return sentence(compact_phrase(scene.spoken_line or scene.purpose or scene.title))
 
@@ -174,18 +177,34 @@ def outcome_phrase(scene: EditPlanScene) -> str:
 
 def progress_phrase(scene: EditPlanScene) -> str:
     if scene.action_class == "auth_action":
-        return "then move straight into the dashboard"
+        return auth_progress_phrase(scene)
     if is_dashboard_scene(scene):
-        return "so the course options are easy to scan"
+        return "make the course options easy to scan"
     if scene.layout_mode == "screen-only":
-        return "so the next screen is immediately clear"
+        return "make the next screen immediately clear"
     if scene.action_class == "card_selection":
-        return "to enter the guided learning path"
+        return selection_progress_phrase(scene)
     if is_level_scene(scene):
-        return "so the next setup step is ready"
+        return "prepare the next setup step"
     if scene.scene_role == "result":
-        return "so the next product state is clear"
+        return "make the next product state clear"
     return outcome_phrase(scene)
+
+
+def auth_progress_phrase(scene: EditPlanScene) -> str:
+    combined = f"{scene.on_screen_text} {scene.purpose} {scene.source_excerpt}".lower()
+    if "account" in combined:
+        return "carry the account choice into the app"
+    if "continue with google" in combined:
+        return "move through authentication without extra steps"
+    return "move straight into onboarding"
+
+
+def selection_progress_phrase(scene: EditPlanScene) -> str:
+    combined = f"{scene.on_screen_text} {scene.purpose} {scene.source_excerpt}".lower()
+    if "course" in combined or "japanese" in combined:
+        return "move directly into setup"
+    return "open the next guided step"
 
 
 def scene_context(scene: EditPlanScene) -> str:
@@ -200,6 +219,8 @@ def join_phrases(primary: str, secondary: str) -> str:
     secondary = secondary.strip()
     if not secondary:
         return primary
+    if secondary.lower().startswith("then "):
+        secondary = secondary[5:].strip()
     if secondary.lower().startswith(primary.lower()):
         return primary
     return f"{primary}, then {secondary}"
@@ -213,3 +234,8 @@ def is_dashboard_scene(scene: EditPlanScene) -> bool:
 def is_level_scene(scene: EditPlanScene) -> bool:
     combined = f"{scene.on_screen_text} {scene.source_excerpt} {scene.purpose}".lower()
     return "pick your japanese level" in combined or "level" in combined
+
+
+def is_account_picker_scene(scene: EditPlanScene) -> bool:
+    combined = f"{scene.on_screen_text} {scene.purpose}".lower()
+    return any(marker in combined for marker in ("choose an account", "account picker", "account chooser"))

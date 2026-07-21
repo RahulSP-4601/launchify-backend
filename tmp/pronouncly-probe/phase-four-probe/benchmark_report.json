@@ -1,0 +1,51 @@
+{
+  "overall_score": 97,
+  "verdict": "Clueso-class candidate",
+  "metrics": [
+    {
+      "name": "anchor_coverage",
+      "score": 1.0,
+      "detail": "Share of scenes with anchored zoom or highlight."
+    },
+    {
+      "name": "caption_balance",
+      "score": 1.0,
+      "detail": "Share of longer captions balanced into readable lines."
+    },
+    {
+      "name": "motion_confidence",
+      "score": 0.87,
+      "detail": "Average confidence of approved zoom moves."
+    },
+    {
+      "name": "timing_sync",
+      "score": 1.0,
+      "detail": "Share of focus scenes with detected action timing."
+    },
+    {
+      "name": "pacing_balance",
+      "score": 1.0,
+      "detail": "Whether scene durations stay readable without collapsing meaningful product moments."
+    },
+    {
+      "name": "narrative_continuity",
+      "score": 0.89,
+      "detail": "Whether adjacent scenes preserve a clean action-to-result walkthrough arc."
+    },
+    {
+      "name": "grounding_health",
+      "score": 1.0,
+      "detail": "Whether the walkthrough structure is sufficiently grounded for the source duration."
+    },
+    {
+      "name": "review_debt",
+      "score": 1.0,
+      "detail": "How much unresolved manual review debt is still present."
+    },
+    {
+      "name": "quality_gate",
+      "score": 1.0,
+      "detail": "Quality-report readiness after review and refinement."
+    }
+  ]
+}

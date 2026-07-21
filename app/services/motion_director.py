@@ -35,12 +35,15 @@ def build_zooms(
 
 def result_zooms(start: float, end: float, policy: ScenePolicy) -> list[EditPlanZoom]:
     duration = max(end - start, 0.5)
-    focus_start = round(start + duration * 0.12, 2)
-    focus_end = min(end, round(focus_start + duration * 0.56, 2))
-    return [zoom_record(focus_start, focus_end, policy, 1.0, "ease-out", 0.95, 0.8)]
+    focus_start = round(start + duration * 0.1, 2)
+    focus_end = min(end, round(focus_start + duration * 0.58, 2))
+    return [zoom_record(focus_start, focus_end, policy, 1.0, "ease-out", 0.96, 0.84)]
 
 
 def action_led_zooms(start: float, end: float, policy: ScenePolicy) -> list[EditPlanZoom]:
+    duration = max(end - start, 0.5)
+    if should_use_multi_step_zoom(policy, duration):
+        return multi_step_action_zoom(start, end, duration, policy)
     focus_start, focus_peak_end, settle_end = action_result_window(
         start,
         end,
@@ -61,12 +64,18 @@ def action_led_zooms(start: float, end: float, policy: ScenePolicy) -> list[Edit
     return [zoom_record(focus_start, focus_end, policy, 1.03, "ease-in-out", 0.95, 0.72)]
 
 
+def multi_step_action_zoom(start: float, end: float, duration: float, policy: ScenePolicy) -> list[EditPlanZoom]:
+    if duration >= 7.5 and focus_area(policy) < 0.12:
+        return three_step_zoom(start, end, duration, policy)
+    return two_step_zoom(start, end, duration, policy)
+
+
 def two_step_zoom(start: float, end: float, duration: float, policy: ScenePolicy) -> list[EditPlanZoom]:
     first_start = round(start + duration * 0.08, 2)
     second_start = round(start + duration * 0.46, 2)
     return [
-        zoom_record(first_start, second_start, policy, 0.99, "ease-out", 0.9, 0.42),
-        zoom_record(second_start, min(end, second_start + duration * 0.36), policy, 1.07, "ease-in-out", 0.86, 0.62),
+        zoom_record(first_start, second_start, policy, 0.99, "ease-out", 0.92, 0.48),
+        zoom_record(second_start, min(end, second_start + duration * 0.36), policy, 1.06, "ease-in-out", 0.9, 0.7),
     ]
 
 
@@ -75,9 +84,9 @@ def three_step_zoom(start: float, end: float, duration: float, policy: ScenePoli
     second = round(start + duration * 0.34, 2)
     third = round(start + duration * 0.62, 2)
     return [
-        zoom_record(first, second, policy, 0.99, "ease-out", 0.92, 0.36),
-        zoom_record(second, third, policy, 1.05, "ease-in-out", 0.9, 0.56),
-        zoom_record(third, min(end, third + duration * 0.22), policy, 1.1, "ease-in", 0.88, 0.66),
+        zoom_record(first, second, policy, 0.99, "ease-out", 0.94, 0.42),
+        zoom_record(second, third, policy, 1.04, "ease-in-out", 0.92, 0.62),
+        zoom_record(third, min(end, third + duration * 0.22), policy, 1.08, "ease-in", 0.9, 0.72),
     ]
 
 
@@ -174,13 +183,13 @@ def zoom_base_scale(policy: ScenePolicy) -> float:
     if policy.scene_role == "result":
         return 1.04 if policy.anchor_box is not None else 1.02
     if policy.anchor_box is not None:
-        area = policy.anchor_box.width * policy.anchor_box.height
+        area = focus_area(policy)
         if area < 0.04:
-            return 1.18
+            return 1.16
         if area < 0.1:
-            return 1.14
-        return 1.08
-    return 1.08 if policy.focus_region == "center" else 1.12
+            return 1.12
+        return 1.07
+    return 1.06 if policy.focus_region == "center" else 1.1
 
 
 def capped_zoom_scale(scale: float, policy: ScenePolicy) -> float:
@@ -190,7 +199,7 @@ def capped_zoom_scale(scale: float, policy: ScenePolicy) -> float:
 
 
 def highlight_label(policy: ScenePolicy, scene: LaunchScriptScene) -> str:
-    source = policy.target_label or scene.on_screen_text.strip() or scene.purpose.strip()
+    source = policy.target_label or scene.specific_target_label.strip() or scene.on_screen_text.strip() or scene.purpose.strip()
     words = source.split()
     compact = " ".join(words[:6]).strip()
     return compact[:56]
@@ -220,14 +229,14 @@ def should_hold_static(policy: ScenePolicy, start: float, end: float) -> bool:
     box = policy.anchor_box or policy.focus_box
     if box is None:
         return policy.focus_region == "center"
-    area = box.width * box.height
+    area = focus_area(policy)
     centered = abs((box.x + box.width / 2) - 0.5) < 0.08 and abs((box.y + box.height / 2) - 0.5) < 0.08
     return area > 0.22 and centered
 
 
 def should_prefer_static_scene(policy: ScenePolicy) -> bool:
     label = policy.target_label.lower()
-    if "choose an account" in label or "select a course" in label:
+    if "choose an account" in label or "account chooser" in label or "account picker" in label:
         return True
     return False
 
@@ -239,3 +248,23 @@ def should_skip_highlight(policy: ScenePolicy, focus_box: FocusBox | None) -> bo
     if area > 0.16:
         return True
     return policy.scene_role == "result" and area > 0.08
+
+
+def should_use_multi_step_zoom(policy: ScenePolicy, duration: float) -> bool:
+    if policy.scene_role != "action":
+        return False
+    if duration < 3.2:
+        return False
+    area = focus_area(policy)
+    if area > 0.2:
+        return False
+    if policy.zoom_confidence < 0.7:
+        return False
+    return policy.action_class in {"auth_action", "button_click", "card_selection", "navigation", "tab_switch"}
+
+
+def focus_area(policy: ScenePolicy) -> float:
+    box = policy.anchor_box or policy.focus_box
+    if box is None:
+        return 0.18
+    return box.width * box.height

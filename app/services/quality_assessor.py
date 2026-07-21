@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.models.projects import EditPlanRecord, IssueSeverity, ProjectRecord, QualityIssueRecord, QualityReportRecord
+from app.models.projects import EditPlanRecord, EditPlanScene, IssueSeverity, ProjectRecord, QualityIssueRecord, QualityReportRecord
 from app.services.walkthrough_guardrails import guide_is_under_grounded, recording_duration_seconds, session_is_under_grounded
 
 
@@ -10,6 +10,7 @@ def build_quality_report(project: ProjectRecord, edit_plan: EditPlanRecord) -> Q
         *motion_issues(edit_plan),
         *highlight_issues(edit_plan),
         *timing_issues(edit_plan),
+        *editorial_issues(edit_plan),
         *visual_intelligence_issues(edit_plan),
         *transcript_issues(project, edit_plan),
         *grounding_issues(project),
@@ -84,8 +85,29 @@ def visual_intelligence_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRe
     for scene in edit_plan.scenes:
         if scene.camera_mode == "focus" and not scene.highlights and not scene.zooms:
             issues.append(issue("weak-visual-decision", "medium", scene.scene_number, "Focus scene has no strong visual action left after refinement.", "Keep the scene static or improve cursor/click detection."))
-        if scene.scene_role == "action" and scene.camera_mode == "static" and not scene.highlights:
+        if scene.scene_role == "action" and scene.camera_mode == "static" and not scene.highlights and not setup_scene(scene):
             issues.append(issue("flat-action-scene", "low", scene.scene_number, "Action scene has no visual emphasis left.", "Recover a highlight or add a short anchored focus move for the action."))
+    return issues
+
+
+def editorial_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRecord]:
+    issues: list[QualityIssueRecord] = []
+    ordered = sorted(edit_plan.scenes, key=lambda scene: (scene.start, scene.scene_number))
+    for index, scene in enumerate(ordered):
+        if scene.action_class == "auth_action" and max(scene.end - scene.start, 0.0) < 2.9:
+            issues.append(issue("short-auth-beat", "medium", scene.scene_number, "Authentication step is trimmed too tightly for a polished walkthrough.", "Keep more setup or result bridge around the auth action."))
+        if scene.action_class == "card_selection" and max(scene.end - scene.start, 0.0) < 4.8:
+            issues.append(issue("short-selection-beat", "medium", scene.scene_number, "Course or option selection step is trimmed too tightly.", "Preserve more of the transition into the selected state."))
+        if index == 0 and "continue with google" in scene.spoken_line.lower():
+            issues.append(issue("collapsed-opening-auth", "high", scene.scene_number, "Opening scene is using continuation-login wording instead of the landing CTA.", "Separate the landing CTA beat from the follow-up auth beat."))
+        if index > 0 and normalize(scene.spoken_line) == normalize(ordered[index - 1].spoken_line):
+            issues.append(issue("duplicate-scene-intent", "medium", scene.scene_number, "Adjacent scenes repeat the same spoken intent.", "Rewrite the later scene so it describes its own action or outcome."))
+        if title_is_overliteral(scene.title):
+            issues.append(issue("overliteral-title", "medium", scene.scene_number, "Scene title is still too literal or sentence-like for a polished walkthrough.", "Rewrite the title into a short canonical action or setup label."))
+        if setup_scene(scene) and scene.layout_mode not in {"screen-only", "dashboard-wide"}:
+            issues.append(issue("weak-setup-layout", "low", scene.scene_number, "Setup scene is using a more action-heavy layout than necessary.", "Prefer a calmer setup/result layout for stable choice screens."))
+        if spoken_line_is_flat(scene.spoken_line):
+            issues.append(issue("flat-voice-line", "low", scene.scene_number, "Voiceover line is functional but not polished.", "Rewrite the spoken line with a clearer action and outcome."))
     return issues
 
 
@@ -171,4 +193,35 @@ def issue(
         scene_number=scene_number,
         message=message,
         suggestion=suggestion,
+    )
+
+
+def normalize(text: str) -> str:
+    return " ".join(text.lower().split()).strip().rstrip(".")
+
+
+def title_is_overliteral(title: str) -> bool:
+    lowered = normalize(title)
+    return len(lowered.split()) > 5 or any(token in lowered for token in ("before you", "after you", "once you", "when you"))
+
+
+def setup_scene(scene: EditPlanScene) -> bool:
+    combined = normalize(f"{scene.title} {scene.on_screen_text} {scene.purpose}")
+    return scene.action_class in {"button_click", "focus"} and any(
+        token in combined for token in ("level", "settings", "preferences", "plan", "workspace", "role", "template", "setup")
+    )
+
+
+def spoken_line_is_flat(line: str) -> bool:
+    lowered = normalize(line)
+    if not lowered:
+        return True
+    return any(
+        phrase in lowered
+        for phrase in (
+            "continue to continue",
+            "select the option",
+            "move forward",
+            "continue into setup",
+        )
     )
