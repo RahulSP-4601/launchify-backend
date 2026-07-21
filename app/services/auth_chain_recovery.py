@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.models.projects import LaunchScriptRecord, LaunchScriptScene, SessionEventRecord, VisualSceneAnalysisRecord
+from app.services.canonical_consistency import branch_family, event_branch_family
 from app.services.inferred_transcript_fallback import transcript_scene_event
 from app.services.scene_intent_resolver import resolve_scene_intent
 
@@ -19,7 +20,7 @@ def recover_auth_chain_events(
         return events
     recovered = events[:]
     covered = {int(event.metadata.get("scene_number", "0") or 0) for event in events}
-    dominant_branch = auth_scene_branch(auth_scenes)
+    dominant_branch = resolved_auth_branch(events) or auth_scene_branch(auth_scenes)
     for scene in auth_scenes:
         if scene.scene_number in covered:
             continue
@@ -34,9 +35,20 @@ def recover_auth_chain_events(
         )
         if fallback is None:
             continue
+        if branch_conflicts(event_branch_family(fallback), dominant_branch):
+            continue
+        if skip_fallback_scene(scene, dominant_branch, recovered):
+            continue
         recovered.append(fallback)
         covered.add(scene.scene_number)
     return sorted(recovered, key=lambda event: event.timestamp)
+
+
+def resolved_auth_branch(events: list[SessionEventRecord]) -> str:
+    branches = [event_branch_family(event) for event in events if event_branch_family(event) != "generic"]
+    if not branches:
+        return ""
+    return branches[-1]
 
 
 def is_auth_scene(scene: LaunchScriptScene) -> bool:
@@ -50,10 +62,9 @@ def auth_scene_branch(auth_scenes: list[LaunchScriptScene]) -> str:
 
 def auth_scene_intent(scene: LaunchScriptScene) -> str:
     scene_text = f"{scene.on_screen_text} {scene.source_excerpt} {scene.spoken_line}".lower()
-    if any(token in scene_text for token in ("sign up", "signup", "create account")):
-        return "create"
-    if any(token in scene_text for token in ("log in", "login", "existing", "choose an account")):
-        return "existing"
+    family = branch_family(scene_text)
+    if family != "generic":
+        return family
     intent = resolve_scene_intent(scene.source_excerpt, scene.spoken_line).intent
     if intent == "account_existing":
         return "existing"
@@ -64,6 +75,19 @@ def auth_scene_intent(scene: LaunchScriptScene) -> str:
 
 def branch_conflicts(branch: str, dominant_branch: str) -> bool:
     return branch != "generic" and dominant_branch != "generic" and branch != dominant_branch
+
+
+def skip_fallback_scene(
+    scene: LaunchScriptScene,
+    dominant_branch: str,
+    events: list[SessionEventRecord],
+) -> bool:
+    if dominant_branch == "generic":
+        return False
+    auth_events = [event for event in events if event_branch_family(event) == dominant_branch]
+    if len(auth_events) < 2:
+        return False
+    return auth_scene_intent(scene) != dominant_branch
 
 
 def auth_fallback_time(

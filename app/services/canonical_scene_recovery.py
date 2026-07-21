@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.models.projects import LaunchScriptRecord, LaunchScriptScene, SessionEventRecord, VisualSceneAnalysisRecord
+from app.services.canonical_consistency import event_branch_family
 from app.services.inferred_recording_support import normalize_label
 from app.services.scene_intent_resolver import resolve_scene_intent
 from app.services.scene_type_classifier import classify_scene_type, visible_scene_labels
@@ -54,6 +55,13 @@ def preferred_events_by_scene(events: list[SessionEventRecord]) -> dict[int, Ses
     return preferred
 
 
+def event_label(event: SessionEventRecord | None) -> str:
+    if event is None:
+        return ""
+    label = event.metadata.get("canonical_label", "").strip() or event.target.label.strip() or event.target.text.strip()
+    return normalize_label(label)
+
+
 def event_rank(event: SessionEventRecord) -> tuple[float, float, float]:
     score = float(event.metadata.get("score", "0") or 0.0)
     return (
@@ -70,6 +78,8 @@ def should_drop_scene(
     events_by_scene: dict[int, SessionEventRecord],
     analyses_by_scene: dict[int, VisualSceneAnalysisRecord],
 ) -> bool:
+    if drop_intermediate_auth_scene(scene, index, scenes, events_by_scene, analyses_by_scene):
+        return True
     if scene.scene_number in events_by_scene or not action_like_scene(scene):
         return False
     neighbors = nearby_supported_scenes(index, scenes, events_by_scene, analyses_by_scene)
@@ -77,6 +87,34 @@ def should_drop_scene(
         return False
     best_neighbor = max(neighbors, key=lambda item: surface_similarity(scene, item, analyses_by_scene))
     return surface_similarity(scene, best_neighbor, analyses_by_scene) >= 0.32
+
+
+def drop_intermediate_auth_scene(
+    scene: LaunchScriptScene,
+    index: int,
+    scenes: list[LaunchScriptScene],
+    events_by_scene: dict[int, SessionEventRecord],
+    analyses_by_scene: dict[int, VisualSceneAnalysisRecord],
+) -> bool:
+    analysis = analyses_by_scene.get(scene.scene_number)
+    if classify_scene_type(scene, analysis) != "account_picker":
+        return False
+    if index <= 0 or index + 1 >= len(scenes):
+        return False
+    previous_event = events_by_scene.get(scenes[index - 1].scene_number)
+    following_event = events_by_scene.get(scenes[index + 1].scene_number)
+    if previous_event is None or following_event is None:
+        return False
+    if event_branch_family(previous_event) != "existing":
+        return False
+    if previous_event.metadata.get("screen_after", "").strip() != "account_picker":
+        return False
+    if following_event.metadata.get("screen_before", "").strip() not in {"account_picker", "course_catalog"}:
+        return False
+    if following_event.metadata.get("screen_after", "").strip() not in {"course_catalog", "difficulty_picker", "result_state"}:
+        return False
+    labels = {normalize_label(label) for label in visible_scene_labels(analysis)}
+    return any("account" in label for label in labels)
 
 
 def nearby_supported_scenes(

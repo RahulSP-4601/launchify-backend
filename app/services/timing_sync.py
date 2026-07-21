@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.models.projects import EditPlanHighlight, EditPlanRecord, EditPlanScene, EditPlanZoom, VisualSceneAnalysisRecord
+from app.services.canonical_event_scene_builder import source_scene_number
 from app.services.inferred_recording_support import box_area
 from app.services.walkthrough_windows import action_result_window
 
@@ -13,13 +14,22 @@ def sync_edit_plan_timing(
     visual_analyses: list[VisualSceneAnalysisRecord] | None,
 ) -> EditPlanRecord:
     analyses_by_scene = {analysis.scene_number: analysis for analysis in visual_analyses or []}
-    scenes = [synced_scene(scene, analyses_by_scene.get(scene.scene_number), len(edit_plan.scenes)) for scene in edit_plan.scenes]
+    scenes = [
+        synced_scene(
+            scene,
+            analyses_by_scene.get(scene.scene_number) or analyses_by_scene.get(source_scene_number(scene.scene_number)),
+            index,
+            len(edit_plan.scenes),
+        )
+        for index, scene in enumerate(edit_plan.scenes)
+    ]
     return edit_plan.model_copy(update={"scenes": scenes})
 
 
 def synced_scene(
     scene: EditPlanScene,
     analysis: VisualSceneAnalysisRecord | None,
+    scene_index: int,
     scene_count: int,
 ) -> EditPlanScene:
     action_time = action_timestamp(scene, analysis)
@@ -28,7 +38,7 @@ def synced_scene(
             "action_timestamp": action_time,
             "zooms": synced_zooms(scene, action_time),
             "highlights": synced_highlights(scene, action_time),
-            "transition_style": transition_style(scene, scene_count),
+            "transition_style": transition_style(scene, scene_index, scene_count),
             "transition_duration_seconds": transition_duration(scene),
         }
     )
@@ -102,10 +112,10 @@ def synced_highlights(
     return synced
 
 
-def transition_style(scene: EditPlanScene, scene_count: int) -> str:
-    if scene.scene_number == 1:
+def transition_style(scene: EditPlanScene, scene_index: int, scene_count: int) -> str:
+    if scene_index == 0:
         return "slide-up"
-    if scene.scene_number == scene_count:
+    if scene_index == scene_count - 1:
         return "fade"
     if scene.camera_mode == "focus":
         return "focus-push"

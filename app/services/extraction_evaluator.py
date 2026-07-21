@@ -117,8 +117,18 @@ def grounding_score(
 ) -> float:
     diagnostics = object_dict(summary.get("grounding_diagnostics")) or object_dict(recording.get("grounding_diagnostics"))
     coverage = float_value(diagnostics.get("timeline_coverage_ratio"))
+    average_grounding = float_value(diagnostics.get("average_grounding_score"))
+    grounded_ratio = float_value(diagnostics.get("grounded_event_ratio"))
+    result_ratio = float_value(diagnostics.get("result_grounding_ratio"))
+    branch_ratio = float_value(diagnostics.get("branch_grounding_ratio"))
     under_grounded = string_value(diagnostics.get("under_grounded")) == "true"
-    base = coverage if coverage > 0 else 0.0
+    base = (
+        (coverage * 0.32)
+        + (average_grounding * 0.28)
+        + (grounded_ratio * 0.18)
+        + (result_ratio * 0.12)
+        + (branch_ratio * 0.10)
+    )
     if under_grounded:
         base -= 0.2
     return round(max(min(base, 1.0), 0.0), 2)
@@ -131,6 +141,8 @@ def grounding_detail(
     diagnostics = object_dict(summary.get("grounding_diagnostics")) or object_dict(recording.get("grounding_diagnostics"))
     return (
         f"coverage={string_value(diagnostics.get('timeline_coverage_ratio')) or '0'} "
+        f"avg_grounding={string_value(diagnostics.get('average_grounding_score')) or '0'} "
+        f"grounded_ratio={string_value(diagnostics.get('grounded_event_ratio')) or '0'} "
         f"under_grounded={string_value(diagnostics.get('under_grounded')) or 'false'}"
     )
 
@@ -139,7 +151,13 @@ def sequence_score(actual: list[str], expected: list[str]) -> float:
     if not expected:
         return 1.0 if actual else 0.0
     matches = subsequence_matches(actual, expected)
-    return round(matches / max(len(expected), 1), 2)
+    missing_penalty = max(len(expected) - matches, 0)
+    extra_penalty = max(len(actual) - matches, 0)
+    denominator = len(expected) + extra_penalty
+    if denominator <= 0:
+        return 0.0
+    score = (matches - (missing_penalty * 0.35)) / denominator
+    return round(max(min(score, 1.0), 0.0), 2)
 
 
 def aligned_matches(actual: list[str], expected: list[str]) -> int:

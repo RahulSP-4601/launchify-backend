@@ -6,10 +6,12 @@ from app.models.projects import RecordingSessionRecord
 def artifact_payload(
     evidence_timeline: list[dict[str, object]],
     canonical_facts: list[dict[str, object]],
+    event_grounding: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
     return {
         "evidence_timeline": evidence_timeline,
         "canonical_facts": canonical_facts,
+        "event_grounding": event_grounding or [],
         "artifact_version": "v1",
     }
 

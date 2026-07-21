@@ -10,6 +10,9 @@ from app.models.projects import (
     VisualSceneAnalysisRecord,
 )
 from app.services.action_classifier import classify_action
+from app.services.auth_fact_resolution import resolved_raw_target
+from app.services.canonical_consistency import auth_mapping_conflict, result_state_conflict
+from app.services.canonical_fact_scoring import auth_result_label_conflict, fact_penalty, label_priority
 from app.services.inferred_recording_support import normalize_label
 from app.services.interaction_episode_builder import build_interaction_episodes
 from app.services.evidence_timeline import build_evidence_timeline, evidence_payload
@@ -83,20 +86,21 @@ def fact_from_bundle_with_link(
     if action_state is None and result_state is None:
         return None
     raw_target = preferred_raw_target(action_state, result_state)
-    canonical = canonical_label(bundle, raw_target, link.screen_after, link.result_label)
-    if not keepable_fact(bundle, link, canonical, raw_target):
+    resolved_target = resolved_raw_target(bundle, link, raw_target)
+    canonical = canonical_label(bundle, resolved_target, link.screen_after, link.result_label)
+    if not keepable_fact(bundle, link, canonical, raw_target, resolved_target):
         return None
     screen_before = normalized_transition_state(link.screen_before, canonical, is_before=True)
     screen_after = normalized_transition_state(link.screen_after, canonical, is_before=False)
     event_type = fact_event_type(bundle, raw_target)
-    action_class = classify_action(event_type, canonical, raw_target, canonical)
-    confidence = fact_confidence(bundle, canonical, raw_target, link)
+    action_class = classify_action(event_type, canonical, resolved_target, canonical)
+    confidence = fact_confidence(bundle, canonical, resolved_target, link)
     return CanonicalFact(
         scene_number=bundle.episode.scene_number,
         timestamp=round(bundle.episode.anchor_timestamp, 2),
         event_type=event_type,
         canonical_label=canonical,
-        raw_target_label=raw_target,
+        raw_target_label=resolved_target,
         screen_before=screen_before,
         screen_after=screen_after,
         action_class=action_class,
@@ -118,17 +122,22 @@ def preferred_raw_target(
         return result_state.friendly_label
     return ""
 
-
 def canonical_label(
     bundle: EpisodeStateBundle,
     raw_target: str,
     screen_after: str,
     result_label: str,
 ) -> str:
+    del bundle
     raw_key = normalize_label(raw_target)
     if "google login" in raw_key:
         return "Google Login"
-    if "log in with google" in raw_key or "login with google" in raw_key or "sign up with google" in raw_key:
+    if (
+        "continue with google" in raw_key
+        or "log in with google" in raw_key
+        or "login with google" in raw_key
+        or "sign up with google" in raw_key
+    ):
         return "Continue With Google"
     if screen_after == "course_catalog":
         return "Select A Course"
@@ -136,10 +145,11 @@ def canonical_label(
         return result_label
     if raw_key in {"japanese", "open course"} and screen_after in {"difficulty_picker", "result_state"}:
         return "Select A Course"
+    if result_label and auth_result_label_conflict(raw_key, result_label):
+        return raw_target or result_label
     if result_label:
         return result_label
     return raw_target or "Product Interaction"
-
 
 def fact_event_type(bundle: EpisodeStateBundle, raw_target: str) -> SessionEventType:
     raw_key = normalize_label(raw_target)
@@ -150,7 +160,6 @@ def fact_event_type(bundle: EpisodeStateBundle, raw_target: str) -> SessionEvent
     if bundle.result_state is not None:
         return "focus"
     return "custom"
-
 
 def fact_confidence(
     bundle: EpisodeStateBundle,
@@ -173,7 +182,6 @@ def fact_confidence(
         "overall": round(overall, 3),
     }
 
-
 def decoded_facts(bundles: list[EpisodeStateBundle]) -> list[CanonicalFact]:
     candidates_by_step = build_fact_candidates(bundles)
     selected = select_best_sequence(
@@ -182,9 +190,9 @@ def decoded_facts(bundles: list[EpisodeStateBundle]) -> list[CanonicalFact]:
         candidate_branch=fact_branch,
         candidate_after=lambda item: item.screen_after,
         candidate_label=lambda item: item.canonical_label,
+        candidate_penalty=lambda item: fact_penalty(item.raw_target_label, item.canonical_label, item.screen_after),
     )
     return collapse_exported_facts(prune_selected_facts(selected))
-
 
 def build_fact_candidates(bundles: list[EpisodeStateBundle]) -> list[list[CanonicalFact]]:
     candidates: list[list[CanonicalFact]] = []
@@ -195,7 +203,6 @@ def build_fact_candidates(bundles: list[EpisodeStateBundle]) -> list[list[Canoni
         if facts:
             candidates.append(rank_distinct_facts(facts))
     return candidates
-
 
 def candidate_links(bundle: EpisodeStateBundle, next_bundle: EpisodeStateBundle | None) -> list[ResultLink]:
     primary = infer_result_link(bundle, next_bundle)
@@ -236,12 +243,17 @@ def keepable_fact(
     link: ResultLink,
     canonical: str,
     raw_target: str,
+    resolved_target: str,
 ) -> bool:
     if not canonical.strip():
         return False
-    if weak_same_state_fact(bundle, link, raw_target):
+    if weak_same_state_fact(bundle, link, resolved_target):
         return False
     if stale_auth_fact(link, canonical):
+        return False
+    if auth_mapping_conflict(resolved_target, canonical, link.result_label):
+        return False
+    if result_state_conflict(resolved_target, link.result_label, link.screen_after):
         return False
     return True
 
@@ -276,15 +288,6 @@ def should_emit_focus(bundle: EpisodeStateBundle, raw_key: str) -> bool:
 def compact_result_target(raw_key: str) -> bool:
     tokens = raw_key.split()
     return len(tokens) <= 3 and not any(token in raw_key for token in ("pick", "level", "learning"))
-
-
-def label_priority(label: str) -> float:
-    normalized = normalize_label(label)
-    if normalized in {"google login", "continue with google", "select a course"}:
-        return 1.0
-    if normalized.startswith("pick your"):
-        return 0.92
-    return 0.6
 
 
 def fact_branch(fact: CanonicalFact) -> str:
@@ -376,8 +379,6 @@ def suppress_intermediate_fact(
     next_label = normalize_label(next_fact.canonical_label)
     if label in {"japanese", "open course"} and next_label.startswith("pick your"):
         return abs(next_fact.timestamp - fact.timestamp) <= 5.0
-    if label == "continue with google" and next_label == "select a course":
-        return fact.screen_after == "course_catalog" and abs(next_fact.timestamp - fact.timestamp) <= 10.0
     return False
 
 

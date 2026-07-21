@@ -22,6 +22,7 @@ from app.models.projects import (
     TranscriptSegment,
     VisualSceneAnalysisRecord,
 )
+from app.services.canonical_event_scene_builder import source_scene_number
 from app.services.action_classifier import classify_action, event_action_class
 from app.services.caption_designer import build_caption_track
 from app.services.edit_plan_guardrails import finalized_edit_plan
@@ -57,7 +58,8 @@ def generate_edit_plan(
                     scene_inputs[1][0],
                     scene_inputs[1][1],
                     project,
-                    analyses_by_scene.get(scene_inputs[0].scene_number),
+                    analyses_by_scene.get(scene_inputs[0].scene_number)
+                    or analyses_by_scene.get(source_scene_number(scene_inputs[0].scene_number)),
                 ),
                 zip(launch_script.scenes, scene_ranges, strict=True),
             )
@@ -78,7 +80,6 @@ def generate_edit_plan(
     grounded_edit = apply_session_grounding(synced_edit, project.recording_session)
     overridden_edit = apply_manual_overrides(grounded_edit, normalized_overrides(project.manual_overrides))
     return finalized_edit_plan(project, overridden_edit)
-
 
 def generate_grounded_edit_plan(
     project: ProjectRecord,

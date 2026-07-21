@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from app.models.projects import GuideRecord, RecordingSessionRecord, SessionEventRecord, TranscriptSegment
+from app.models.projects import GuideRecord, RecordingSessionRecord, SessionEventRecord, TranscriptSegment, VisualSceneAnalysisRecord
 from app.services.action_classifier import event_action_class
+from app.services.canonical_consistency import branch_family, event_branch_family
 from app.services.inferred_recording_support import actionable_label
 
 LONG_WALKTHROUGH_SECONDS = 18.0
@@ -61,6 +62,7 @@ def guide_is_under_grounded(
 def session_is_under_grounded(
     recording_session: RecordingSessionRecord | None,
     transcript: Sequence[TranscriptSegment],
+    analyses: Sequence[VisualSceneAnalysisRecord] | None = None,
 ) -> bool:
     if recording_session is None or not recording_session.events:
         return False
@@ -75,7 +77,7 @@ def session_is_under_grounded(
     meaningful_count = meaningful_event_count(evidence_events)
     if meaningful_count < minimum_action_count(duration_seconds):
         return True
-    coverage_ratio = timeline_coverage_ratio(evidence_events, duration_seconds)
+    coverage_ratio = timeline_coverage_ratio(evidence_events, duration_seconds, analyses)
     if coverage_ratio < MIN_TIMELINE_COVERAGE_RATIO:
         return True
     if weak_label_ratio(evidence_events) > MAX_WEAK_LABEL_RATIO:
@@ -119,15 +121,229 @@ def repeated_transcript_ratio(events: Sequence[SessionEventRecord]) -> float:
         counts[excerpt] = counts.get(excerpt, 0) + 1
     return round(max(counts.values()) / len(excerpts), 3)
 
-
-def timeline_coverage_ratio(events: Sequence[SessionEventRecord], duration_seconds: float) -> float:
+def timeline_coverage_ratio(
+    events: Sequence[SessionEventRecord],
+    duration_seconds: float,
+    analyses: Sequence[VisualSceneAnalysisRecord] | None = None,
+) -> float:
     if not events or duration_seconds <= 0:
         return 0.0
+    spans = grounded_scene_spans(events) or grounded_event_spans(events)
+    if spans:
+        covered = covered_seconds(spans)
+        denominator = coverage_denominator(spans, duration_seconds, events, analyses)
+        return round(min(covered / denominator, 1.0), 3)
     timestamps = sorted(normalized_event_timestamp(event) for event in events)
     if len(timestamps) == 1:
         return 0.0
     covered = max(timestamps[-1] - timestamps[0], 0.0)
     return round(min(covered / duration_seconds, 1.0), 3)
+
+
+def coverage_denominator(
+    spans: list[tuple[float, float]],
+    duration_seconds: float,
+    events: Sequence[SessionEventRecord],
+    analyses: Sequence[VisualSceneAnalysisRecord] | None,
+) -> float:
+    analysis_spans = relevant_analysis_spans(events, analyses)
+    if not analysis_spans:
+        analysis_spans = analyzed_scene_spans(analyses)
+    if analysis_spans:
+        analyzed_duration = covered_seconds(analysis_spans)
+        overlap = covered_seconds(intersect_spans(spans, analysis_spans))
+        if overlap >= min(covered_seconds(spans) * 0.7, analyzed_duration):
+            return max(min(analyzed_duration, duration_seconds), 0.01)
+    meaningful_span = max(spans[-1][1] - spans[0][0], 0.0)
+    return min(duration_seconds, max(meaningful_span + idle_gap_allowance(spans), covered_seconds(spans), 0.01))
+
+
+def analyzed_scene_spans(
+    analyses: Sequence[VisualSceneAnalysisRecord] | None,
+) -> list[tuple[float, float]]:
+    if not analyses:
+        return []
+    spans = [
+        (round(max(analysis.start, 0.0), 2), round(max(analysis.end, 0.0), 2))
+        for analysis in analyses
+        if analysis.end > analysis.start and (analysis.confidence >= 0.3 or analysis.frame_diff_available)
+    ]
+    return merge_spans(sorted(spans))
+
+
+def relevant_analysis_spans(
+    events: Sequence[SessionEventRecord],
+    analyses: Sequence[VisualSceneAnalysisRecord] | None,
+) -> list[tuple[float, float]]:
+    if not analyses or not events:
+        return []
+    analyses_by_scene = {analysis.scene_number: analysis for analysis in analyses}
+    event_scenes = sorted({scene_number(event) for event in events if scene_number(event) > 0})
+    if not event_scenes:
+        return []
+    relevant_scenes = set(event_scenes)
+    selected_branch = dominant_event_branch(events)
+    ordered_events = sorted(
+        (event for event in events if scene_number(event) > 0),
+        key=lambda item: (scene_number(item), item.timestamp),
+    )
+    for left_event, right_event in zip(ordered_events, ordered_events[1:], strict=False):
+        left_scene = scene_number(left_event)
+        right_scene = scene_number(right_event)
+        if right_scene - left_scene <= 1:
+            continue
+        for candidate_scene in range(left_scene + 1, right_scene):
+            analysis = analyses_by_scene.get(candidate_scene)
+            if analysis is None:
+                continue
+            if bridge_scene_relevant(analysis, left_event, right_event, selected_branch):
+                relevant_scenes.add(candidate_scene)
+    spans = [
+        (round(max(analysis.start, 0.0), 2), round(max(analysis.end, 0.0), 2))
+        for scene_id, analysis in analyses_by_scene.items()
+        if scene_id in relevant_scenes and analysis.end > analysis.start
+    ]
+    return merge_spans(sorted(spans))
+
+
+def dominant_event_branch(events: Sequence[SessionEventRecord]) -> str:
+    counts: dict[str, int] = {}
+    for event in events:
+        branch = event_branch_family(event)
+        if branch == "generic":
+            continue
+        counts[branch] = counts.get(branch, 0) + 1
+    if not counts:
+        return "generic"
+    return max(counts.items(), key=lambda item: item[1])[0]
+
+
+def bridge_scene_relevant(
+    analysis: VisualSceneAnalysisRecord,
+    left_event: SessionEventRecord,
+    right_event: SessionEventRecord,
+    selected_branch: str,
+) -> bool:
+    scene_state = analysis_scene_state(analysis)
+    if scene_state in {screen_state(left_event, "screen_after"), screen_state(right_event, "screen_before")}:
+        return True
+    if scene_state == screen_state(right_event, "screen_after") and scene_state == "account_picker":
+        return True
+    if branch_conflicts_with_selected_flow(analysis, selected_branch):
+        return False
+    return False
+
+
+def branch_conflicts_with_selected_flow(
+    analysis: VisualSceneAnalysisRecord,
+    selected_branch: str,
+) -> bool:
+    if selected_branch == "generic":
+        return False
+    labels_text = " ".join(label.lower().strip() for label in analysis.visible_labels if label.strip())
+    scene_branch = branch_family(labels_text)
+    return scene_branch not in {"generic", selected_branch}
+
+
+def analysis_scene_state(analysis: VisualSceneAnalysisRecord) -> str:
+    labels = " ".join(label.lower().strip() for label in analysis.visible_labels if label.strip())
+    if "choose an account" in labels or "account" in labels:
+        return "account_picker"
+    if "select a course" in labels or "open course" in labels or any(
+        token in labels for token in ("japanese", "english", "german", "spanish", "french")
+    ):
+        return "course_catalog"
+    if any(token in labels for token in ("pick your", "before you start", "level")):
+        return "difficulty_picker"
+    if any(token in labels for token in ("google login", "log in with google", "sign up with google", "continue with google")):
+        return "auth_provider"
+    return "generic"
+
+
+def screen_state(event: SessionEventRecord, key: str) -> str:
+    return (event.metadata.get(key, "") or "").strip()
+
+
+def scene_number(event: SessionEventRecord) -> int:
+    try:
+        return int(event.metadata.get("scene_number", "0") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def intersect_spans(
+    left: list[tuple[float, float]],
+    right: list[tuple[float, float]],
+) -> list[tuple[float, float]]:
+    intersections: list[tuple[float, float]] = []
+    left_index = 0
+    right_index = 0
+    while left_index < len(left) and right_index < len(right):
+        left_start, left_end = left[left_index]
+        right_start, right_end = right[right_index]
+        start = max(left_start, right_start)
+        end = min(left_end, right_end)
+        if end > start:
+            intersections.append((round(start, 2), round(end, 2)))
+        if left_end <= right_end:
+            left_index += 1
+        else:
+            right_index += 1
+    return intersections
+
+
+def grounded_event_spans(events: Sequence[SessionEventRecord]) -> list[tuple[float, float]]:
+    spans: list[tuple[float, float]] = []
+    for event in events:
+        try:
+            start = max(float(event.metadata.get("grounding_window_start", "")), 0.0)
+            end = max(float(event.metadata.get("grounding_window_end", "")), 0.0)
+        except (TypeError, ValueError):
+            continue
+        if end <= start:
+            continue
+        spans.append((round(start, 2), round(end, 2)))
+    return merge_spans(sorted(spans))
+
+
+def grounded_scene_spans(events: Sequence[SessionEventRecord]) -> list[tuple[float, float]]:
+    spans: list[tuple[float, float]] = []
+    for event in events:
+        try:
+            start = max(float(event.metadata.get("grounding_scene_start", "")), 0.0)
+            end = max(float(event.metadata.get("grounding_scene_end", "")), 0.0)
+            score = max(float(event.metadata.get("grounding_score", "0")), 0.0)
+        except (TypeError, ValueError):
+            continue
+        if score < 0.56 or end <= start:
+            continue
+        spans.append((round(start, 2), round(end, 2)))
+    return merge_spans(sorted(spans))
+
+
+def merge_spans(spans: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    if not spans:
+        return []
+    merged: list[tuple[float, float]] = [spans[0]]
+    for start, end in spans[1:]:
+        last_start, last_end = merged[-1]
+        if start <= last_end + 1.2:
+            merged[-1] = (last_start, max(last_end, end))
+            continue
+        merged.append((start, end))
+    return merged
+
+
+def covered_seconds(spans: list[tuple[float, float]]) -> float:
+    return round(sum(max(end - start, 0.0) for start, end in spans), 3)
+
+
+def idle_gap_allowance(spans: list[tuple[float, float]]) -> float:
+    allowance = 0.0
+    for (_, previous_end), (next_start, _) in zip(spans, spans[1:], strict=False):
+        gap = max(next_start - previous_end, 0.0)
+        allowance += min(gap, 1.25)
+    return round(allowance, 3)
 
 
 def auth_state_ratio(events: Sequence[SessionEventRecord]) -> float:

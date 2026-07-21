@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.services.canonical_consistency import branch_family, result_state_conflict
+from app.services.inferred_recording_support import normalize_label
 from app.services.stable_state_reconstruction import EpisodeStateBundle, StateFingerprint
 
 
@@ -36,7 +38,7 @@ def best_after_state(
         if next_bundle is not None:
             candidate = next_bundle.before_state or next_bundle.action_state
             if candidate is not None:
-                return candidate
+                return branch_compatible_after_state(bundle, candidate, current)
     if current is not None and current.stability_score >= 0.64:
         return current
     bridged = bridged_after_state(bundle, next_bundle)
@@ -60,8 +62,43 @@ def bridged_after_state(
     if candidate is None:
         return current
     if candidate.stability_score >= current.stability_score + 0.08:
-        return candidate
+        return branch_compatible_after_state(bundle, candidate, current)
     return current
+
+
+def branch_compatible_after_state(
+    bundle: EpisodeStateBundle,
+    preferred: StateFingerprint | None,
+    fallback: StateFingerprint | None,
+) -> StateFingerprint | None:
+    action_target = "" if bundle.action_state is None else bundle.action_state.target_label
+    locked = retained_intermediate_auth_state(action_target, preferred, fallback)
+    if locked is not None:
+        return locked
+    if preferred is not None and not result_state_conflict(action_target, preferred.friendly_label, state_name(preferred)):
+        return preferred
+    if fallback is not None and not result_state_conflict(action_target, fallback.friendly_label, state_name(fallback)):
+        return fallback
+    return preferred or fallback
+
+
+def retained_intermediate_auth_state(
+    action_target: str,
+    preferred: StateFingerprint | None,
+    fallback: StateFingerprint | None,
+) -> StateFingerprint | None:
+    target_key = normalize_label(action_target)
+    if branch_family(target_key) != "existing":
+        return None
+    if fallback is None:
+        return None
+    fallback_state = state_name(fallback)
+    preferred_state = state_name(preferred)
+    if fallback_state != "account_picker":
+        return None
+    if preferred_state in {"course_catalog", "difficulty_picker"}:
+        return fallback
+    return None
 
 
 def strong_action_followed_by_progress(

@@ -55,6 +55,7 @@ from app.services.inference_scoring import action_frame_bonus, result_state_pena
 from app.services.action_sequence_metrics import sequence_action_score, valid_action_outcome
 from app.services.event_flow_refinement import refine_event_flow
 from app.services.flow_chain_selector import select_flow_chains
+from app.services.grounding_evidence import annotate_event_grounding, grounding_payload, validate_event_grounding
 from app.services.inferred_scene_excerpt import local_transcript_excerpt
 from app.services.inferred_transcript_fallback import backfill_transcript_scene_events
 from app.services.inferred_timeline_recovery import preserve_sparse_timeline
@@ -80,14 +81,17 @@ def infer_recording_session(
     events = build_inferred_events(launch_script, transcript, analyses_by_scene, viewport_width, viewport_height)
     if not events:
         return None
+    final_events = events[:MAX_EVENTS]
+    artifacts = canonical_artifacts(launch_script, transcript, analyses_by_scene)
+    artifacts["event_grounding"] = grounding_payload(final_events)
     return RecordingSessionRecord(
         source="manual_upload_inferred",
         viewport_width=viewport_width,
         viewport_height=viewport_height,
         page_title=project.product_name,
-        grounding_diagnostics=recording_diagnostics(events, transcript, list(analyses_by_scene.values())),
-        extraction_artifacts=canonical_artifacts(launch_script, transcript, analyses_by_scene),
-        events=events[:MAX_EVENTS],
+        grounding_diagnostics=recording_diagnostics(final_events, transcript, list(analyses_by_scene.values())),
+        extraction_artifacts=artifacts,
+        events=final_events,
         started_at="0.0",
         ended_at=f"{max((segment.end for segment in transcript), default=0.0):.2f}",
     )
@@ -123,8 +127,6 @@ def build_inferred_events(
         viewport_width,
         viewport_height,
     )
-
-
 def finalize_inferred_events(
     selected: list[SessionEventRecord],
     graph_events: list[SessionEventRecord],
@@ -150,9 +152,9 @@ def finalize_inferred_events(
     )
     refined = refine_event_flow(supplemented, launch_script.scenes, analyses_by_scene)
     recovered = dedupe_events(recover_auth_chain_events(refined, launch_script, analyses_by_scene, viewport_width, viewport_height))
-    return dedupe_events(reconcile_canonical_graph_events(recovered, graph_events))
-
-
+    reconciled = dedupe_events(reconcile_canonical_graph_events(recovered, graph_events))
+    grounded = annotate_event_grounding(reconciled, analyses_by_scene)
+    return dedupe_events(validate_event_grounding(grounded, analyses_by_scene))
 def deduped_scene_candidates(
     launch_script: LaunchScriptRecord,
     transcript: list[TranscriptSegment],
@@ -162,8 +164,6 @@ def deduped_scene_candidates(
 ) -> list[SessionEventRecord]:
     inferred_events = collect_scene_event_candidates(launch_script, transcript, analyses_by_scene, viewport_width, viewport_height)
     return dedupe_events(sorted((candidate.event for candidate in inferred_events), key=lambda item: item.timestamp))
-
-
 def collect_scene_event_candidates(
     launch_script: LaunchScriptRecord,
     transcript: list[TranscriptSegment],
@@ -185,8 +185,6 @@ def collect_scene_event_candidates(
             for window in canonical_scene_windows(windows, analysis, transcript_excerpt, scene.source_excerpt)[:MAX_EVENTS_PER_SCENE]
         )
     return inferred_events
-
-
 def recovered_candidate_events(
     deduped: list[SessionEventRecord],
     transcript: list[TranscriptSegment],
@@ -196,8 +194,6 @@ def recovered_candidate_events(
 ) -> list[SessionEventRecord]:
     recovered = recover_events_from_analyses(transcript, list(analyses_by_scene.values()), viewport_width, viewport_height)
     return dedupe_events(sorted([*deduped, *recovered], key=lambda item: item.timestamp))
-
-
 def strict_recovery_candidates(
     deduped: list[SessionEventRecord],
     launch_script: LaunchScriptRecord,
@@ -215,8 +211,6 @@ def strict_recovery_candidates(
     )
     retried = dedupe_events(sorted([*deduped, *strict_recovered], key=lambda item: item.timestamp))
     return select_flow_chains(retried, launch_script.scenes, analyses_by_scene)
-
-
 def infer_scene_windows(
     analysis: VisualSceneAnalysisRecord,
     transcript: list[TranscriptSegment],

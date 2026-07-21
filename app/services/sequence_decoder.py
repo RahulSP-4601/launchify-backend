@@ -24,6 +24,7 @@ def select_best_sequence(
     candidate_branch: Callable[[T], str],
     candidate_after: Callable[[T], str],
     candidate_label: Callable[[T], str],
+    candidate_penalty: Callable[[T], float] | None = None,
 ) -> list[T]:
     beams = [SequenceCandidate(items=tuple(), score=0.0, branch="generic", previous_after="unknown")]
     for step_candidates in candidates_by_step:
@@ -34,6 +35,7 @@ def select_best_sequence(
             candidate_branch,
             candidate_after,
             candidate_label,
+            candidate_penalty,
         )
     best = max(beams, key=lambda item: item.score, default=None)
     return [cast(T, item) for item in best.items] if best is not None else []
@@ -46,6 +48,7 @@ def advance_beams(
     candidate_branch: Callable[[T], str],
     candidate_after: Callable[[T], str],
     candidate_label: Callable[[T], str],
+    candidate_penalty: Callable[[T], float] | None,
 ) -> list[SequenceCandidate]:
     expanded: list[SequenceCandidate] = []
     for beam in beams:
@@ -60,6 +63,7 @@ def advance_beams(
                         candidate_branch,
                         candidate_after,
                         candidate_label,
+                        candidate_penalty,
                     ),
                     branch=merged_branch(beam.branch, candidate_branch(candidate)),
                     previous_after=candidate_after(candidate),
@@ -76,8 +80,11 @@ def path_score(
     candidate_branch: Callable[[T], str],
     candidate_after: Callable[[T], str],
     candidate_label: Callable[[T], str],
+    candidate_penalty: Callable[[T], float] | None,
 ) -> float:
     score = candidate_score(candidate)
+    if candidate_penalty is not None:
+        score -= candidate_penalty(candidate)
     score -= branch_switch_penalty(beam.branch, candidate_branch(candidate))
     score -= repeated_after_penalty(beam.previous_after, candidate_after(candidate))
     score -= repeated_label_penalty(beam.items, candidate, candidate_label)

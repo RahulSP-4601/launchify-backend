@@ -62,7 +62,7 @@ def same_course_cluster(
         return False
     if abs(candidate_scene - current_scene) > 1:
         return False
-    if abs(candidate.timestamp - current.timestamp) > 8.0:
+    if abs(candidate.timestamp - current.timestamp) > 10.0:
         return False
     candidate_semantic = semantic_event(
         candidate,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.models.projects import SessionEventRecord
+from app.services.canonical_consistency import branch_family
 from app.services.inferred_recording_support import normalize_label
 
 
@@ -47,6 +48,8 @@ def labels_compatible(left: SessionEventRecord, right: SessionEventRecord) -> bo
         return False
     if left_labels & right_labels:
         return True
+    if auth_labels_compatible(left_labels, right_labels):
+        return True
     return any(token_overlap(left_label, right_label) >= 0.75 for left_label in left_labels for right_label in right_labels)
 
 
@@ -69,6 +72,15 @@ def token_overlap(left_label: str, right_label: str) -> float:
     shared = len(left_tokens & right_tokens)
     base = min(len(left_tokens), len(right_tokens))
     return shared / base if base else 0.0
+
+
+def auth_labels_compatible(left_labels: set[str], right_labels: set[str]) -> bool:
+    for left in left_labels:
+        for right in right_labels:
+            if branch_family(left) == "existing" and branch_family(right) == "existing":
+                if "google" in left and "google" in right:
+                    return True
+    return False
 
 
 def merged_canonical_event(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.models.projects import FocusBox, FrameSignalRecord, LaunchScriptRecord, LaunchScriptScene, SessionEventRecord, UiElementRecord, VisualSceneAnalysisRecord
+from app.services.canonical_event_scene_builder import scenes_from_canonical_events, source_scene_number
 from app.services.canonical_scene_recovery import recover_canonical_scenes
 from app.services.generic_target_labeling import should_promote_generic_label, title_case_phrase
 from app.services.inferred_recording_support import box_center_delta, normalize_label
@@ -16,7 +17,7 @@ def refine_launch_script_with_visuals(
     if not visual_analyses:
         return launch_script
     analyses_by_scene = {analysis.scene_number: analysis for analysis in visual_analyses}
-    scenes = [refined_scene(scene, analyses_by_scene.get(scene.scene_number)) for scene in launch_script.scenes]
+    scenes = [refined_scene(scene, analyses_by_scene.get(source_scene_number(scene.scene_number))) for scene in launch_script.scenes]
     return LaunchScriptRecord(
         hook=launch_script.hook,
         summary=launch_script.summary,
@@ -34,6 +35,16 @@ def refine_launch_script_with_events(
 ) -> LaunchScriptRecord:
     if not events:
         return launch_script
+    canonical_event_scenes = scenes_from_canonical_events(launch_script, events, event_scene_label, event_scene_purpose)
+    if canonical_event_scenes:
+        return LaunchScriptRecord(
+            hook=launch_script.hook,
+            summary=launch_script.summary,
+            title_options=launch_script.title_options,
+            scenes=canonical_event_scenes,
+            cta=launch_script.cta,
+            notes=launch_script.notes,
+        )
     events_by_scene = preferred_events_by_scene(events)
     canonical_scenes = recover_canonical_scenes(launch_script, events, visual_analyses)
     scenes = [refined_scene_from_event(scene, events_by_scene.get(scene.scene_number)) for scene in canonical_scenes]
