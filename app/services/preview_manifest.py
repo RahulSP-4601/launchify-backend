@@ -230,7 +230,7 @@ def filtered_highlights(
 ) -> list[EditPlanHighlight]:
     filtered = [highlight for highlight in highlights if overlaps(highlight.start, highlight.end, clip_start, clip_end)]
     if quality == "preview":
-        return filtered[:1]
+        return filtered[:2]
     return filtered
 
 
@@ -242,7 +242,7 @@ def filtered_zooms(
 ) -> list[EditPlanZoom]:
     filtered = [zoom for zoom in zooms if overlaps(zoom.start, zoom.end, clip_start, clip_end)]
     if quality == "preview":
-        return filtered[:1]
+        return filtered[:2]
     return filtered
 
 
@@ -263,7 +263,7 @@ def stage_zooms(
     clip_end: float,
     quality: str,
 ) -> list[EditPlanZoom]:
-    return [] if stage == "establish" else filtered_zooms(zooms, clip_start, clip_end, quality)
+    return filtered_zooms(zooms, clip_start, clip_end, quality)
 
 
 def validate_manifest_clips(clips: list[PreviewManifestClip]) -> list[PreviewManifestClip]:
@@ -278,7 +278,8 @@ def validate_manifest_clips(clips: list[PreviewManifestClip]) -> list[PreviewMan
 
 def validated_manifest_clip(clip: PreviewManifestClip, previous_end: float) -> PreviewManifestClip:
     start = max(round(clip.source_start, 2), previous_end)
-    end = round(max(required_trim_end(start, clip.trim_end, clip.voiceover_segment), start + MIN_PREVIEW_CLIP_SECONDS), 2)
+    max_end = clip.trim_end if clip.scene.scene_role == "result" else min(clip.trim_end, clip.source_end)
+    end = round(max(max_end, start + MIN_PREVIEW_CLIP_SECONDS), 2)
     source_start, source_end, freeze_frame = clip_source_window(clip, start)
     scene = clip.scene.model_copy(update={"start": start, "end": end, "render_duration_seconds": round(end - start, 2)})
     return clip.__class__(
@@ -308,13 +309,16 @@ def clip_source_window(
     start: float,
 ) -> tuple[float, float, bool]:
     if start < clip.source_end:
-        return start, min(clip.source_end, clip.trim_end), clip.freeze_frame or clip.trim_end > clip.source_end
+        freeze_frame = clip.scene.scene_role == "result" and (clip.freeze_frame or clip.trim_end > clip.source_end)
+        return start, min(clip.source_end, clip.trim_end), freeze_frame
+    if clip.scene.scene_role != "result":
+        return clip.source_end, clip.source_end, False
     hold_end = clip.source_end
     hold_start = max(clip.source_start, round(hold_end - MIN_PREVIEW_CLIP_SECONDS, 2))
     if hold_end - hold_start < MIN_PREVIEW_CLIP_SECONDS:
         hold_start = max(0.0, round(hold_end - MIN_PREVIEW_CLIP_SECONDS, 2))
         hold_end = round(max(hold_end, hold_start + MIN_PREVIEW_CLIP_SECONDS), 2)
-    return hold_start, hold_end, True
+    return hold_start, hold_end, clip.scene.scene_role == "result"
 
 
 def clips_for_logging(clips: list[PreviewManifestClip]) -> list[PreviewManifestClip]:

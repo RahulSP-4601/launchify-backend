@@ -277,7 +277,7 @@ def finalize_preview_audio(
     if voiceover_mode == "original" or voiceover_audio is None:
         joined_output.replace(output_path)
         return
-    duration_seconds = preview_audio_duration(project, output_duration_seconds(joined_output, fallback=require_duration(project)), voiceover_mode)
+    duration_seconds = output_duration_seconds(joined_output, fallback=require_duration(project))
     command = [settings.ffmpeg_binary, "-y", "-i", str(joined_output), "-i", str(voiceover_audio), "-filter_complex", passthrough_audio_filter(has_audio, voiceover_mode, duration_seconds), "-map", "0:v:0", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-movflags", "+faststart", str(output_path)]
     run_process_with_heartbeat(command, timeout_seconds=remaining_timeout_seconds(deadline), heartbeat=heartbeat)
 def segment_filters(
@@ -364,12 +364,12 @@ def video_finish_filters(clip: PreviewManifestClip) -> list[str]:
     duration = round(max(clip.trim_end - clip.trim_start, 0.1), 2)
     if clip.stage == "establish":
         return []
-    fade_in = min(0.12, max(duration * 0.08, 0.04))
-    fade_out = min(0.16, max(duration * 0.1, 0.05))
-    filters = [f"fade=t=in:st=0:d={fade_in}"]
-    if clip.stage != "focus" and duration > fade_out + 0.08:
-        filters.append(f"fade=t=out:st={round(duration - fade_out, 2)}:d={fade_out}")
-    return filters
+    if clip.stage == "focus":
+        return []
+    fade_out = min(0.14, max(duration * 0.08, 0.05))
+    if duration <= fade_out + 0.08:
+        return []
+    return [f"fade=t=out:st={round(duration - fade_out, 2)}:d={fade_out}"]
 
 
 def source_clip_duration(clip: PreviewManifestClip) -> float:

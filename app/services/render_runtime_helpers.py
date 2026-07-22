@@ -137,17 +137,30 @@ def require_duration(project: ProjectRecord) -> float:
 
 
 def output_duration_seconds(output_path: Path, fallback: float) -> float:
+    return probed_duration_seconds(output_path, fallback, "format=duration")
+
+
+def stream_duration_seconds(output_path: Path, fallback: float, stream_selector: str) -> float:
+    return probed_duration_seconds(output_path, fallback, f"stream=duration", stream_selector)
+
+
+def probed_duration_seconds(
+    output_path: Path,
+    fallback: float,
+    entry: str,
+    stream_selector: str | None = None,
+) -> float:
     settings = get_settings()
-    command = [
-        settings.ffprobe_binary,
-        "-v",
-        "error",
+    command = [settings.ffprobe_binary, "-v", "error"]
+    if stream_selector is not None:
+        command.extend(["-select_streams", stream_selector])
+    command.extend([
         "-show_entries",
-        "format=duration",
+        entry,
         "-of",
         "default=noprint_wrappers=1:nokey=1",
         str(output_path),
-    ]
+    ])
     try:
         result = subprocess.run(
             command,

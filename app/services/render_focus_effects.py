@@ -69,8 +69,8 @@ def crop_state(
 
 
 def box_state(focus_box: FocusBox, scale: float, x_offset: float, y_offset: float) -> CropState:
-    crop_width = max(min(round(1 / min(scale, 1.32), 4), 0.96), 0.64)
-    crop_height = max(min(round(crop_width * 0.8, 4), 0.92), 0.54)
+    crop_width = max(min(round(1 / min(scale, 1.36), 4), 0.94), 0.58)
+    crop_height = max(min(round(crop_width * 0.8, 4), 0.9), 0.48)
     center_x = focus_box.x + focus_box.width / 2 + x_offset * 0.7
     center_y = focus_box.y + focus_box.height / 2 + y_offset * 0.7
     origin_x = clamp(center_x - crop_width / 2, 0.0, 1.0 - crop_width)
@@ -110,16 +110,16 @@ def staged_state(state: CropState | None, stage: str, phase: str) -> CropState |
     if state is None:
         return None
     if stage == "establish":
-        return shifted_state(softened_state(state, 0.7 if phase == "start" else 0.54), phase, drift=0.018 if phase == "start" else 0.012)
+        return shifted_state(softened_state(state, 0.58 if phase == "start" else 0.42), phase, drift=0.016 if phase == "start" else 0.01)
     if stage == "settle":
-        return shifted_state(softened_state(state, 0.18 if phase == "start" else 0.3), phase, drift=0.01 if phase == "start" else 0.008)
-    return shifted_state(softened_state(state, 0.3 if phase == "start" else 0.04), phase, drift=0.02 if phase == "start" else 0.014)
+        return shifted_state(softened_state(state, 0.12 if phase == "start" else 0.22), phase, drift=0.008 if phase == "start" else 0.006)
+    return shifted_state(softened_state(state, 0.16 if phase == "start" else 0.0), phase, drift=0.016 if phase == "start" else 0.012)
 
 
 def start_phase_softening(phase: str, starts_after_timestamp: bool) -> float:
     if phase != "start":
         return 1.0
-    return 0.18 if starts_after_timestamp else 0.26
+    return 0.28 if starts_after_timestamp else 0.36
 
 
 def shifted_state(state: CropState | None, phase: str, drift: float) -> CropState | None:
@@ -192,14 +192,25 @@ def animated_zoom(start_width: float, end_width: float, progress: str) -> str:
 def crop_focus_box(scene: EditPlanScene, clip_start: float, clip_end: float) -> FocusBox | None:
     for zoom in active_zooms(scene, clip_start):
         if zoom.focus_box is not None:
-            return refined_focus_box(zoom.focus_box)
+            return action_refined_focus_box(scene, zoom.focus_box)
     for highlight in active_highlights(scene, clip_start):
         if highlight.focus_box is not None:
-            return refined_focus_box(highlight.focus_box)
+            return action_refined_focus_box(scene, highlight.focus_box)
     for highlight in overlapping_highlights(scene, clip_start, clip_end):
         if highlight.focus_box is not None:
-            return refined_focus_box(highlight.focus_box)
+            return action_refined_focus_box(scene, highlight.focus_box)
     return None
+
+
+def action_refined_focus_box(scene: EditPlanScene, box: FocusBox) -> FocusBox:
+    refined = refined_focus_box(box)
+    if scene.action_class == "auth_action":
+        return focused_box(refined, 0.78, 0.84)
+    if scene.action_class == "card_selection":
+        return focused_box(refined, 0.8, 0.86)
+    if scene.action_class in {"button_click", "focus"}:
+        return focused_box(refined, 0.86, 0.9)
+    return refined
 
 
 def crop_zoom_scale(scene: EditPlanScene, clip_start: float) -> float:
@@ -257,6 +268,19 @@ def spotlight_filters(box: FocusBox, start: float, end: float, style: str) -> li
     return filters
 
 
+def focused_box(box: FocusBox, width_ratio: float, height_ratio: float) -> FocusBox:
+    width = clamp(box.width * width_ratio, 0.04, 0.22)
+    height = clamp(box.height * height_ratio, 0.04, 0.22)
+    center_x = box.x + box.width / 2
+    center_y = box.y + box.height / 2
+    return FocusBox(
+        x=clamp(center_x - width / 2, 0.0, 1.0 - width),
+        y=clamp(center_y - height / 2, 0.0, 1.0 - height),
+        width=width,
+        height=height,
+    )
+
+
 def draw_mask(x: float, y: float, width: float, height: float, alpha: float, enable: str) -> str:
     return (
         "drawbox="
@@ -267,21 +291,21 @@ def draw_mask(x: float, y: float, width: float, height: float, alpha: float, ena
 
 def highlight_alpha(style: str) -> float:
     if style == "ambient":
-        return 0.05
+        return 0.08
     if style == "ambient-lift":
-        return 0.06
+        return 0.1
     if style == "spotlight":
-        return 0.07
-    return 0.05
+        return 0.12
+    return 0.08
 
 
 def target_lift_alpha(style: str) -> float:
     if style == "ambient":
         return 0.0
     if style == "ambient-lift":
-        return 0.018
+        return 0.032
     if style == "spotlight":
-        return 0.026
+        return 0.04
     return 0.0
 
 
