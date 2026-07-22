@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from app.models.projects import FocusBox
-from app.models.projects import EditPlanHighlight, EditPlanRecord, EditPlanScene, EditPlanZoom, VisualSceneAnalysisRecord
+from app.models.projects import EditPlanHighlight, EditPlanRecord, EditPlanScene, EditPlanZoom, FocusBox, VisualSceneAnalysisRecord
 from app.services.focus_tracking import tracked_focus_box
 
 SCREEN_ONLY_LAYOUTS = {"screen-only", "dashboard-wide"}
@@ -155,16 +154,8 @@ def stable_focus_box(
     beats: EditorialBeatPlan,
 ) -> FocusBox | None:
     existing = primary_scene_focus_box(scene)
-    tracked = tracked_focus_box(
-        visual_analysis,
-        focus_start=beats.focus_start,
-        focus_end=beats.focus_end,
-        result_anchor=beats.result_anchor,
-        fallback=existing,
-    )
-    if tracked is not None:
-        return tracked
-    return fallback_action_focus_box(scene, visual_analysis)
+    tracked = tracked_focus_box(visual_analysis, focus_start=beats.focus_start, focus_end=beats.focus_end, result_anchor=beats.result_anchor, fallback=existing)
+    return tracked or fallback_action_focus_box(scene, visual_analysis)
 
 def compact_caption_text(text: str) -> str:
     cleaned = " ".join(text.split()).strip()
@@ -181,6 +172,10 @@ def polished_spoken_line(scene: EditPlanScene, layout_mode: str) -> str:
     if layout_mode == "screen-only":
         if is_account_picker_scene(scene):
             return "Pick the existing account to keep moving."
+        if scene.action_class == "auth_action":
+            return compact_caption_text("Use the sign-in action to enter the product and continue the setup flow.") or scene.spoken_line
+        if scene.action_class == "card_selection":
+            return compact_caption_text("Choose the course card that opens the guided learning path.") or scene.spoken_line
         if is_setup_scene(scene) and scene.on_screen_text:
             return compact_caption_text(f"{scene.on_screen_text} before you begin.") or scene.spoken_line
     return compact_caption_text(scene.spoken_line or scene.purpose) or scene.spoken_line
@@ -223,17 +218,32 @@ def premium_action_zoom(
     if not tuned:
         return []
     primary = tuned[0]
+    focus_end = round(min(scene.end, max(beats.focus_end, beats.focus_start + 0.96)), 2)
+    settle_end = round(min(scene.end, max(beats.settle_end, focus_end + 0.72)), 2)
+    peak_scale = 1.13 if scene.action_class == "auth_action" else 1.1
+    settle_scale = 1.09 if scene.action_class == "auth_action" else 1.06
     return [
         primary.model_copy(
             update={
                 "start": round(beats.focus_start, 2),
-                "end": round(min(scene.end, max(beats.settle_end, beats.focus_start + 0.96)), 2),
-                "scale": min(primary.scale, 1.08 if scene.action_class == "auth_action" else 1.05),
-                "hold_ratio": max(primary.hold_ratio, 0.84),
-                "smoothing": max(primary.smoothing, 0.2),
+                "end": focus_end,
+                "scale": max(primary.scale, peak_scale),
+                "hold_ratio": max(primary.hold_ratio, 0.86),
+                "smoothing": max(primary.smoothing, 0.24),
                 "focus_box": focus_box or primary.focus_box,
             }
-        )
+        ),
+        primary.model_copy(
+            update={
+                "start": focus_end,
+                "end": settle_end,
+                "scale": settle_scale,
+                "hold_ratio": 0.9,
+                "smoothing": 0.26,
+                "reason": "editorial settle hold",
+                "focus_box": focus_box or primary.focus_box,
+            }
+        ),
     ]
 
 
@@ -300,7 +310,7 @@ def build_highlight(
         start=start,
         end=end,
         label=compact_caption_text(scene.on_screen_text or scene.title or scene.purpose),
-        style="ambient",
+        style="ambient-lift",
         anchor_region="center",
         confidence=confidence,
         focus_box=focus_box,
@@ -340,9 +350,7 @@ def normalized_text(*parts: str) -> str:
 def primary_scene_focus_box(scene: EditPlanScene) -> FocusBox | None:
     if scene.highlights and scene.highlights[0].focus_box is not None:
         return scene.highlights[0].focus_box
-    if scene.zooms and scene.zooms[0].focus_box is not None:
-        return scene.zooms[0].focus_box
-    return None
+    return scene.zooms[0].focus_box if scene.zooms and scene.zooms[0].focus_box is not None else None
 
 
 def is_account_picker_scene(scene: EditPlanScene) -> bool:
@@ -372,10 +380,8 @@ def setup_layout_mode(
 
 def highlight_duration_seconds(scene: EditPlanScene) -> float:
     if scene.action_class == "auth_action":
-        return 0.92
-    if scene.action_class == "card_selection":
-        return 0.84
-    return 0.96
+        return 1.08
+    return 1.02 if scene.action_class == "card_selection" else 1.0
 
 
 def fallback_action_focus_box(scene: EditPlanScene, visual_analysis: VisualSceneAnalysisRecord | None) -> FocusBox | None:
@@ -446,16 +452,12 @@ def subtle_screen_zoom(
 
 def screen_action_scale(scene: EditPlanScene) -> float:
     if scene.action_class == "auth_action":
-        return 1.06
-    if scene.action_class == "card_selection":
-        return 1.04
-    return 1.07
+        return 1.13
+    return 1.1 if scene.action_class == "card_selection" else 1.09
 
 
 def is_screen_guided_action(scene: EditPlanScene) -> bool:
-    return scene.scene_role == "action" and (
-        scene.action_class in {"auth_action", "card_selection"} or is_setup_scene(scene)
-    )
+    return scene.scene_role == "action" and (scene.action_class in {"auth_action", "card_selection"} or is_setup_scene(scene))
 
 
 def seeded_dynamic_zooms(

@@ -3,7 +3,7 @@
   "model": "aura-2-thalia-en",
   "mode": "original",
   "status": "disabled",
-  "script": "This is Pronouncly. Start by clicking Google Login to enter the product and begin the guided flow. Continue with Google to sign in and move. From here, choose Japanese to continue into the main product flow. Next, choose the Japanese level that matches the learner's starting point.",
+  "script": "This is Pronouncly. Start by clicking Google Login to enter the product and begin the guided flow. Continue with Google to enter the workspace. From here, choose Japanese to open the next part of the product flow. Next, choose the Japanese level that matches the learner's starting point.",
   "cues": [
     {
       "scene_number": 1,
@@ -15,21 +15,21 @@
     {
       "scene_number": 2,
       "start": 8.52,
-      "end": 11.79,
-      "text": "Continue with Google to sign in and move.",
-      "duration_seconds": 3.27
+      "end": 11.57,
+      "text": "Continue with Google to enter the workspace.",
+      "duration_seconds": 3.05
     },
     {
       "scene_number": 3,
-      "start": 11.79,
-      "end": 18.89,
-      "text": "From here, choose Japanese to continue into the main product flow.",
+      "start": 11.57,
+      "end": 18.67,
+      "text": "From here, choose Japanese to open the next part of the product flow.",
       "duration_seconds": 7.1
     },
     {
       "scene_number": 4,
-      "start": 18.89,
-      "end": 23.38,
+      "start": 18.67,
+      "end": 23.16,
       "text": "Next, choose the Japanese level that matches the learner's starting point.",
       "duration_seconds": 4.49
     }
@@ -47,15 +47,15 @@
       "scene_number": 2,
       "start": 26.31,
       "end": 29.36,
-      "text": "Continue with Google to sign in and move.",
-      "duration_seconds": 3.27,
+      "text": "Continue with Google to enter the workspace.",
+      "duration_seconds": 3.05,
       "audio_storage_path": ""
     },
     {
       "scene_number": 3,
       "start": 29.37,
       "end": 36.47,
-      "text": "From here, choose Japanese to continue into the main product flow.",
+      "text": "From here, choose Japanese to open the next part of the product flow.",
       "duration_seconds": 7.1,
       "audio_storage_path": ""
     },
@@ -69,5 +69,5 @@
     }
   ],
   "audio_storage_path": "",
-  "duration_seconds": 23.38
+  "duration_seconds": 23.16
 }

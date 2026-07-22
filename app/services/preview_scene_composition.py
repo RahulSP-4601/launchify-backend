@@ -220,7 +220,7 @@ def centered_panel_pad_filter(
 
 def panel_filter(screen_x: int, screen_y: int, screen_w: int, screen_h: int) -> str:
     del screen_x, screen_y, screen_w, screen_h
-    return "eq=brightness=0.03:contrast=1.03:saturation=1.01"
+    return "eq=brightness=0.05:contrast=1.08:saturation=1.03:gamma=1.01"
 
 
 def text_filters(

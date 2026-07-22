@@ -61,7 +61,7 @@ def crop_state(
     if focus_box is None:
         return None
     if zoom is None and phase == "start" and clip_end - timestamp >= MIN_DYNAMIC_CROP_SECONDS:
-        return staged_state(box_state(focus_box, 1.08, 0.0, 0.0), stage, phase)
+        return staged_state(box_state(focus_box, 1.12, 0.0, 0.0), stage, phase)
     if zoom is None:
         return staged_state(box_state(focus_box, 1.0, 0.0, 0.0), stage, phase)
     scale = softened_scale(zoom.scale, 0.32 if phase == "start" and zoom.start > timestamp else 1.0)
@@ -69,8 +69,8 @@ def crop_state(
 
 
 def box_state(focus_box: FocusBox, scale: float, x_offset: float, y_offset: float) -> CropState:
-    crop_width = max(min(round(1 / min(scale, 1.24), 4), 0.98), 0.72)
-    crop_height = crop_width
+    crop_width = max(min(round(1 / min(scale, 1.32), 4), 0.96), 0.64)
+    crop_height = max(min(round(crop_width * 0.8, 4), 0.92), 0.54)
     center_x = focus_box.x + focus_box.width / 2 + x_offset * 0.7
     center_y = focus_box.y + focus_box.height / 2 + y_offset * 0.7
     origin_x = clamp(center_x - crop_width / 2, 0.0, 1.0 - crop_width)
@@ -113,7 +113,7 @@ def staged_state(state: CropState | None, stage: str, phase: str) -> CropState |
         return softened_state(state, 0.66 if phase == "start" else 0.5)
     if stage == "settle":
         return softened_state(state, 0.22 if phase == "start" else 0.34)
-    return shifted_state(softened_state(state, 0.32 if phase == "start" else 0.1), phase, drift=0.004)
+    return shifted_state(softened_state(state, 0.24 if phase == "start" else 0.06), phase, drift=0.008)
 
 
 def shifted_state(state: CropState | None, phase: str, drift: float) -> CropState | None:
@@ -246,7 +246,10 @@ def spotlight_filters(box: FocusBox, start: float, end: float, style: str) -> li
         draw_mask(left, bottom, max(right - left, 0.02), max(1.0 - bottom, 0.02), alpha, enable),
         "drawbox="
         f"x=iw*{left}:y=ih*{top}:w=iw*{max(right - left, 0.04)}:h=ih*{max(bottom - top, 0.04)}:"
-        f"color=0xFFF1B8@{border}:t=1:enable='{enable}'",
+        f"color=0xFFF1B8@{border}:t=2:enable='{enable}'",
+        "drawbox="
+        f"x=iw*{left}:y=ih*{top}:w=iw*{max(right - left, 0.04)}:h=ih*{max(bottom - top, 0.04)}:"
+        f"color=0xFFE39A@{round(border * 0.45, 3)}:t=fill:enable='{enable}'",
     ]
 
 
@@ -260,22 +263,22 @@ def draw_mask(x: float, y: float, width: float, height: float, alpha: float, ena
 
 def highlight_alpha(style: str) -> float:
     if style == "ambient":
-        return 0.025
+        return 0.05
     if style == "ambient-lift":
-        return 0.035
+        return 0.065
     if style == "spotlight":
-        return 0.045
-    return 0.03
+        return 0.08
+    return 0.05
 
 
 def highlight_border(style: str) -> float:
     if style == "ambient":
-        return 0.1
+        return 0.16
     if style == "ambient-lift":
-        return 0.12
+        return 0.24
     if style == "spotlight":
-        return 0.14
-    return 0.1
+        return 0.28
+    return 0.18
 
 
 def clamp(value: float, minimum: float, maximum: float) -> float:

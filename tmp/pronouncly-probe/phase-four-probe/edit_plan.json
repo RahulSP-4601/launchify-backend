@@ -35,7 +35,7 @@
         {
           "start": 10.6,
           "end": 13.9,
-          "scale": 1.06,
+          "scale": 1.13,
           "focus_region": "top-right",
           "reason": "Editorial action-focus move around the strongest grounded UI region.",
           "confidence": 0.82,
@@ -57,7 +57,7 @@
           "start": 10.6,
           "end": 11.95,
           "label": "Google Login",
-          "style": "ambient",
+          "style": "ambient-lift",
           "anchor_region": "center",
           "confidence": 0.82,
           "focus_box": {
@@ -82,7 +82,7 @@
       "camera_mode": "focus",
       "decision_summary": "Grounded from captured click event near Continue With Google at 26.53s with event-led camera timing. Editorial layout=screen-only; beats=26.31-27.21/27.99. result_anchor=27.08s",
       "visual_summary": "Spotlight the real UI action around Continue With Google and keep surrounding context subdued. Editorial planning emphasized a stable result frame and reduced overlay noise.",
-      "spoken_line": "Continue with Google to sign in and move.",
+      "spoken_line": "Continue with Google to enter the workspace.",
       "on_screen_text": "Continue With Google",
       "specific_target_label": "",
       "source_excerpt": "created the account, i'll log in to the existing one. after log in, you can see",
@@ -104,7 +104,7 @@
         {
           "start": 26.31,
           "end": 27.21,
-          "scale": 1.06,
+          "scale": 1.13,
           "focus_region": "mid-left",
           "reason": "Editorial action-focus move around the strongest grounded UI region.",
           "confidence": 0.82,
@@ -126,7 +126,7 @@
           "start": 26.31,
           "end": 27.21,
           "label": "Continue With Google",
-          "style": "ambient",
+          "style": "ambient-lift",
           "anchor_region": "center",
           "confidence": 0.82,
           "focus_box": {
@@ -151,7 +151,7 @@
       "camera_mode": "focus",
       "decision_summary": "Grounded from captured click event near Select A Course at 29.55s with event-led camera timing. Editorial layout=screen-only; beats=29.37-30.27/31.05. result_anchor=30.10s",
       "visual_summary": "Spotlight the real UI action around Select A Course and keep surrounding context subdued. Editorial planning emphasized a stable result frame and reduced overlay noise.",
-      "spoken_line": "From here, choose Japanese to continue into the main product flow.",
+      "spoken_line": "From here, choose Japanese to open the next part of the product flow.",
       "on_screen_text": "the Japanese Course",
       "specific_target_label": "Select Japanese Course",
       "source_excerpt": "created the account, i'll log in to the existing one. after log in, you can see",
@@ -173,7 +173,7 @@
         {
           "start": 29.37,
           "end": 30.27,
-          "scale": 1.04,
+          "scale": 1.1,
           "focus_region": "center",
           "reason": "Editorial selection-focus move around the strongest grounded UI region.",
           "confidence": 0.82,
@@ -195,7 +195,7 @@
           "start": 29.37,
           "end": 30.27,
           "label": "Select Japanese Course",
-          "style": "ambient",
+          "style": "ambient-lift",
           "anchor_region": "center",
           "confidence": 0.82,
           "focus_box": {
@@ -242,7 +242,7 @@
         {
           "start": 41.32,
           "end": 42.22,
-          "scale": 1.07,
+          "scale": 1.09,
           "focus_region": "top-center",
           "reason": "Editorial reading-focus move around the strongest grounded UI region.",
           "confidence": 0.82,
@@ -264,7 +264,7 @@
           "start": 41.32,
           "end": 42.22,
           "label": "Pick Your Japanese Level",
-          "style": "ambient",
+          "style": "ambient-lift",
           "anchor_region": "center",
           "confidence": 0.82,
           "focus_box": {
@@ -280,9 +280,9 @@
     }
   ],
   "render_spec": {
-    "title_card": "Getting Started with Pronouncly: Your AI-Powered Language Learning Platform",
+    "title_card": "Getting Started with Pronouncly",
     "title_options": [
-      "Getting Started with Pronouncly: Your AI-Powered Language Learning Platform"
+      "Getting Started with Pronouncly"
     ],
     "cta": "Turn rough recordings into polished launch videos.",
     "total_duration_seconds": 23.02

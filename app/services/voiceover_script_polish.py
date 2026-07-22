@@ -99,10 +99,10 @@ def auth_scene_target(scene: EditPlanScene) -> str:
 def auth_voiceover_line(scene: EditPlanScene, target: str) -> str:
     lowered = target.lower()
     if lowered == "continue with google":
-        return "Continue with Google to sign in and move straight into the workspace."
+        return "Continue with Google to enter the workspace."
     if "account" in lowered:
-        return f"Choose {target} so the workspace opens right away and the walkthrough can continue."
-    return f"Use {target} to finish sign-in and continue into the core product experience."
+        return f"Choose {target} so the workspace opens right away."
+    return f"Use {target} to sign in and continue into the product."
 
 
 def level_voiceover_line(scene: EditPlanScene) -> str:
@@ -126,8 +126,8 @@ def looks_like_probe_metadata(description: str) -> bool:
 def selection_voiceover_line(scene: EditPlanScene, target: str) -> str:
     refined_target = premium_selection_target(target)
     if transcript_mentions(scene, "course", "courses"):
-        return f"From the course library, choose {refined_target} to enter the guided learning flow."
-    return f"From here, choose {refined_target} to continue into the main product flow."
+        return f"From the course library, choose {refined_target} to open the guided learning flow."
+    return f"From here, choose {refined_target} to open the next part of the product flow."
 
 
 def should_use_launch_intro(scene: EditPlanScene, target: str) -> bool:

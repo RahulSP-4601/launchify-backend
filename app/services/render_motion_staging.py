@@ -18,9 +18,7 @@ def stage_motion_clips(clips: list[RenderClip]) -> list[RenderClip]:
 
 
 def stage_motion_clip(clip: RenderClip) -> list[RenderClip]:
-    if clip.scene.layout_mode in {"screen-only", "dashboard-wide"}:
-        return [clip]
-    if clip.end - clip.start < MIN_STAGEABLE_SECONDS:
+    if clip.end - clip.start < minimum_stageable_seconds(clip):
         return [clip]
     pivot_times = focus_timestamps(clip)
     if not pivot_times:
@@ -31,6 +29,12 @@ def stage_motion_clip(clip: RenderClip) -> list[RenderClip]:
         return [clip]
     segments = partition_clip(clip, first_focus, last_focus)
     return segments if len(segments) > 1 else [clip]
+
+
+def minimum_stageable_seconds(clip: RenderClip) -> float:
+    if clip.scene.layout_mode in {"screen-only", "dashboard-wide"}:
+        return 1.45 if clip.scene.scene_role == "action" else 1.7
+    return MIN_STAGEABLE_SECONDS
 
 
 def focus_timestamps(clip: RenderClip) -> list[float]:

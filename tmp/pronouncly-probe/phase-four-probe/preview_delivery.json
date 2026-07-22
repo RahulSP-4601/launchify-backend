@@ -2,9 +2,9 @@
   "dynamic_scene_ratio": 1.0,
   "highlight_scene_ratio": 1.0,
   "voiced_scene_ratio": 1.0,
-  "avg_voice_words": 11.75,
+  "avg_voice_words": 12.0,
   "pacing_score": 1.0,
-  "continuity_score": 0.93,
+  "continuity_score": 0.89,
   "issues": [
     "voiceover_not_ready"
   ]

@@ -167,7 +167,7 @@ def build_manifest_clip(
 ) -> PreviewManifestClip:
     source_start = round(clip.start, 2)
     source_end = round(max(clip.end, clip.start + MIN_PREVIEW_CLIP_SECONDS), 2)
-    trim_end = bounded_trim_end(source_start, source_end, voiceover_segment, quality)
+    trim_end = bounded_trim_end(clip, source_start, source_end, voiceover_segment, quality)
     scene_priority = preview_priority(clip)
     filtered_caption_events = filtered_captions(clip.scene, source_start, trim_end, quality, voiceover_segment)
     filtered_highlight_events = stage_highlights(clip.stage, clip.scene.highlights, source_start, trim_end, quality)
@@ -360,15 +360,31 @@ def required_trim_end(
 
 
 def bounded_trim_end(
+    clip: RenderClip,
     source_start: float,
     source_end: float,
     voiceover_segment: PreviewVoiceoverSegment | None,
     quality: str,
 ) -> float:
     trim_end = extended_trim_end(source_start, source_end, voiceover_segment)
+    if voiceover_segment is not None and quality == "preview":
+        return voiced_trim_end(clip.scene, source_start, source_end, voiceover_segment)
     if quality != "preview" or voiceover_segment is not None:
         return trim_end
     return round(min(trim_end, source_start + MAX_PREVIEW_CLIP_SECONDS), 2)
+
+
+def voiced_trim_end(
+    scene: EditPlanScene,
+    source_start: float,
+    source_end: float,
+    voiceover_segment: PreviewVoiceoverSegment,
+) -> float:
+    hold_tail = min(max(scene.readable_hold_seconds * 0.22, 0.24), 0.58)
+    action_tail = 0.46 if scene.scene_role == "action" else 0.64
+    target_end = source_start + voiceover_segment.duration_seconds + hold_tail + action_tail
+    bounded_end = min(source_end, target_end)
+    return round(max(source_start + MIN_PREVIEW_CLIP_SECONDS, bounded_end), 2)
 
 
 def voiceover_text(voiceover_segment: PreviewVoiceoverSegment | None, fallback: str) -> str:
