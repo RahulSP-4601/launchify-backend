@@ -29,9 +29,9 @@
     {
       "scene_number": 4,
       "start": 28.0,
-      "end": 34.65,
+      "end": 35.1,
       "text": "Choose the Japanese level so the lesson path starts at the right level.",
-      "duration_seconds": 6.65
+      "duration_seconds": 7.1
     }
   ],
   "clips": [
@@ -62,12 +62,12 @@
     {
       "scene_number": 4,
       "start": 40.92,
-      "end": 47.57,
+      "end": 48.02,
       "text": "Choose the Japanese level so the lesson path starts at the right level.",
-      "duration_seconds": 6.65,
+      "duration_seconds": 7.1,
       "audio_storage_path": ""
     }
   ],
   "audio_storage_path": "",
-  "duration_seconds": 34.65
+  "duration_seconds": 35.1
 }

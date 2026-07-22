@@ -1,6 +1,6 @@
 {
   "overview": "Launchify grounded 4 captured product actions for Internal QA, turned them into synchronized steps, and prepared captions, zooms, and highlights from the event-backed guide.",
-  "total_duration_seconds": 34.65,
+  "total_duration_seconds": 35.1,
   "scenes": [
     {
       "scene_number": 1,
@@ -21,7 +21,7 @@
       "scene_role": "action",
       "action_timestamp": 10.82,
       "result_anchor_timestamp": 13.8,
-      "readable_hold_seconds": 2.1,
+      "readable_hold_seconds": 2.05,
       "establish_end_timestamp": 10.6,
       "focus_start_timestamp": 10.6,
       "focus_end_timestamp": 13.9,
@@ -40,14 +40,14 @@
           "reason": "Editorial establish move into the active UI state.",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.88,
-            "y": 0.02,
-            "width": 0.1,
-            "height": 0.04
+            "x": 0.8716,
+            "y": 0.0268,
+            "width": 0.1121,
+            "height": 0.0526
           },
           "easing": "ease-in-out",
           "x_offset": 0.0177,
-          "y_offset": -0.0187,
+          "y_offset": -0.0184,
           "smoothing": 0.1,
           "hold_ratio": 0.42
         },
@@ -59,14 +59,14 @@
           "reason": "Editorial push toward the grounded action target.",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.88,
-            "y": 0.02,
-            "width": 0.1,
-            "height": 0.04
+            "x": 0.8716,
+            "y": 0.0268,
+            "width": 0.1121,
+            "height": 0.0526
           },
           "easing": "ease-in-out",
           "x_offset": 0.0582,
-          "y_offset": -0.0616,
+          "y_offset": -0.0605,
           "smoothing": 0.14,
           "hold_ratio": 0.74
         },
@@ -78,14 +78,14 @@
           "reason": "Editorial settle hold after the action lands.",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.88,
-            "y": 0.02,
-            "width": 0.1,
-            "height": 0.04
+            "x": 0.8716,
+            "y": 0.0268,
+            "width": 0.1121,
+            "height": 0.0526
           },
           "easing": "ease-in-out",
           "x_offset": 0.0406,
-          "y_offset": -0.0429,
+          "y_offset": -0.0421,
           "smoothing": 0.18,
           "hold_ratio": 0.86
         },
@@ -97,14 +97,14 @@
           "reason": "Editorial result hold to reveal the next product state.",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.88,
-            "y": 0.02,
-            "width": 0.1,
-            "height": 0.04
+            "x": 0.8716,
+            "y": 0.0268,
+            "width": 0.1121,
+            "height": 0.0526
           },
           "easing": "ease-in-out",
           "x_offset": 0.0218,
-          "y_offset": -0.0231,
+          "y_offset": -0.0227,
           "smoothing": 0.22,
           "hold_ratio": 0.94
         }
@@ -118,10 +118,10 @@
           "anchor_region": "center",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.88,
-            "y": 0.02,
-            "width": 0.1,
-            "height": 0.04
+            "x": 0.8716,
+            "y": 0.0268,
+            "width": 0.1121,
+            "height": 0.0526
           },
           "placement_preference": "avoid-ui-cover",
           "ui_label": "Google Login"
@@ -147,7 +147,7 @@
       "scene_role": "action",
       "action_timestamp": 26.42,
       "result_anchor_timestamp": 26.97,
-      "readable_hold_seconds": 1.88,
+      "readable_hold_seconds": 1.77,
       "establish_end_timestamp": 26.2,
       "focus_start_timestamp": 26.2,
       "focus_end_timestamp": 27.1,
@@ -235,7 +235,7 @@
       "scene_role": "action",
       "action_timestamp": 29.38,
       "result_anchor_timestamp": 29.93,
-      "readable_hold_seconds": 1.61,
+      "readable_hold_seconds": 1.83,
       "establish_end_timestamp": 29.2,
       "focus_start_timestamp": 29.2,
       "focus_end_timestamp": 30.1,
@@ -348,7 +348,7 @@
       "purpose": "Choose the starting level before the lesson begins",
       "start": 40.92,
       "end": 45.27,
-      "render_duration_seconds": 6.65,
+      "render_duration_seconds": 7.1,
       "confidence": 0.82,
       "camera_mode": "focus",
       "decision_summary": "Grounded from captured focus event near Pick your Japanese level before you start learning. at 41.14s with event-led camera timing. Editorial layout=screen-only; beats=40.92-41.82/42.60. result_anchor=41.69s",
@@ -361,7 +361,7 @@
       "scene_role": "action",
       "action_timestamp": 41.14,
       "result_anchor_timestamp": 41.69,
-      "readable_hold_seconds": 1.85,
+      "readable_hold_seconds": 1.79,
       "establish_end_timestamp": 40.92,
       "focus_start_timestamp": 40.92,
       "focus_end_timestamp": 41.82,
@@ -374,41 +374,79 @@
       "zooms": [
         {
           "start": 40.92,
-          "end": 41.82,
-          "scale": 1.12,
-          "focus_region": "mid-left",
-          "reason": "Editorial push toward the grounded action target.",
-          "confidence": 0.82,
+          "end": 41.7,
+          "scale": 1.02,
+          "focus_region": "center",
+          "reason": "Editorial establish move into the active UI state.",
+          "confidence": 0.9,
           "focus_box": {
-            "x": 0.03,
-            "y": 0.42,
-            "width": 0.22,
-            "height": 0.16
+            "x": 0.467,
+            "y": 0.4692,
+            "width": 0.066,
+            "height": 0.0616
           },
           "easing": "ease-in-out",
-          "x_offset": -0.0464,
+          "x_offset": 0.0,
+          "y_offset": 0.0,
+          "smoothing": 0.1,
+          "hold_ratio": 0.42
+        },
+        {
+          "start": 41.7,
+          "end": 42.22,
+          "scale": 1.12,
+          "focus_region": "center",
+          "reason": "Editorial push toward the grounded action target.",
+          "confidence": 0.9,
+          "focus_box": {
+            "x": 0.467,
+            "y": 0.4692,
+            "width": 0.066,
+            "height": 0.0616
+          },
+          "easing": "ease-in-out",
+          "x_offset": 0.0,
           "y_offset": 0.0,
           "smoothing": 0.14,
           "hold_ratio": 0.74
         },
         {
-          "start": 41.82,
-          "end": 45.27,
+          "start": 42.22,
+          "end": 44.49,
           "scale": 1.05,
-          "focus_region": "mid-left",
+          "focus_region": "center",
           "reason": "Editorial settle hold after the action lands.",
-          "confidence": 0.82,
+          "confidence": 0.9,
           "focus_box": {
-            "x": 0.03,
-            "y": 0.42,
-            "width": 0.22,
-            "height": 0.16
+            "x": 0.467,
+            "y": 0.4692,
+            "width": 0.066,
+            "height": 0.0616
           },
           "easing": "ease-in-out",
-          "x_offset": -0.031,
+          "x_offset": 0.0,
           "y_offset": 0.0,
           "smoothing": 0.18,
-          "hold_ratio": 0.9
+          "hold_ratio": 0.86
+        },
+        {
+          "start": 44.49,
+          "end": 45.27,
+          "scale": 1.03,
+          "focus_region": "center",
+          "reason": "Editorial result hold to reveal the next product state.",
+          "confidence": 0.9,
+          "focus_box": {
+            "x": 0.467,
+            "y": 0.4692,
+            "width": 0.066,
+            "height": 0.0616
+          },
+          "easing": "ease-in-out",
+          "x_offset": 0.0,
+          "y_offset": 0.0,
+          "smoothing": 0.22,
+          "hold_ratio": 0.94
         }
       ],
       "highlights": [
@@ -420,10 +458,10 @@
           "anchor_region": "center",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.03,
-            "y": 0.42,
-            "width": 0.22,
-            "height": 0.16
+            "x": 0.467,
+            "y": 0.4692,
+            "width": 0.066,
+            "height": 0.0616
           },
           "placement_preference": "avoid-ui-cover",
           "ui_label": "Pick Your Japanese Level"
@@ -432,11 +470,11 @@
     }
   ],
   "render_spec": {
-    "title_card": "Getting Started with Pronouncly: Logging In and Selecting a Course",
+    "title_card": "Getting Started with Pronouncly",
     "title_options": [
-      "Getting Started with Pronouncly: Logging In and Selecting a Course"
+      "Getting Started with Pronouncly"
     ],
     "cta": "Turn rough recordings into polished launch videos.",
-    "total_duration_seconds": 34.65
+    "total_duration_seconds": 35.1
   }
 }

@@ -1,6 +1,6 @@
 {
-  "title": "Getting Started with Pronouncly: Logging In and Selecting a Course",
-  "summary": "This guide walks you through logging into Pronouncly using Google, accessing available language courses, and selecting your Japanese course level to begin learning.",
+  "title": "Getting Started with Pronouncly",
+  "summary": "This guide walks you through logging into Pronouncly, selecting the Japanese course, and preparing to start learning by choosing your proficiency level.",
   "source": "Captured session from Pronouncly Phase 4 Probe",
   "steps": [
     {
@@ -91,11 +91,11 @@
     }
   ],
   "generation_notes": [
-    "Steps are ordered chronologically based on event timestamps.",
-    "Repetitive actions merged where appropriate for clarity.",
-    "On-screen text is concise and premium to match product tone.",
-    "Narration is polished and launch-ready, reflecting the transcript context.",
-    "No UI elements or steps invented beyond those in the event log.",
+    "Followed the exact order of events as per timestamps.",
+    "Merged repetitive transcript content into concise steps.",
+    "Used only actions and UI elements present in the event log.",
+    "Kept narration clear and professional for internal QA audience.",
+    "On-screen text is concise and premium in tone.",
     "Grounded step timing was expanded into continuous walkthrough ranges anchored to captured actions."
   ]
 }
