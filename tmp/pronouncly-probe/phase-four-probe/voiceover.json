@@ -3,71 +3,71 @@
   "model": "aura-2-thalia-en",
   "mode": "original",
   "status": "disabled",
-  "script": "This is Pronouncly. Start by clicking Google Login to enter the product and begin the guided flow. Continue with Google to enter the workspace. From here, choose Japanese course card to open the next part of the product flow. Next, choose the Japanese level that matches the learner's starting point.",
+  "script": "We are launching Pronouncly. To get started, go to the top right and click Google Login. From there, new users can create an account, while returning users can log in with an existing one. If you already have an account, continue with Google to enter the workspace. After sign-in, the dashboard shows five courses. Japanese is ready to start while the other paths are still marked coming soon, so choose Japanese to enter the live learning flow. Choose the Japanese level so the lesson path starts at the right level.",
   "cues": [
     {
       "scene_number": 1,
       "start": 0.0,
-      "end": 8.52,
-      "text": "This is Pronouncly. Start by clicking Google Login to enter the product and begin the guided flow.",
-      "duration_seconds": 8.52
+      "end": 10.8,
+      "text": "We are launching Pronouncly. To get started, go to the top right and click Google Login. From there, new users can create an account, while returning users can log in with an existing one.",
+      "duration_seconds": 10.8
     },
     {
       "scene_number": 2,
-      "start": 8.52,
-      "end": 11.57,
-      "text": "Continue with Google to enter the workspace.",
-      "duration_seconds": 3.05
+      "start": 10.8,
+      "end": 16.6,
+      "text": "If you already have an account, continue with Google to enter the workspace.",
+      "duration_seconds": 5.8
     },
     {
       "scene_number": 3,
-      "start": 11.57,
-      "end": 18.67,
-      "text": "From here, choose Japanese course card to open the next part of the product flow.",
-      "duration_seconds": 7.1
+      "start": 16.6,
+      "end": 28.0,
+      "text": "After sign-in, the dashboard shows five courses. Japanese is ready to start while the other paths are still marked coming soon, so choose Japanese to enter the live learning flow.",
+      "duration_seconds": 11.4
     },
     {
       "scene_number": 4,
-      "start": 18.67,
-      "end": 23.16,
-      "text": "Next, choose the Japanese level that matches the learner's starting point.",
-      "duration_seconds": 4.49
+      "start": 28.0,
+      "end": 34.65,
+      "text": "Choose the Japanese level so the lesson path starts at the right level.",
+      "duration_seconds": 6.65
     }
   ],
   "clips": [
     {
       "scene_number": 1,
       "start": 10.6,
-      "end": 19.12,
-      "text": "This is Pronouncly. Start by clicking Google Login to enter the product and begin the guided flow.",
-      "duration_seconds": 8.52,
+      "end": 21.4,
+      "text": "We are launching Pronouncly. To get started, go to the top right and click Google Login. From there, new users can create an account, while returning users can log in with an existing one.",
+      "duration_seconds": 10.8,
       "audio_storage_path": ""
     },
     {
       "scene_number": 2,
-      "start": 26.31,
-      "end": 29.36,
-      "text": "Continue with Google to enter the workspace.",
-      "duration_seconds": 3.05,
+      "start": 26.2,
+      "end": 32.0,
+      "text": "If you already have an account, continue with Google to enter the workspace.",
+      "duration_seconds": 5.8,
       "audio_storage_path": ""
     },
     {
       "scene_number": 3,
-      "start": 29.37,
-      "end": 36.47,
-      "text": "From here, choose Japanese course card to open the next part of the product flow.",
-      "duration_seconds": 7.1,
+      "start": 29.2,
+      "end": 40.6,
+      "text": "After sign-in, the dashboard shows five courses. Japanese is ready to start while the other paths are still marked coming soon, so choose Japanese to enter the live learning flow.",
+      "duration_seconds": 11.4,
       "audio_storage_path": ""
     },
     {
       "scene_number": 4,
-      "start": 41.32,
-      "end": 45.67,
-      "text": "Next, choose the Japanese level that matches the learner's starting point.",
-      "duration_seconds": 4.49,
+      "start": 40.92,
+      "end": 47.57,
+      "text": "Choose the Japanese level so the lesson path starts at the right level.",
+      "duration_seconds": 6.65,
       "audio_storage_path": ""
     }
   ],
   "audio_storage_path": "",
-  "duration_seconds": 23.16
+  "duration_seconds": 34.65
 }

@@ -14,13 +14,13 @@ def prune_redundant_render_scenes(scenes: list[EditPlanScene]) -> list[EditPlanS
 
 
 def redundant_followup(left: EditPlanScene, right: EditPlanScene) -> bool:
-    if right.start - left.end > 3.6:
+    if right.start - left.end > 5.4:
         return False
-    if left.action_class != right.action_class or left.scene_role != right.scene_role:
+    if not same_render_family(left, right):
         return False
-    if left.action_class not in {"card_selection", "auth_action"}:
+    if left.action_class not in {"card_selection", "auth_action"} and right.action_class not in {"card_selection", "auth_action"}:
         return False
-    if normalized_scene_target(left) != normalized_scene_target(right):
+    if not overlapping_targets(left, right):
         return False
     return continuation_scene(left, right)
 
@@ -75,12 +75,64 @@ def normalized_scene_target(scene: EditPlanScene) -> str:
     return source
 
 
+def same_render_family(left: EditPlanScene, right: EditPlanScene) -> bool:
+    if left.action_class == right.action_class and left.scene_role == right.scene_role:
+        return True
+    return left.action_class == right.action_class == "card_selection"
+
+
+def overlapping_targets(left: EditPlanScene, right: EditPlanScene) -> bool:
+    left_target = normalized_scene_target(left)
+    right_target = normalized_scene_target(right)
+    if not left_target or not right_target:
+        return False
+    if "auth_action" in {left.action_class, right.action_class}:
+        return left_target == right_target
+    if left_target == right_target:
+        return True
+    left_tokens = target_tokens(left_target)
+    right_tokens = target_tokens(right_target)
+    if not left_tokens or not right_tokens:
+        return False
+    shared = left_tokens & right_tokens
+    if not shared:
+        return False
+    if setup_transition_pair(left, right):
+        return False
+    return len(shared) >= min(len(left_tokens), len(right_tokens))
+
+
+def target_tokens(target: str) -> set[str]:
+    return {
+        token
+        for token in target.split()
+        if token not in {"the", "a", "an", "course", "select", "open", "choose", "your"}
+    }
+
+
+def setup_transition_pair(left: EditPlanScene, right: EditPlanScene) -> bool:
+    return ("level" in normalized_copy_signature(left) or "level" in normalized_copy_signature(right)) and left.action_class != right.action_class
+
+
 def continuation_scene(left: EditPlanScene, right: EditPlanScene) -> bool:
     if left.scene_number == right.scene_number:
         return True
     if generic_continuation_line(right.spoken_line):
         return True
+    if repeated_state_handoff(left, right):
+        return True
     return same_editorial_copy(left, right)
+
+
+def repeated_state_handoff(left: EditPlanScene, right: EditPlanScene) -> bool:
+    if left.action_class == "card_selection":
+        signature = normalized_copy_signature(right)
+        if any(token in signature for token in ("guided setup", "course library", "learning flow", "select a course")):
+            return True
+        return right.scene_role == "action" and overlapping_targets(left, right)
+    if left.action_class == "auth_action" and right.action_class == "auth_action":
+        return overlapping_targets(left, right)
+    return False
 
 
 def generic_continuation_line(line: str) -> bool:

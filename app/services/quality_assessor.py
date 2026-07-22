@@ -97,9 +97,10 @@ def editorial_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRecord]:
     issues: list[QualityIssueRecord] = []
     ordered = sorted(edit_plan.scenes, key=lambda scene: (scene.start, scene.scene_number))
     for index, scene in enumerate(ordered):
-        if scene.action_class == "auth_action" and max(scene.end - scene.start, 0.0) < 2.9:
+        duration = scene_duration(scene)
+        if scene.action_class == "auth_action" and duration < 2.9:
             issues.append(issue("short-auth-beat", "medium", scene.scene_number, "Authentication step is trimmed too tightly for a polished walkthrough.", "Keep more setup or result bridge around the auth action."))
-        if scene.action_class == "card_selection" and max(scene.end - scene.start, 0.0) < 4.8:
+        if scene.action_class == "card_selection" and duration < 4.8:
             issues.append(issue("short-selection-beat", "medium", scene.scene_number, "Course or option selection step is trimmed too tightly.", "Preserve more of the transition into the selected state."))
         if index == 0 and "continue with google" in scene.spoken_line.lower():
             issues.append(issue("collapsed-opening-auth", "high", scene.scene_number, "Opening scene is using continuation-login wording instead of the landing CTA.", "Separate the landing CTA beat from the follow-up auth beat."))
@@ -111,6 +112,10 @@ def editorial_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRecord]:
             issues.append(issue("weak-setup-layout", "low", scene.scene_number, "Setup scene is using a more action-heavy layout than necessary.", "Prefer a calmer setup/result layout for stable choice screens."))
         if spoken_line_is_flat(scene.spoken_line):
             issues.append(issue("flat-voice-line", "low", scene.scene_number, "Voiceover line is functional but not polished.", "Rewrite the spoken line with a clearer action and outcome."))
+        if scene.action_class == "auth_action" and auth_line_missing_context(scene):
+            issues.append(issue("thin-auth-context", "medium", scene.scene_number, "Authentication narration lands the action but skips meaningful sign-in context.", "Preserve account-choice or entry-result context around the auth step."))
+        if setup_scene(scene) and setup_line_missing_outcome(scene):
+            issues.append(issue("thin-setup-outcome", "medium", scene.scene_number, "Setup narration sounds instructional but does not explain the outcome clearly.", "Explain how the choice shapes the next product state."))
     return issues
 
 
@@ -122,6 +127,10 @@ def timing_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRecord]:
         if scene.transition_duration_seconds > 0.45:
             issues.append(issue("slow-transition", "low", scene.scene_number, "Transition duration is long for a product walkthrough.", "Shorten the transition to keep pacing tight."))
     return issues
+
+
+def scene_duration(scene: EditPlanScene) -> float:
+    return max(scene.render_duration_seconds or (scene.end - scene.start), 0.0)
 
 
 def transcript_issues(project: ProjectRecord, edit_plan: EditPlanRecord) -> list[QualityIssueRecord]:
@@ -212,7 +221,7 @@ def caption_length_limit(scene: EditPlanScene, is_first: bool) -> int:
 def is_launch_intro(scene: EditPlanScene) -> bool:
     lowered = normalize(scene.spoken_line)
     return scene.action_class == "auth_action" and scene.scene_role == "action" and (
-        lowered.startswith("we're launching ") or lowered.startswith("this is ")
+        lowered.startswith("we are launching ") or lowered.startswith("we're launching ") or lowered.startswith("this is ")
     )
 
 
@@ -241,3 +250,25 @@ def spoken_line_is_flat(line: str) -> bool:
             "continue into setup",
         )
     )
+
+
+def auth_line_missing_context(scene: EditPlanScene) -> bool:
+    lowered = normalize(scene.spoken_line)
+    if scene.action_class != "auth_action":
+        return False
+    if scene.scene_number == 1:
+        return "create a new account" not in lowered and "existing one" not in lowered and "existing account" not in lowered
+    if "workspace" not in lowered and "account" not in lowered and "sign in" not in lowered:
+        return True
+    source = normalize(scene.source_excerpt)
+    expects_existing_account = "existing account" in source or "existing one" in source or "already created" in source
+    if expects_existing_account:
+        return "existing account" not in lowered and "already have an account" not in lowered and "returning users" not in lowered
+    return False
+
+
+def setup_line_missing_outcome(scene: EditPlanScene) -> bool:
+    lowered = normalize(scene.spoken_line)
+    if not setup_scene(scene):
+        return False
+    return not any(token in lowered for token in ("path", "lesson", "flow", "difficulty", "starting point"))

@@ -37,14 +37,48 @@ def grounded_event_focus_box(project: ProjectRecord, primary_event: SessionEvent
         return event_focus_box
     width = max(session.viewport_width, 1)
     height = max(session.viewport_height, 1)
-    compact_width = min(max(event_focus_box.width * 0.42, 0.1), 0.16) * width
-    compact_height = min(max(event_focus_box.height * 0.36, 0.08), 0.14) * height
+    compact_width, compact_height = adaptive_focus_dimensions(step_action_class(primary_event), event_focus_box, width, height)
     return FocusBox(
         x=round(max(min((float(primary_event.x) - compact_width / 2) / width, 0.94), 0.0), 4),
         y=round(max(min((float(primary_event.y) - compact_height / 2) / height, 0.92), 0.0), 4),
         width=round(compact_width / width, 4),
         height=round(compact_height / height, 4),
     )
+
+
+def step_action_class(primary_event: SessionEventRecord | None) -> str:
+    if primary_event is None:
+        return ""
+    return primary_event.metadata.get("action_class", "").strip().lower()
+
+
+def adaptive_focus_dimensions(action_class: str, event_focus_box: FocusBox, viewport_width: int, viewport_height: int) -> tuple[float, float]:
+    area = focus_box_area(event_focus_box)
+    width_scale = 0.3 if area < 0.12 else 0.22
+    height_scale = 0.26 if area < 0.12 else 0.18
+    min_width = 0.07
+    min_height = 0.06
+    max_width = 0.13
+    max_height = 0.11
+    if action_class == "auth_action":
+        width_scale, height_scale = 0.16, 0.12
+        min_width, min_height = 0.06, 0.045
+        max_width, max_height = 0.11, 0.085
+    elif action_class == "card_selection":
+        width_scale, height_scale = 0.2, 0.16
+        min_width, min_height = 0.085, 0.09
+        max_width, max_height = 0.16, 0.18
+    elif action_class in {"button_click", "focus"}:
+        width_scale, height_scale = 0.18, 0.14
+        min_width, min_height = 0.075, 0.07
+        max_width, max_height = 0.14, 0.14
+    compact_width = min(max(event_focus_box.width * width_scale, min_width), max_width) * viewport_width
+    compact_height = min(max(event_focus_box.height * height_scale, min_height), max_height) * viewport_height
+    if event_focus_box.width >= event_focus_box.height * 1.9:
+        compact_width = min(compact_width, viewport_width * max_width)
+    if event_focus_box.height >= event_focus_box.width * 1.5:
+        compact_height = min(compact_height, viewport_height * max_height)
+    return compact_width, compact_height
 
 
 def preferred_grounded_focus_box(
@@ -209,11 +243,24 @@ def segmented_grounded_highlight(
         start=round(focus_start, 2),
         end=round(focus_peak_end, 2),
         label=label,
-        style="spotlight",
+        style="ambient",
         anchor_region=focus_region,
         confidence=0.92,
-        focus_box=event_focus_box,
+        focus_box=refined_highlight_focus_box(event_focus_box),
         ui_label=label,
+    )
+
+
+def refined_highlight_focus_box(box: FocusBox) -> FocusBox:
+    width = max(min(box.width * 0.88, 0.18), 0.05)
+    height = max(min(box.height * 0.88, 0.18), 0.05)
+    center_x = box.x + box.width / 2
+    center_y = box.y + box.height / 2
+    return FocusBox(
+        x=round(max(min(center_x - width / 2, 1.0 - width), 0.0), 4),
+        y=round(max(min(center_y - height / 2, 1.0 - height), 0.0), 4),
+        width=round(width, 4),
+        height=round(height, 4),
     )
 
 
@@ -274,7 +321,7 @@ def seed_grounded_highlight(step: GuideStepRecord, event_focus_box: FocusBox, fo
         start=step.start,
         end=step.end,
         label=label,
-        style="spotlight",
+        style="ambient-lift",
         anchor_region=focus_region,
         confidence=0.88,
         focus_box=event_focus_box,

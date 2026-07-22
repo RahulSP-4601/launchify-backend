@@ -1,7 +1,7 @@
 {
   "title": "Getting Started with Pronouncly: Logging In and Selecting a Course",
-  "summary": "This guide walks you through logging into Pronouncly using Google and selecting the Japanese language course to begin your learning journey.",
-  "source": "Pronouncly Phase 4 Probe video walkthrough",
+  "summary": "This guide walks you through logging into Pronouncly using Google, accessing available language courses, and selecting your Japanese course level to begin learning.",
+  "source": "Captured session from Pronouncly Phase 4 Probe",
   "steps": [
     {
       "step_index": 1,
@@ -26,8 +26,8 @@
       "narration": "Continue with Google to sign in with the existing account.",
       "on_screen_text": "Continue With Google",
       "specific_target_label": "",
-      "start": 26.31,
-      "end": 29.37,
+      "start": 26.2,
+      "end": 29.2,
       "event_type": "click",
       "focus_selector": "",
       "focus_label": "Continue With Google",
@@ -38,16 +38,16 @@
     {
       "step_index": 3,
       "title": "Select A Course",
-      "instruction": "Choose the Japanese course card to continue into setup.",
-      "narration": "Open the Japanese course card to continue into setup.",
-      "on_screen_text": "Japanese course card",
-      "specific_target_label": "Japanese course card",
-      "start": 29.37,
-      "end": 36.27,
+      "instruction": "Choose the Japanese course to continue into setup.",
+      "narration": "Open the Japanese course to continue into setup.",
+      "on_screen_text": "Japanese",
+      "specific_target_label": "Japanese",
+      "start": 29.2,
+      "end": 36.1,
       "event_type": "click",
       "focus_selector": "",
       "focus_label": "Select A Course",
-      "highlight_label": "Japanese course card",
+      "highlight_label": "Japanese",
       "source_excerpt": "Since I've already created the account, I'll log in to the existing one. After log in, you can see the five courses. Right now, we have opened the Japan courses, and the rest of the four courses are coming soon. So under Japan click on the Japan courses. And once the Japan course has been opened so, officially, there are five",
       "action_class": "card_selection"
     },
@@ -58,8 +58,8 @@
       "narration": "Choose the level that matches the learner's starting point.",
       "on_screen_text": "Pick Your Japanese Level",
       "specific_target_label": "",
-      "start": 41.32,
-      "end": 45.67,
+      "start": 40.92,
+      "end": 45.27,
       "event_type": "focus",
       "focus_selector": "",
       "focus_label": "Pick your Japanese level before you start learning.",
@@ -82,7 +82,7 @@
     {
       "step_index": 3,
       "title": "Select A Course",
-      "body": "Choose the Japanese course card to continue into setup."
+      "body": "Choose the Japanese course to continue into setup."
     },
     {
       "step_index": 4,
@@ -91,10 +91,11 @@
     }
   ],
   "generation_notes": [
-    "Merged repetitive login instructions into concise steps.",
-    "Used transcript and event labels to create accurate step titles and instructions.",
-    "Kept step order and timestamps faithful to the captured events.",
-    "Crafted premium, concise on-screen text for clarity and professionalism.",
+    "Steps are ordered chronologically based on event timestamps.",
+    "Repetitive actions merged where appropriate for clarity.",
+    "On-screen text is concise and premium to match product tone.",
+    "Narration is polished and launch-ready, reflecting the transcript context.",
+    "No UI elements or steps invented beyond those in the event log.",
     "Grounded step timing was expanded into continuous walkthrough ranges anchored to captured actions."
   ]
 }

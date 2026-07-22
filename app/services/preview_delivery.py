@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from app.models.projects import EditPlanRecord, EditPlanScene, VoiceoverRecord
+from app.services.voiceover_pacing import estimated_duration
 
 MIN_DYNAMIC_SCENE_RATIO = 0.6
 MIN_HIGHLIGHT_SCENE_RATIO = 0.5
@@ -54,7 +55,7 @@ def preview_delivery_diagnostics(
             avg_voice_words,
             pacing_score,
             continuity_score,
-            voiceover.status,
+            voiceover,
         ),
     )
 
@@ -67,7 +68,7 @@ def delivery_issues(
     avg_voice_words: float,
     pacing_score: float,
     continuity_score: float,
-    voiceover_status: str,
+    voiceover: VoiceoverRecord,
 ) -> tuple[str, ...]:
     issues: list[str] = []
     if dynamic_scene_ratio < MIN_DYNAMIC_SCENE_RATIO:
@@ -78,11 +79,19 @@ def delivery_issues(
         issues.append("limited_action_motion")
     if action_scene_ratio(edit_plan, lambda scene: bool(scene.highlights)) < MIN_ACTION_HIGHLIGHT_RATIO:
         issues.append("limited_action_highlights")
-    if voiceover_status != "ready":
+    if voiceover_requires_generated_audio(voiceover) and voiceover.status != "ready":
         issues.append("voiceover_not_ready")
     elif voiced_scene_ratio < 0.85:
         issues.append("partial_voiceover_coverage")
-    if avg_voice_words > voice_word_limit(edit_plan):
+    if voiceover_requires_generated_audio(voiceover) and any(
+        line_overruns_scene(
+            clip.text,
+            clip.duration_seconds,
+            is_first=index == 0 and is_launch_intro(edit_plan.scenes[0]),
+        )
+        for index, clip in enumerate(voiceover.clips)
+        if clip.text.strip() and edit_plan.scenes
+    ):
         issues.append("voiceover_lines_too_long")
     if pacing_score < MIN_PACING_SCORE:
         issues.append("uneven_scene_pacing")
@@ -95,6 +104,23 @@ def voice_word_limit(edit_plan: EditPlanRecord) -> float:
     if edit_plan.scenes and is_launch_intro(edit_plan.scenes[0]):
         return MAX_VOICE_WORDS + 2
     return float(MAX_VOICE_WORDS)
+
+
+def voiceover_requires_generated_audio(voiceover: VoiceoverRecord) -> bool:
+    return voiceover.mode in {"voiceover", "mixed"}
+
+
+def line_overruns_scene(text: str, duration_seconds: float, *, is_first: bool) -> bool:
+    if not text.strip():
+        return False
+    if estimated_duration(text) <= duration_seconds + 0.2:
+        return False
+    return len(text.split()) > scene_word_limit(duration_seconds, is_first=is_first)
+
+
+def scene_word_limit(duration_seconds: float, *, is_first: bool) -> int:
+    baseline = MAX_VOICE_WORDS + (2 if is_first else 0)
+    return max(baseline, int(round(max(duration_seconds, 1.0) * 2.65)))
 
 
 def editorial_pacing_score(edit_plan: EditPlanRecord) -> float:
@@ -168,5 +194,5 @@ def voice_continuity_score(text: str, *, is_first: bool = False) -> float:
 def is_launch_intro(scene: EditPlanScene) -> bool:
     lowered = scene.spoken_line.lower()
     return scene.action_class == "auth_action" and scene.scene_role == "action" and (
-        lowered.startswith("we're launching ") or lowered.startswith("this is ")
+        lowered.startswith("we are launching ") or lowered.startswith("we're launching ") or lowered.startswith("this is ")
     )

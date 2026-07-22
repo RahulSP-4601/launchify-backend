@@ -2,112 +2,75 @@
   {
     "scene_number": 3,
     "start": 18.38,
-    "end": 23.55,
+    "end": 23.49,
     "summary": "User logs in with an existing Google account by clicking 'Log in with Google' and then selecting an account from the account chooser dialog.",
     "confidence": 0.85,
     "motion_score": 0.34,
     "click_detected": true,
     "visible_labels": [
-      "Create account",
-      "Set up profile",
-      "Open dashboard",
-      "Continue with Google",
       "Sign up with Google",
       "Log in with Google",
       "Choose an account"
     ],
     "primary_focus_box": {
-      "x": 0.58,
-      "y": 0.48,
-      "width": 0.35,
-      "height": 0.12
+      "x": 0.55,
+      "y": 0.45,
+      "width": 0.4,
+      "height": 0.3
     },
     "cursor_box": {
-      "x": 0.68,
-      "y": 0.58,
+      "x": 0.7,
+      "y": 0.65,
       "width": 0.03,
       "height": 0.05
     },
     "click_target_box": {
-      "x": 0.58,
-      "y": 0.58,
-      "width": 0.35,
-      "height": 0.12
+      "x": 0.55,
+      "y": 0.65,
+      "width": 0.4,
+      "height": 0.07
     },
     "frames": [
       {
         "timestamp": 18.58,
-        "summary": "Initial screen showing login options with cursor near 'Log in with Google' button.",
+        "summary": "Landing page with login options; cursor near 'Log in with Google' button but not clicking yet.",
         "cursor_box": {
-          "x": 0.68,
-          "y": 0.58,
+          "x": 0.7,
+          "y": 0.65,
           "width": 0.03,
           "height": 0.05
         },
         "click_target_box": null,
         "dominant_box": {
-          "x": 0.58,
-          "y": 0.48,
-          "width": 0.35,
-          "height": 0.12
+          "x": 0.55,
+          "y": 0.45,
+          "width": 0.4,
+          "height": 0.3
         },
         "click_confidence": 0.0,
         "diff_score": 0.0,
-        "importance_score": 0.8,
+        "importance_score": 0.7,
         "ui_elements": [
-          {
-            "label": "Create account",
-            "role": "button",
-            "confidence": 0.9,
-            "box": {
-              "x": 0.05,
-              "y": 0.75,
-              "width": 0.15,
-              "height": 0.07
-            }
-          },
-          {
-            "label": "Set up profile",
-            "role": "button",
-            "confidence": 0.9,
-            "box": {
-              "x": 0.22,
-              "y": 0.75,
-              "width": 0.15,
-              "height": 0.07
-            }
-          },
-          {
-            "label": "Open dashboard",
-            "role": "button",
-            "confidence": 0.9,
-            "box": {
-              "x": 0.39,
-              "y": 0.75,
-              "width": 0.15,
-              "height": 0.07
-            }
-          },
           {
             "label": "Sign up with Google",
             "role": "button",
-            "confidence": 0.95,
+            "confidence": 0.9,
             "box": {
-              "x": 0.58,
-              "y": 0.48,
-              "width": 0.35,
-              "height": 0.12
+              "x": 0.55,
+              "y": 0.5,
+              "width": 0.4,
+              "height": 0.07
             }
           },
           {
             "label": "Log in with Google",
             "role": "button",
-            "confidence": 0.95,
+            "confidence": 0.9,
             "box": {
-              "x": 0.58,
+              "x": 0.55,
               "y": 0.58,
-              "width": 0.35,
-              "height": 0.12
+              "width": 0.4,
+              "height": 0.07
             }
           }
         ],
@@ -120,25 +83,25 @@
         "ocr_confidence": 0.8
       },
       {
-        "timestamp": 20.96,
+        "timestamp": 20.93,
         "summary": "Cursor hovers over 'Log in with Google' button, indicating intent to click.",
         "cursor_box": {
-          "x": 0.68,
-          "y": 0.58,
+          "x": 0.7,
+          "y": 0.65,
           "width": 0.03,
           "height": 0.05
         },
         "click_target_box": {
-          "x": 0.58,
+          "x": 0.55,
           "y": 0.58,
-          "width": 0.35,
-          "height": 0.12
+          "width": 0.4,
+          "height": 0.07
         },
         "dominant_box": {
-          "x": 0.58,
-          "y": 0.58,
-          "width": 0.35,
-          "height": 0.12
+          "x": 0.55,
+          "y": 0.45,
+          "width": 0.4,
+          "height": 0.3
         },
         "click_confidence": 0.8,
         "diff_score": 0.02,
@@ -147,23 +110,23 @@
           {
             "label": "Sign up with Google",
             "role": "button",
-            "confidence": 0.95,
+            "confidence": 0.9,
             "box": {
-              "x": 0.58,
-              "y": 0.48,
-              "width": 0.35,
-              "height": 0.12
+              "x": 0.55,
+              "y": 0.5,
+              "width": 0.4,
+              "height": 0.07
             }
           },
           {
             "label": "Log in with Google",
             "role": "button",
-            "confidence": 0.98,
+            "confidence": 0.95,
             "box": {
-              "x": 0.58,
+              "x": 0.55,
               "y": 0.58,
-              "width": 0.35,
-              "height": 0.12
+              "width": 0.4,
+              "height": 0.07
             }
           }
         ],
@@ -173,25 +136,30 @@
           "then",
           "step"
         ],
-        "ocr_confidence": 0.775
+        "ocr_confidence": 0.798
       },
       {
-        "timestamp": 23.35,
-        "summary": "Account chooser dialog displayed with multiple accounts listed for selection.",
+        "timestamp": 23.29,
+        "summary": "Account chooser dialog displayed; cursor near an account option to select for login.",
         "cursor_box": {
-          "x": 0.5,
-          "y": 0.4,
+          "x": 0.6,
+          "y": 0.55,
           "width": 0.03,
           "height": 0.05
         },
-        "click_target_box": null,
-        "dominant_box": {
-          "x": 0.1,
-          "y": 0.1,
-          "width": 0.8,
-          "height": 0.8
+        "click_target_box": {
+          "x": 0.55,
+          "y": 0.55,
+          "width": 0.4,
+          "height": 0.4
         },
-        "click_confidence": 0.6,
+        "dominant_box": {
+          "x": 0.55,
+          "y": 0.45,
+          "width": 0.4,
+          "height": 0.4
+        },
+        "click_confidence": 0.9,
         "diff_score": 1.0,
         "importance_score": 1.0,
         "ui_elements": [
@@ -200,40 +168,40 @@
             "role": "dialog",
             "confidence": 0.9,
             "box": {
-              "x": 0.1,
-              "y": 0.1,
-              "width": 0.8,
-              "height": 0.8
+              "x": 0.55,
+              "y": 0.45,
+              "width": 0.4,
+              "height": 0.4
             }
           }
         ],
         "ocr_labels": [
-          "snnenone",
+          "somone",
           "Choose",
           "account",
-          "\u2018econ"
+          "errs"
         ],
-        "ocr_confidence": 0.501
+        "ocr_confidence": 0.437
       }
     ],
     "frame_diff_score": 1.0,
     "frame_diff_available": true,
     "cursor_path_confidence": 1.0,
-    "ocr_match_score": 0.8,
-    "ocr_confidence": 0.692,
+    "ocr_match_score": 0.7,
+    "ocr_confidence": 0.678,
     "anchor_box": {
-      "x": 0.58,
-      "y": 0.48,
-      "width": 0.35,
-      "height": 0.12
+      "x": 0.55,
+      "y": 0.45,
+      "width": 0.4,
+      "height": 0.3
     }
   },
   {
     "scene_number": 1,
     "start": 10.43,
     "end": 14.0,
-    "summary": "User moves cursor to the Google Login button at the top right of the interface, highlighting the login action.",
-    "confidence": 0.75,
+    "summary": "User moves cursor to the Google Login button at the top right corner of the interface, preparing to click it.",
+    "confidence": 0.85,
     "motion_score": 0.7,
     "click_detected": false,
     "visible_labels": [
@@ -271,14 +239,14 @@
     "frames": [
       {
         "timestamp": 10.63,
-        "summary": "Initial frame showing the homepage with the Google Login button visible at top right; cursor not yet on button.",
+        "summary": "Initial frame showing the interface with the Google Login button visible at top right; cursor not yet near button.",
         "cursor_box": null,
         "click_target_box": null,
         "dominant_box": {
-          "x": 0.05,
-          "y": 0.2,
-          "width": 0.5,
-          "height": 0.5
+          "x": 0.88,
+          "y": 0.02,
+          "width": 0.1,
+          "height": 0.04
         },
         "click_confidence": 0.0,
         "diff_score": 0.0,
@@ -287,7 +255,7 @@
           {
             "label": "Google Login",
             "role": "button",
-            "confidence": 0.85,
+            "confidence": 0.9,
             "box": {
               "x": 0.88,
               "y": 0.02,
@@ -296,25 +264,36 @@
             }
           },
           {
+            "label": "Courses",
+            "role": "link",
+            "confidence": 0.85,
+            "box": {
+              "x": 0.8,
+              "y": 0.02,
+              "width": 0.07,
+              "height": 0.04
+            }
+          },
+          {
             "label": "Start Free with Basic 1",
             "role": "button",
-            "confidence": 0.9,
+            "confidence": 0.8,
             "box": {
-              "x": 0.1,
-              "y": 0.6,
+              "x": 0.05,
+              "y": 0.5,
               "width": 0.15,
-              "height": 0.06
+              "height": 0.07
             }
           },
           {
             "label": "Join Discord Server",
             "role": "button",
-            "confidence": 0.8,
+            "confidence": 0.75,
             "box": {
               "x": 0.75,
               "y": 0.7,
               "width": 0.15,
-              "height": 0.06
+              "height": 0.07
             }
           }
         ],
@@ -328,7 +307,85 @@
       },
       {
         "timestamp": 12.21,
-        "summary": "Cursor moved over the Google Login button at top right, indicating intent to click login.",
+        "summary": "Cursor moves near the Google Login button at top right, indicating intent to click.",
+        "cursor_box": {
+          "x": 0.87,
+          "y": 0.02,
+          "width": 0.03,
+          "height": 0.05
+        },
+        "click_target_box": {
+          "x": 0.88,
+          "y": 0.02,
+          "width": 0.1,
+          "height": 0.04
+        },
+        "dominant_box": {
+          "x": 0.88,
+          "y": 0.02,
+          "width": 0.1,
+          "height": 0.04
+        },
+        "click_confidence": 0.6,
+        "diff_score": 1.0,
+        "importance_score": 0.9,
+        "ui_elements": [
+          {
+            "label": "Google Login",
+            "role": "button",
+            "confidence": 0.95,
+            "box": {
+              "x": 0.88,
+              "y": 0.02,
+              "width": 0.1,
+              "height": 0.04
+            }
+          },
+          {
+            "label": "Courses",
+            "role": "link",
+            "confidence": 0.85,
+            "box": {
+              "x": 0.8,
+              "y": 0.02,
+              "width": 0.07,
+              "height": 0.04
+            }
+          },
+          {
+            "label": "Start Free with Basic 1",
+            "role": "button",
+            "confidence": 0.8,
+            "box": {
+              "x": 0.05,
+              "y": 0.5,
+              "width": 0.15,
+              "height": 0.07
+            }
+          },
+          {
+            "label": "Join Discord Server",
+            "role": "button",
+            "confidence": 0.75,
+            "box": {
+              "x": 0.75,
+              "y": 0.7,
+              "width": 0.15,
+              "height": 0.07
+            }
+          }
+        ],
+        "ocr_labels": [
+          "Language",
+          "learning",
+          "Japanese",
+          "Base"
+        ],
+        "ocr_confidence": 0.794
+      },
+      {
+        "timestamp": 13.8,
+        "summary": "Cursor hovers over the Google Login button at top right, ready for click.",
         "cursor_box": {
           "x": 0.88,
           "y": 0.02,
@@ -348,80 +405,13 @@
           "height": 0.04
         },
         "click_confidence": 0.7,
-        "diff_score": 1.0,
-        "importance_score": 0.9,
-        "ui_elements": [
-          {
-            "label": "Google Login",
-            "role": "button",
-            "confidence": 0.9,
-            "box": {
-              "x": 0.88,
-              "y": 0.02,
-              "width": 0.1,
-              "height": 0.04
-            }
-          },
-          {
-            "label": "Start Free with Basic 1",
-            "role": "button",
-            "confidence": 0.9,
-            "box": {
-              "x": 0.1,
-              "y": 0.6,
-              "width": 0.15,
-              "height": 0.06
-            }
-          },
-          {
-            "label": "Join Discord Server",
-            "role": "button",
-            "confidence": 0.8,
-            "box": {
-              "x": 0.75,
-              "y": 0.7,
-              "width": 0.15,
-              "height": 0.06
-            }
-          }
-        ],
-        "ocr_labels": [
-          "Language",
-          "learning",
-          "Japanese",
-          "Base"
-        ],
-        "ocr_confidence": 0.794
-      },
-      {
-        "timestamp": 13.8,
-        "summary": "Cursor remains on the Google Login button at top right; no click detected yet.",
-        "cursor_box": {
-          "x": 0.88,
-          "y": 0.02,
-          "width": 0.03,
-          "height": 0.05
-        },
-        "click_target_box": {
-          "x": 0.88,
-          "y": 0.02,
-          "width": 0.1,
-          "height": 0.04
-        },
-        "dominant_box": {
-          "x": 0.88,
-          "y": 0.02,
-          "width": 0.1,
-          "height": 0.04
-        },
-        "click_confidence": 0.6,
         "diff_score": 0.41,
-        "importance_score": 0.85,
+        "importance_score": 0.95,
         "ui_elements": [
           {
             "label": "Google Login",
             "role": "button",
-            "confidence": 0.9,
+            "confidence": 0.95,
             "box": {
               "x": 0.88,
               "y": 0.02,
@@ -430,25 +420,36 @@
             }
           },
           {
+            "label": "Courses",
+            "role": "link",
+            "confidence": 0.85,
+            "box": {
+              "x": 0.8,
+              "y": 0.02,
+              "width": 0.07,
+              "height": 0.04
+            }
+          },
+          {
             "label": "Start Free with Basic 1",
             "role": "button",
-            "confidence": 0.9,
+            "confidence": 0.8,
             "box": {
-              "x": 0.1,
-              "y": 0.6,
+              "x": 0.05,
+              "y": 0.5,
               "width": 0.15,
-              "height": 0.06
+              "height": 0.07
             }
           },
           {
             "label": "Join Discord Server",
             "role": "button",
-            "confidence": 0.8,
+            "confidence": 0.75,
             "box": {
               "x": 0.75,
               "y": 0.7,
               "width": 0.15,
-              "height": 0.06
+              "height": 0.07
             }
           }
         ],
@@ -464,7 +465,7 @@
     "frame_diff_score": 1.0,
     "frame_diff_available": true,
     "cursor_path_confidence": 1.0,
-    "ocr_match_score": 0.78,
+    "ocr_match_score": 0.8,
     "ocr_confidence": 0.793,
     "anchor_box": {
       "x": 0.88,
@@ -477,15 +478,17 @@
     "scene_number": 2,
     "start": 14.0,
     "end": 18.38,
-    "summary": "User is guided to click a button to create an account as part of the onboarding process.",
-    "confidence": 0.7,
+    "summary": "User navigates from the landing page to the login/signup page, highlighting the need to create an account by clicking the 'Sign up with Google' button.",
+    "confidence": 0.75,
     "motion_score": 0.5,
     "click_detected": true,
     "visible_labels": [
+      "Start Free with Basic 1",
+      "See Courses",
+      "Join Discord Server",
       "Create account",
       "Set up profile",
       "Open dashboard",
-      "Continue with Google",
       "Sign up with Google",
       "Log in with Google"
     ],
@@ -496,10 +499,10 @@
       "height": 0.15
     },
     "cursor_box": {
-      "x": 0.85,
+      "x": 0.75,
       "y": 0.55,
-      "width": 0.03,
-      "height": 0.05
+      "width": 0.05,
+      "height": 0.08
     },
     "click_target_box": {
       "x": 0.65,
@@ -510,37 +513,26 @@
     "frames": [
       {
         "timestamp": 14.2,
-        "summary": "Landing page with language learning promotion and 'Start Free with Basic 1' button visible, cursor not present.",
+        "summary": "Landing page with language learning promotion and call to action buttons.",
         "cursor_box": null,
         "click_target_box": null,
         "dominant_box": {
           "x": 0.05,
-          "y": 0.2,
+          "y": 0.15,
           "width": 0.4,
           "height": 0.5
         },
         "click_confidence": 0.0,
         "diff_score": 0.0,
-        "importance_score": 0.6,
+        "importance_score": 0.7,
         "ui_elements": [
-          {
-            "label": "Language learning that finally feels like a premium speaking coach",
-            "role": "heading",
-            "confidence": 0.9,
-            "box": {
-              "x": 0.05,
-              "y": 0.2,
-              "width": 0.4,
-              "height": 0.5
-            }
-          },
           {
             "label": "Start Free with Basic 1",
             "role": "button",
             "confidence": 0.85,
             "box": {
               "x": 0.05,
-              "y": 0.7,
+              "y": 0.6,
               "width": 0.15,
               "height": 0.07
             }
@@ -551,8 +543,19 @@
             "confidence": 0.8,
             "box": {
               "x": 0.22,
-              "y": 0.7,
+              "y": 0.6,
               "width": 0.15,
+              "height": 0.07
+            }
+          },
+          {
+            "label": "Join Discord Server",
+            "role": "button",
+            "confidence": 0.75,
+            "box": {
+              "x": 0.75,
+              "y": 0.55,
+              "width": 0.2,
               "height": 0.07
             }
           }
@@ -567,12 +570,12 @@
       },
       {
         "timestamp": 18.18,
-        "summary": "Onboarding screen showing 'Create account' step with cursor hovering over 'Sign up with Google' button.",
+        "summary": "Login/signup page showing options to create account or log in with Google, cursor hovering over 'Sign up with Google' button.",
         "cursor_box": {
-          "x": 0.85,
+          "x": 0.75,
           "y": 0.55,
-          "width": 0.03,
-          "height": 0.05
+          "width": 0.05,
+          "height": 0.08
         },
         "click_target_box": {
           "x": 0.65,
@@ -586,14 +589,14 @@
           "width": 0.3,
           "height": 0.15
         },
-        "click_confidence": 0.8,
+        "click_confidence": 0.9,
         "diff_score": 1.0,
         "importance_score": 0.9,
         "ui_elements": [
           {
             "label": "Create account",
-            "role": "step",
-            "confidence": 0.8,
+            "role": "button",
+            "confidence": 0.7,
             "box": {
               "x": 0.05,
               "y": 0.75,
@@ -603,8 +606,8 @@
           },
           {
             "label": "Set up profile",
-            "role": "step",
-            "confidence": 0.8,
+            "role": "button",
+            "confidence": 0.7,
             "box": {
               "x": 0.22,
               "y": 0.75,
@@ -614,24 +617,13 @@
           },
           {
             "label": "Open dashboard",
-            "role": "step",
-            "confidence": 0.8,
+            "role": "button",
+            "confidence": 0.7,
             "box": {
               "x": 0.39,
               "y": 0.75,
               "width": 0.15,
               "height": 0.07
-            }
-          },
-          {
-            "label": "Continue with Google",
-            "role": "section",
-            "confidence": 0.85,
-            "box": {
-              "x": 0.6,
-              "y": 0.4,
-              "width": 0.35,
-              "height": 0.2
             }
           },
           {
@@ -651,7 +643,7 @@
             "confidence": 0.85,
             "box": {
               "x": 0.65,
-              "y": 0.6,
+              "y": 0.62,
               "width": 0.3,
               "height": 0.15
             }
@@ -668,7 +660,7 @@
     ],
     "frame_diff_score": 1.0,
     "frame_diff_available": true,
-    "cursor_path_confidence": 0.6,
+    "cursor_path_confidence": 0.8,
     "ocr_match_score": 0.79,
     "ocr_confidence": 0.797,
     "anchor_box": {
@@ -680,30 +672,33 @@
   },
   {
     "scene_number": 4,
-    "start": 26.33,
-    "end": 29.75,
-    "summary": "User is on the login screen showing account selection and then transitions to the course selection dashboard showing five courses.",
-    "confidence": 0.7,
+    "start": 26.22,
+    "end": 29.58,
+    "summary": "User logs in by choosing an account from a Google sign-in interface, then views a course selection dashboard showing five courses with some locked and marked as coming soon.",
+    "confidence": 0.75,
     "motion_score": 0.5,
     "click_detected": false,
     "visible_labels": [
       "Choose an account",
       "Rahul Panchal",
-      "Select a course",
+      "Sam Saleh",
+      "Sign in with Google",
       "Japanese",
       "English",
       "German",
       "Spanish",
-      "French"
+      "French",
+      "COMING SOON",
+      "OPEN COURSE"
     ],
     "primary_focus_box": {
       "x": 0.05,
       "y": 0.15,
-      "width": 0.9,
+      "width": 0.4,
       "height": 0.7
     },
     "cursor_box": {
-      "x": 0.65,
+      "x": 0.6,
       "y": 0.4,
       "width": 0.03,
       "height": 0.05
@@ -711,10 +706,10 @@
     "click_target_box": null,
     "frames": [
       {
-        "timestamp": 26.53,
-        "summary": "Login screen showing account selection with multiple email accounts listed.",
+        "timestamp": 26.42,
+        "summary": "Google sign-in screen showing multiple account options to choose from.",
         "cursor_box": {
-          "x": 0.65,
+          "x": 0.6,
           "y": 0.4,
           "width": 0.03,
           "height": 0.05
@@ -723,10 +718,10 @@
         "dominant_box": {
           "x": 0.05,
           "y": 0.15,
-          "width": 0.9,
+          "width": 0.4,
           "height": 0.7
         },
-        "click_confidence": 0.0,
+        "click_confidence": 0.2,
         "diff_score": 0.0,
         "importance_score": 0.8,
         "ui_elements": [
@@ -735,116 +730,138 @@
             "role": "header",
             "confidence": 0.9,
             "box": {
-              "x": 0.1,
-              "y": 0.2,
-              "width": 0.5,
+              "x": 0.05,
+              "y": 0.15,
+              "width": 0.4,
               "height": 0.1
             }
           },
           {
-            "label": "Rahul Panchal email list",
-            "role": "list",
+            "label": "Rahul Panchal",
+            "role": "account option",
             "confidence": 0.85,
             "box": {
-              "x": 0.55,
+              "x": 0.05,
               "y": 0.3,
               "width": 0.4,
-              "height": 0.5
+              "height": 0.05
+            }
+          },
+          {
+            "label": "Sam Saleh",
+            "role": "account option",
+            "confidence": 0.8,
+            "box": {
+              "x": 0.05,
+              "y": 0.5,
+              "width": 0.4,
+              "height": 0.05
+            }
+          },
+          {
+            "label": "Sign in with Google",
+            "role": "button",
+            "confidence": 0.7,
+            "box": {
+              "x": 0.05,
+              "y": 0.1,
+              "width": 0.3,
+              "height": 0.05
             }
           }
         ],
         "ocr_labels": [
+          "Gane",
           "Choose",
           "account",
-          "Orit",
-          "aera"
+          "mines"
         ],
-        "ocr_confidence": 0.509
+        "ocr_confidence": 0.462
       },
       {
-        "timestamp": 29.55,
-        "summary": "Course selection dashboard showing five courses with some marked as coming soon.",
+        "timestamp": 29.38,
+        "summary": "Course selection dashboard showing five courses with some locked and marked as coming soon.",
         "cursor_box": {
-          "x": 0.6,
-          "y": 0.35,
+          "x": 0.55,
+          "y": 0.45,
           "width": 0.03,
           "height": 0.05
         },
         "click_target_box": null,
         "dominant_box": {
           "x": 0.05,
-          "y": 0.15,
+          "y": 0.25,
           "width": 0.9,
-          "height": 0.7
+          "height": 0.5
         },
-        "click_confidence": 0.0,
+        "click_confidence": 0.1,
         "diff_score": 1.0,
         "importance_score": 0.9,
         "ui_elements": [
           {
-            "label": "Select a course",
-            "role": "header",
+            "label": "Japanese",
+            "role": "course card",
             "confidence": 0.9,
             "box": {
               "x": 0.05,
-              "y": 0.15,
-              "width": 0.9,
-              "height": 0.1
-            }
-          },
-          {
-            "label": "Japanese course card",
-            "role": "button",
-            "confidence": 0.8,
-            "box": {
-              "x": 0.05,
-              "y": 0.3,
+              "y": 0.25,
               "width": 0.15,
-              "height": 0.4
+              "height": 0.5
             }
           },
           {
-            "label": "English course card",
-            "role": "button",
-            "confidence": 0.7,
+            "label": "English",
+            "role": "course card locked",
+            "confidence": 0.85,
+            "box": {
+              "x": 0.22,
+              "y": 0.25,
+              "width": 0.15,
+              "height": 0.5
+            }
+          },
+          {
+            "label": "German",
+            "role": "course card locked",
+            "confidence": 0.85,
+            "box": {
+              "x": 0.39,
+              "y": 0.25,
+              "width": 0.15,
+              "height": 0.5
+            }
+          },
+          {
+            "label": "Spanish",
+            "role": "course card locked",
+            "confidence": 0.85,
+            "box": {
+              "x": 0.56,
+              "y": 0.25,
+              "width": 0.15,
+              "height": 0.5
+            }
+          },
+          {
+            "label": "French",
+            "role": "course card locked",
+            "confidence": 0.85,
+            "box": {
+              "x": 0.73,
+              "y": 0.25,
+              "width": 0.15,
+              "height": 0.5
+            }
+          },
+          {
+            "label": "COMING SOON",
+            "role": "label",
+            "confidence": 0.8,
             "box": {
               "x": 0.22,
               "y": 0.3,
-              "width": 0.15,
-              "height": 0.4
-            }
-          },
-          {
-            "label": "German course card",
-            "role": "button",
-            "confidence": 0.7,
-            "box": {
-              "x": 0.39,
-              "y": 0.3,
-              "width": 0.15,
-              "height": 0.4
-            }
-          },
-          {
-            "label": "Spanish course card",
-            "role": "button",
-            "confidence": 0.7,
-            "box": {
-              "x": 0.56,
-              "y": 0.3,
-              "width": 0.15,
-              "height": 0.4
-            }
-          },
-          {
-            "label": "French course card",
-            "role": "button",
-            "confidence": 0.7,
-            "box": {
-              "x": 0.73,
-              "y": 0.3,
-              "width": 0.15,
-              "height": 0.4
+              "width": 0.6,
+              "height": 0.1
             }
           }
         ],
@@ -861,25 +878,25 @@
     "frame_diff_available": true,
     "cursor_path_confidence": 1.0,
     "ocr_match_score": 0.4,
-    "ocr_confidence": 0.403,
+    "ocr_confidence": 0.38,
     "anchor_box": {
       "x": 0.05,
       "y": 0.15,
-      "width": 0.9,
+      "width": 0.4,
       "height": 0.7
     }
   },
   {
     "scene_number": 5,
-    "start": 37.46,
-    "end": 41.74,
-    "summary": "User navigates under the Japan course selection and views Japanese level options for learning.",
-    "confidence": 0.7,
+    "start": 37.14,
+    "end": 41.34,
+    "summary": "User clicks on the 'Japanese' course card to select it, then the UI transitions to a difficulty selection screen for Japanese levels.",
+    "confidence": 0.75,
     "motion_score": 0.5,
-    "click_detected": false,
+    "click_detected": true,
     "visible_labels": [
       "Japanese",
-      "OPEN COURSE",
+      "Open Course",
       "Pick your Japanese level before you start learning.",
       "N5 JLPT LEVEL",
       "N4 JLPT LEVEL",
@@ -889,27 +906,47 @@
     ],
     "primary_focus_box": {
       "x": 0.05,
-      "y": 0.3,
+      "y": 0.35,
       "width": 0.18,
-      "height": 0.4
+      "height": 0.3
     },
-    "cursor_box": null,
-    "click_target_box": null,
+    "cursor_box": {
+      "x": 0.15,
+      "y": 0.6,
+      "width": 0.03,
+      "height": 0.05
+    },
+    "click_target_box": {
+      "x": 0.05,
+      "y": 0.35,
+      "width": 0.18,
+      "height": 0.3
+    },
     "frames": [
       {
-        "timestamp": 37.66,
-        "summary": "View of the course selection screen highlighting the Japanese course card with 'OPEN COURSE' button visible.",
-        "cursor_box": null,
-        "click_target_box": null,
+        "timestamp": 37.34,
+        "summary": "Cursor hovering over the 'Japanese' course card with label 'Open Course'.",
+        "cursor_box": {
+          "x": 0.15,
+          "y": 0.6,
+          "width": 0.03,
+          "height": 0.05
+        },
+        "click_target_box": {
+          "x": 0.05,
+          "y": 0.35,
+          "width": 0.18,
+          "height": 0.3
+        },
         "dominant_box": {
           "x": 0.05,
-          "y": 0.3,
+          "y": 0.35,
           "width": 0.18,
-          "height": 0.4
+          "height": 0.3
         },
-        "click_confidence": 0.0,
+        "click_confidence": 0.4,
         "diff_score": 0.0,
-        "importance_score": 0.8,
+        "importance_score": 0.7,
         "ui_elements": [
           {
             "label": "Japanese",
@@ -917,53 +954,53 @@
             "confidence": 0.9,
             "box": {
               "x": 0.05,
-              "y": 0.3,
+              "y": 0.35,
               "width": 0.18,
-              "height": 0.4
+              "height": 0.3
             }
           },
           {
-            "label": "OPEN COURSE",
+            "label": "Open Course",
             "role": "button",
             "confidence": 0.8,
             "box": {
-              "x": 0.1,
+              "x": 0.05,
               "y": 0.6,
-              "width": 0.1,
-              "height": 0.07
+              "width": 0.18,
+              "height": 0.05
             }
           }
         ],
         "ocr_labels": [
+          "Wie",
           "ting",
           "Onr.-",
-          "AMEEMEIREI",
-          "waccensicoiigien;"
+          "AREUEIREI;"
         ],
-        "ocr_confidence": 0.471
+        "ocr_confidence": 0.488
       },
       {
-        "timestamp": 41.54,
-        "summary": "Screen showing Japanese level selection with multiple JLPT level cards and heading 'Pick your Japanese level before you start learning.'",
-        "cursor_box": null,
-        "click_target_box": null,
-        "dominant_box": {
-          "x": 0.05,
-          "y": 0.15,
-          "width": 0.9,
-          "height": 0.7
+        "timestamp": 41.14,
+        "summary": "Screen shows difficulty selection for Japanese levels with multiple JLPT level cards.",
+        "cursor_box": {
+          "x": 0.1,
+          "y": 0.5,
+          "width": 0.03,
+          "height": 0.05
         },
+        "click_target_box": null,
+        "dominant_box": null,
         "click_confidence": 0.0,
         "diff_score": 1.0,
-        "importance_score": 0.9,
+        "importance_score": 0.8,
         "ui_elements": [
           {
             "label": "Pick your Japanese level before you start learning.",
-            "role": "heading",
+            "role": "header_text",
             "confidence": 0.85,
             "box": {
               "x": 0.05,
-              "y": 0.15,
+              "y": 0.1,
               "width": 0.9,
               "height": 0.1
             }
@@ -974,9 +1011,9 @@
             "confidence": 0.8,
             "box": {
               "x": 0.05,
-              "y": 0.3,
+              "y": 0.25,
               "width": 0.18,
-              "height": 0.2
+              "height": 0.15
             }
           },
           {
@@ -985,9 +1022,9 @@
             "confidence": 0.8,
             "box": {
               "x": 0.25,
-              "y": 0.3,
+              "y": 0.25,
               "width": 0.18,
-              "height": 0.2
+              "height": 0.15
             }
           },
           {
@@ -996,9 +1033,9 @@
             "confidence": 0.8,
             "box": {
               "x": 0.45,
-              "y": 0.3,
+              "y": 0.25,
               "width": 0.18,
-              "height": 0.2
+              "height": 0.15
             }
           },
           {
@@ -1007,9 +1044,9 @@
             "confidence": 0.8,
             "box": {
               "x": 0.65,
-              "y": 0.3,
+              "y": 0.25,
               "width": 0.18,
-              "height": 0.2
+              "height": 0.15
             }
           },
           {
@@ -1018,9 +1055,9 @@
             "confidence": 0.8,
             "box": {
               "x": 0.85,
-              "y": 0.3,
+              "y": 0.25,
               "width": 0.18,
-              "height": 0.2
+              "height": 0.15
             }
           }
         ],
@@ -1030,36 +1067,39 @@
           "Japanese",
           "level"
         ],
-        "ocr_confidence": 0.74
+        "ocr_confidence": 0.71
       }
     ],
     "frame_diff_score": 1.0,
     "frame_diff_available": true,
-    "cursor_path_confidence": 0.3,
+    "cursor_path_confidence": 1.0,
     "ocr_match_score": 0.6,
-    "ocr_confidence": 0.605,
+    "ocr_confidence": 0.599,
     "anchor_box": {
       "x": 0.05,
-      "y": 0.3,
+      "y": 0.35,
       "width": 0.18,
-      "height": 0.4
+      "height": 0.3
     }
   },
   {
     "scene_number": 6,
-    "start": 41.74,
-    "end": 46.02,
-    "summary": "User is presented with a selection screen to pick their Japanese language level for the newly opened Japan course. The UI shows difficulty levels N5 to N1 with descriptions and lesson counts. Cursor is visible but no clear click action is detected in this frame. The main focus is the instructional text and level selection cards.",
+    "start": 41.34,
+    "end": 45.54,
+    "summary": "User is presented with a UI screen to pick their Japanese level before starting the Japan course, which has been officially opened. The screen shows multiple difficulty level cards (N5 to N1) with descriptions and lesson counts. Cursor is visible near the text but no clear click action is detected.",
     "confidence": 0.7,
     "motion_score": 0.0,
     "click_detected": false,
     "visible_labels": [
-      "Pick your Japanese level",
+      "Pick your Japanese level before you start learning.",
       "N5 JLPT LEVEL",
       "N4 JLPT LEVEL",
       "N3 JLPT LEVEL",
       "N2 JLPT LEVEL",
-      "N1 JLPT LEVEL"
+      "N1 JLPT LEVEL",
+      "8 LESSONS",
+      "9 LESSONS",
+      "12 VOCABULARY"
     ],
     "primary_focus_box": {
       "x": 0.05,
@@ -1068,19 +1108,19 @@
       "height": 0.7
     },
     "cursor_box": {
-      "x": 0.48,
-      "y": 0.4,
+      "x": 0.3,
+      "y": 0.5,
       "width": 0.02,
       "height": 0.03
     },
     "click_target_box": null,
     "frames": [
       {
-        "timestamp": 41.94,
-        "summary": "Screen shows Japanese level selection with cursor hovering near N5 level card. Instructional text 'Pick your Japanese level before you start learning.' is visible.",
+        "timestamp": 41.54,
+        "summary": "UI screen showing Japanese level selection with multiple difficulty cards and cursor near the text.",
         "cursor_box": {
-          "x": 0.48,
-          "y": 0.4,
+          "x": 0.3,
+          "y": 0.5,
           "width": 0.02,
           "height": 0.03
         },
@@ -1097,7 +1137,7 @@
         "ui_elements": [
           {
             "label": "Pick your Japanese level before you start learning.",
-            "role": "instruction_text",
+            "role": "header",
             "confidence": 0.9,
             "box": {
               "x": 0.05,
@@ -1108,57 +1148,57 @@
           },
           {
             "label": "N5 JLPT LEVEL",
-            "role": "selectable_card",
+            "role": "card",
             "confidence": 0.85,
             "box": {
               "x": 0.05,
-              "y": 0.3,
-              "width": 0.25,
-              "height": 0.25
+              "y": 0.27,
+              "width": 0.18,
+              "height": 0.15
             }
           },
           {
             "label": "N4 JLPT LEVEL",
-            "role": "selectable_card",
+            "role": "card",
             "confidence": 0.85,
             "box": {
-              "x": 0.32,
-              "y": 0.3,
-              "width": 0.25,
-              "height": 0.25
+              "x": 0.25,
+              "y": 0.27,
+              "width": 0.18,
+              "height": 0.15
             }
           },
           {
             "label": "N3 JLPT LEVEL",
-            "role": "selectable_card",
+            "role": "card",
             "confidence": 0.85,
             "box": {
-              "x": 0.59,
-              "y": 0.3,
-              "width": 0.25,
-              "height": 0.25
+              "x": 0.45,
+              "y": 0.27,
+              "width": 0.18,
+              "height": 0.15
             }
           },
           {
             "label": "N2 JLPT LEVEL",
-            "role": "selectable_card",
+            "role": "card",
             "confidence": 0.85,
             "box": {
-              "x": 0.05,
-              "y": 0.58,
-              "width": 0.25,
-              "height": 0.25
+              "x": 0.65,
+              "y": 0.27,
+              "width": 0.18,
+              "height": 0.15
             }
           },
           {
             "label": "N1 JLPT LEVEL",
-            "role": "selectable_card",
+            "role": "card",
             "confidence": 0.85,
             "box": {
-              "x": 0.32,
-              "y": 0.58,
-              "width": 0.25,
-              "height": 0.25
+              "x": 0.85,
+              "y": 0.27,
+              "width": 0.18,
+              "height": 0.15
             }
           }
         ],
@@ -1168,14 +1208,14 @@
           "Japanese",
           "level"
         ],
-        "ocr_confidence": 0.666
+        "ocr_confidence": 0.74
       }
     ],
     "frame_diff_score": 0.0,
     "frame_diff_available": true,
     "cursor_path_confidence": 0.6,
-    "ocr_match_score": 0.67,
-    "ocr_confidence": 0.666,
+    "ocr_match_score": 0.74,
+    "ocr_confidence": 0.74,
     "anchor_box": {
       "x": 0.05,
       "y": 0.15,

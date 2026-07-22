@@ -110,10 +110,10 @@ def staged_state(state: CropState | None, stage: str, phase: str) -> CropState |
     if state is None:
         return None
     if stage == "establish":
-        return softened_state(state, 0.66 if phase == "start" else 0.5)
+        return shifted_state(softened_state(state, 0.7 if phase == "start" else 0.54), phase, drift=0.018 if phase == "start" else 0.012)
     if stage == "settle":
-        return softened_state(state, 0.22 if phase == "start" else 0.34)
-    return shifted_state(softened_state(state, 0.36 if phase == "start" else 0.06), phase, drift=0.014 if phase == "start" else 0.01)
+        return shifted_state(softened_state(state, 0.18 if phase == "start" else 0.3), phase, drift=0.01 if phase == "start" else 0.008)
+    return shifted_state(softened_state(state, 0.3 if phase == "start" else 0.04), phase, drift=0.02 if phase == "start" else 0.014)
 
 
 def start_phase_softening(phase: str, starts_after_timestamp: bool) -> float:
@@ -190,15 +190,15 @@ def animated_zoom(start_width: float, end_width: float, progress: str) -> str:
 
 
 def crop_focus_box(scene: EditPlanScene, clip_start: float, clip_end: float) -> FocusBox | None:
-    for highlight in active_highlights(scene, clip_start):
-        if highlight.focus_box is not None:
-            return highlight.focus_box
     for zoom in active_zooms(scene, clip_start):
         if zoom.focus_box is not None:
-            return zoom.focus_box
+            return refined_focus_box(zoom.focus_box)
+    for highlight in active_highlights(scene, clip_start):
+        if highlight.focus_box is not None:
+            return refined_focus_box(highlight.focus_box)
     for highlight in overlapping_highlights(scene, clip_start, clip_end):
         if highlight.focus_box is not None:
-            return highlight.focus_box
+            return refined_focus_box(highlight.focus_box)
     return None
 
 
@@ -238,20 +238,23 @@ def rebased_box(box: FocusBox, origin_x: float, origin_y: float, crop_width: flo
 
 
 def spotlight_filters(box: FocusBox, start: float, end: float, style: str) -> list[str]:
-    left = round(box.x, 4)
-    top = round(box.y, 4)
-    right = round(clamp(box.x + box.width, 0.0, 1.0), 4)
-    bottom = round(clamp(box.y + box.height, 0.0, 1.0), 4)
+    softened = refined_focus_box(box)
+    left = round(softened.x, 4)
+    top = round(softened.y, 4)
+    right = round(clamp(softened.x + softened.width, 0.0, 1.0), 4)
+    bottom = round(clamp(softened.y + softened.height, 0.0, 1.0), 4)
     alpha = highlight_alpha(style)
     lift_alpha = target_lift_alpha(style)
     enable = f"between(t,{round(start, 2)},{round(end, 2)})"
-    return [
+    filters = [
         draw_mask(0.0, 0.0, left, 1.0, alpha, enable),
         draw_mask(right, 0.0, 1.0 - right, 1.0, alpha, enable),
         draw_mask(left, 0.0, max(right - left, 0.02), top, alpha, enable),
         draw_mask(left, bottom, max(right - left, 0.02), max(1.0 - bottom, 0.02), alpha, enable),
-        target_lift(left, top, right, bottom, lift_alpha, enable),
     ]
+    if style in {"ambient-lift", "spotlight"} and focus_area(softened) <= 0.028:
+        filters.extend(target_lift_filters(left, top, right, bottom, lift_alpha, enable))
+    return filters
 
 
 def draw_mask(x: float, y: float, width: float, height: float, alpha: float, enable: str) -> str:
@@ -264,37 +267,57 @@ def draw_mask(x: float, y: float, width: float, height: float, alpha: float, ena
 
 def highlight_alpha(style: str) -> float:
     if style == "ambient":
-        return 0.06
+        return 0.05
     if style == "ambient-lift":
-        return 0.075
+        return 0.06
     if style == "spotlight":
-        return 0.09
-    return 0.06
+        return 0.07
+    return 0.05
 
 
 def target_lift_alpha(style: str) -> float:
     if style == "ambient":
-        return 0.03
+        return 0.0
     if style == "ambient-lift":
-        return 0.04
+        return 0.018
     if style == "spotlight":
-        return 0.05
-    return 0.03
+        return 0.026
+    return 0.0
 
 
-def target_lift(left: float, top: float, right: float, bottom: float, alpha: float, enable: str) -> str:
-    inset_x = min(max((right - left) * 0.08, 0.01), 0.035)
-    inset_y = min(max((bottom - top) * 0.08, 0.01), 0.035)
-    inner_left = min(max(left + inset_x, 0.0), right)
-    inner_top = min(max(top + inset_y, 0.0), bottom)
-    inner_width = max(right - left - inset_x * 2, 0.03)
-    inner_height = max(bottom - top - inset_y * 2, 0.03)
-    return (
-        "drawbox="
-        f"x=iw*{round(inner_left, 4)}:y=ih*{round(inner_top, 4)}:"
-        f"w=iw*{round(inner_width, 4)}:h=ih*{round(inner_height, 4)}:"
-        f"color=white@{alpha}:t=fill:enable='{enable}'"
+def target_lift_filters(left: float, top: float, right: float, bottom: float, alpha: float, enable: str) -> list[str]:
+    filters: list[str] = []
+    for inset_ratio, layer_alpha in ((0.18, alpha * 0.38), (0.1, alpha * 0.54), (0.04, alpha * 0.3)):
+        inset_x = min(max((right - left) * inset_ratio, 0.006), 0.028)
+        inset_y = min(max((bottom - top) * inset_ratio, 0.006), 0.028)
+        inner_left = min(max(left + inset_x, 0.0), right)
+        inner_top = min(max(top + inset_y, 0.0), bottom)
+        inner_width = max(right - left - inset_x * 2, 0.02)
+        inner_height = max(bottom - top - inset_y * 2, 0.02)
+        filters.append(
+            "drawbox="
+            f"x=iw*{round(inner_left, 4)}:y=ih*{round(inner_top, 4)}:"
+            f"w=iw*{round(inner_width, 4)}:h=ih*{round(inner_height, 4)}:"
+            f"color=white@{round(layer_alpha, 4)}:t=fill:enable='{enable}'"
+        )
+    return filters
+
+
+def refined_focus_box(box: FocusBox) -> FocusBox:
+    width = clamp(box.width * 0.86, 0.045, 0.24)
+    height = clamp(box.height * 0.86, 0.045, 0.24)
+    center_x = box.x + box.width / 2
+    center_y = box.y + box.height / 2
+    return FocusBox(
+        x=clamp(center_x - width / 2, 0.0, 1.0 - width),
+        y=clamp(center_y - height / 2, 0.0, 1.0 - height),
+        width=width,
+        height=height,
     )
+
+
+def focus_area(box: FocusBox) -> float:
+    return box.width * box.height
 
 
 def clamp(value: float, minimum: float, maximum: float) -> float:
