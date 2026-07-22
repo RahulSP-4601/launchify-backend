@@ -5,6 +5,7 @@ from typing import Literal
 
 from app.models.projects import EditPlanScene, ProjectRecord
 from app.services.render_motion_staging import stage_motion_clips
+from app.services.render_scene_deduper import prune_redundant_render_scenes
 from app.services.walkthrough_guardrails import guide_is_under_grounded, recording_duration_seconds, session_is_under_grounded
 
 MIN_CLIP_DURATION_SECONDS = 0.45
@@ -107,7 +108,7 @@ def contextual_highlight_clips(project: ProjectRecord) -> list[RenderClip]:
 def walkthrough_clips(project: ProjectRecord) -> list[RenderClip]:
     if project.edit_plan is None:
         return []
-    scenes = sorted(project.edit_plan.scenes, key=lambda scene: scene.start)
+    scenes = prune_redundant_render_scenes(sorted(project.edit_plan.scenes, key=lambda scene: scene.start))
     source_start, source_end = project_source_bounds(project)
     if not scenes or source_end - source_start <= 0:
         return []

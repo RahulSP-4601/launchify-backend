@@ -1,7 +1,7 @@
 {
-  "title": "Getting Started with Pronouncly",
-  "summary": "This guide walks you through logging into Pronouncly, selecting the Japanese course, and choosing your proficiency level to begin learning.",
-  "source": "Captured session from Pronouncly Phase 4 Probe",
+  "title": "Getting Started with Pronouncly: Logging In and Selecting a Course",
+  "summary": "This guide walks you through logging into Pronouncly using Google and selecting the Japanese language course to begin your learning journey.",
+  "source": "Pronouncly Phase 4 Probe video walkthrough",
   "steps": [
     {
       "step_index": 1,
@@ -38,16 +38,16 @@
     {
       "step_index": 3,
       "title": "Select A Course",
-      "instruction": "Choose the Select Japanese Course to continue into setup.",
-      "narration": "Open the Select Japanese Course to continue into setup.",
-      "on_screen_text": "Select Japanese Course",
-      "specific_target_label": "Select Japanese Course",
+      "instruction": "Choose the Japanese course card to continue into setup.",
+      "narration": "Open the Japanese course card to continue into setup.",
+      "on_screen_text": "Japanese course card",
+      "specific_target_label": "Japanese course card",
       "start": 29.37,
       "end": 36.27,
       "event_type": "click",
       "focus_selector": "",
       "focus_label": "Select A Course",
-      "highlight_label": "Select Japanese Course",
+      "highlight_label": "Japanese course card",
       "source_excerpt": "Since I've already created the account, I'll log in to the existing one. After log in, you can see the five courses. Right now, we have opened the Japan courses, and the rest of the four courses are coming soon. So under Japan click on the Japan courses. And once the Japan course has been opened so, officially, there are five",
       "action_class": "card_selection"
     },
@@ -82,7 +82,7 @@
     {
       "step_index": 3,
       "title": "Select A Course",
-      "body": "Choose the Select Japanese Course to continue into setup."
+      "body": "Choose the Japanese course card to continue into setup."
     },
     {
       "step_index": 4,
@@ -91,10 +91,10 @@
     }
   ],
   "generation_notes": [
-    "Used only actions and transcript content from the event log.",
-    "Merged related clicks into coherent steps without reordering.",
-    "Kept narration concise and professional for launch video.",
-    "On-screen text is premium and concise as requested.",
+    "Merged repetitive login instructions into concise steps.",
+    "Used transcript and event labels to create accurate step titles and instructions.",
+    "Kept step order and timestamps faithful to the captured events.",
+    "Crafted premium, concise on-screen text for clarity and professionalism.",
     "Grounded step timing was expanded into continuous walkthrough ranges anchored to captured actions."
   ]
 }

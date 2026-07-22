@@ -64,7 +64,7 @@ def crop_state(
         return staged_state(box_state(focus_box, 1.12, 0.0, 0.0), stage, phase)
     if zoom is None:
         return staged_state(box_state(focus_box, 1.0, 0.0, 0.0), stage, phase)
-    scale = softened_scale(zoom.scale, 0.32 if phase == "start" and zoom.start > timestamp else 1.0)
+    scale = softened_scale(zoom.scale, start_phase_softening(phase, zoom.start > timestamp))
     return staged_state(box_state(focus_box, scale, zoom.x_offset, zoom.y_offset), stage, phase)
 
 
@@ -113,7 +113,13 @@ def staged_state(state: CropState | None, stage: str, phase: str) -> CropState |
         return softened_state(state, 0.66 if phase == "start" else 0.5)
     if stage == "settle":
         return softened_state(state, 0.22 if phase == "start" else 0.34)
-    return shifted_state(softened_state(state, 0.24 if phase == "start" else 0.06), phase, drift=0.008)
+    return shifted_state(softened_state(state, 0.36 if phase == "start" else 0.06), phase, drift=0.014 if phase == "start" else 0.01)
+
+
+def start_phase_softening(phase: str, starts_after_timestamp: bool) -> float:
+    if phase != "start":
+        return 1.0
+    return 0.18 if starts_after_timestamp else 0.26
 
 
 def shifted_state(state: CropState | None, phase: str, drift: float) -> CropState | None:
@@ -237,19 +243,14 @@ def spotlight_filters(box: FocusBox, start: float, end: float, style: str) -> li
     right = round(clamp(box.x + box.width, 0.0, 1.0), 4)
     bottom = round(clamp(box.y + box.height, 0.0, 1.0), 4)
     alpha = highlight_alpha(style)
-    border = highlight_border(style)
+    lift_alpha = target_lift_alpha(style)
     enable = f"between(t,{round(start, 2)},{round(end, 2)})"
     return [
         draw_mask(0.0, 0.0, left, 1.0, alpha, enable),
         draw_mask(right, 0.0, 1.0 - right, 1.0, alpha, enable),
         draw_mask(left, 0.0, max(right - left, 0.02), top, alpha, enable),
         draw_mask(left, bottom, max(right - left, 0.02), max(1.0 - bottom, 0.02), alpha, enable),
-        "drawbox="
-        f"x=iw*{left}:y=ih*{top}:w=iw*{max(right - left, 0.04)}:h=ih*{max(bottom - top, 0.04)}:"
-        f"color=0xFFF1B8@{border}:t=2:enable='{enable}'",
-        "drawbox="
-        f"x=iw*{left}:y=ih*{top}:w=iw*{max(right - left, 0.04)}:h=ih*{max(bottom - top, 0.04)}:"
-        f"color=0xFFE39A@{round(border * 0.45, 3)}:t=fill:enable='{enable}'",
+        target_lift(left, top, right, bottom, lift_alpha, enable),
     ]
 
 
@@ -263,22 +264,37 @@ def draw_mask(x: float, y: float, width: float, height: float, alpha: float, ena
 
 def highlight_alpha(style: str) -> float:
     if style == "ambient":
-        return 0.05
+        return 0.06
     if style == "ambient-lift":
-        return 0.065
+        return 0.075
     if style == "spotlight":
-        return 0.08
-    return 0.05
+        return 0.09
+    return 0.06
 
 
-def highlight_border(style: str) -> float:
+def target_lift_alpha(style: str) -> float:
     if style == "ambient":
-        return 0.16
+        return 0.03
     if style == "ambient-lift":
-        return 0.24
+        return 0.04
     if style == "spotlight":
-        return 0.28
-    return 0.18
+        return 0.05
+    return 0.03
+
+
+def target_lift(left: float, top: float, right: float, bottom: float, alpha: float, enable: str) -> str:
+    inset_x = min(max((right - left) * 0.08, 0.01), 0.035)
+    inset_y = min(max((bottom - top) * 0.08, 0.01), 0.035)
+    inner_left = min(max(left + inset_x, 0.0), right)
+    inner_top = min(max(top + inset_y, 0.0), bottom)
+    inner_width = max(right - left - inset_x * 2, 0.03)
+    inner_height = max(bottom - top - inset_y * 2, 0.03)
+    return (
+        "drawbox="
+        f"x=iw*{round(inner_left, 4)}:y=ih*{round(inner_top, 4)}:"
+        f"w=iw*{round(inner_width, 4)}:h=ih*{round(inner_height, 4)}:"
+        f"color=white@{alpha}:t=fill:enable='{enable}'"
+    )
 
 
 def clamp(value: float, minimum: float, maximum: float) -> float:

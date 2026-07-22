@@ -3,7 +3,7 @@
   "model": "aura-2-thalia-en",
   "mode": "original",
   "status": "disabled",
-  "script": "This is Pronouncly. Start by clicking Google Login to enter the product and begin the guided flow. Continue with Google to enter the workspace. From here, choose Japanese to open the next part of the product flow. Next, choose the Japanese level that matches the learner's starting point.",
+  "script": "This is Pronouncly. Start by clicking Google Login to enter the product and begin the guided flow. Continue with Google to enter the workspace. From here, choose Japanese course card to open the next part of the product flow. Next, choose the Japanese level that matches the learner's starting point.",
   "cues": [
     {
       "scene_number": 1,
@@ -23,7 +23,7 @@
       "scene_number": 3,
       "start": 11.57,
       "end": 18.67,
-      "text": "From here, choose Japanese to open the next part of the product flow.",
+      "text": "From here, choose Japanese course card to open the next part of the product flow.",
       "duration_seconds": 7.1
     },
     {
@@ -55,7 +55,7 @@
       "scene_number": 3,
       "start": 29.37,
       "end": 36.47,
-      "text": "From here, choose Japanese to open the next part of the product flow.",
+      "text": "From here, choose Japanese course card to open the next part of the product flow.",
       "duration_seconds": 7.1,
       "audio_storage_path": ""
     },

@@ -14,7 +14,7 @@
     },
     {
       "name": "motion_confidence",
-      "score": 0.82,
+      "score": 0.84,
       "detail": "Average confidence of approved zoom moves."
     },
     {

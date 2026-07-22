@@ -40,13 +40,13 @@
           "reason": "Editorial action-focus move around the strongest grounded UI region.",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.6978,
-            "y": 0.0788,
-            "width": 0.1919,
-            "height": 0.1445
+            "x": 0.7057,
+            "y": 0.0578,
+            "width": 0.184,
+            "height": 0.1366
           },
           "easing": "ease-out",
-          "x_offset": 0.051,
+          "x_offset": 0.052,
           "y_offset": -0.055,
           "smoothing": 0.93,
           "hold_ratio": 0.86
@@ -61,10 +61,10 @@
           "anchor_region": "center",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.6978,
-            "y": 0.0788,
-            "width": 0.1919,
-            "height": 0.1445
+            "x": 0.7057,
+            "y": 0.0578,
+            "width": 0.184,
+            "height": 0.1366
           },
           "placement_preference": "avoid-ui-cover",
           "ui_label": "Google Login"
@@ -105,17 +105,17 @@
           "start": 26.31,
           "end": 27.21,
           "scale": 1.13,
-          "focus_region": "mid-left",
+          "focus_region": "center",
           "reason": "Editorial action-focus move around the strongest grounded UI region.",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.1706,
+            "x": 0.4206,
             "y": 0.4405,
             "width": 0.1588,
             "height": 0.1189
           },
           "easing": "ease-in-out",
-          "x_offset": -0.03,
+          "x_offset": 0.0,
           "y_offset": 0.0,
           "smoothing": 0.94,
           "hold_ratio": 0.86
@@ -130,7 +130,7 @@
           "anchor_region": "center",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.1706,
+            "x": 0.4206,
             "y": 0.4405,
             "width": 0.1588,
             "height": 0.1189
@@ -143,7 +143,7 @@
     {
       "scene_number": 3,
       "title": "Select A Course",
-      "purpose": "Choose the select japanese course to continue into setup",
+      "purpose": "Choose the japanese course card to continue into setup",
       "start": 29.37,
       "end": 36.47,
       "render_duration_seconds": 7.1,
@@ -151,9 +151,9 @@
       "camera_mode": "focus",
       "decision_summary": "Grounded from captured click event near Select A Course at 29.55s with event-led camera timing. Editorial layout=screen-only; beats=29.37-30.27/31.05. result_anchor=30.10s",
       "visual_summary": "Spotlight the real UI action around Select A Course and keep surrounding context subdued. Editorial planning emphasized a stable result frame and reduced overlay noise.",
-      "spoken_line": "From here, choose Japanese to open the next part of the product flow.",
-      "on_screen_text": "the Japanese Course",
-      "specific_target_label": "Select Japanese Course",
+      "spoken_line": "From here, choose Japanese course card to open the next part of the product flow.",
+      "on_screen_text": "the Japanese course card",
+      "specific_target_label": "Japanese course card",
       "source_excerpt": "created the account, i'll log in to the existing one. after log in, you can see",
       "action_class": "card_selection",
       "scene_role": "action",
@@ -179,7 +179,7 @@
           "confidence": 0.82,
           "focus_box": {
             "x": 0.3942,
-            "y": 0.4769,
+            "y": 0.4269,
             "width": 0.2117,
             "height": 0.1462
           },
@@ -194,18 +194,18 @@
         {
           "start": 29.37,
           "end": 30.27,
-          "label": "Select Japanese Course",
+          "label": "Japanese course card",
           "style": "ambient-lift",
           "anchor_region": "center",
           "confidence": 0.82,
           "focus_box": {
             "x": 0.3942,
-            "y": 0.4769,
+            "y": 0.4269,
             "width": 0.2117,
             "height": 0.1462
           },
           "placement_preference": "avoid-ui-cover",
-          "ui_label": "Select Japanese Course"
+          "ui_label": "Japanese course card"
         }
       ]
     },
@@ -228,7 +228,7 @@
       "scene_role": "action",
       "action_timestamp": 41.54,
       "result_anchor_timestamp": 42.09,
-      "readable_hold_seconds": 1.79,
+      "readable_hold_seconds": 1.68,
       "establish_end_timestamp": 41.32,
       "focus_start_timestamp": 41.32,
       "focus_end_timestamp": 42.22,
@@ -242,21 +242,21 @@
         {
           "start": 41.32,
           "end": 42.22,
-          "scale": 1.09,
-          "focus_region": "top-center",
-          "reason": "Editorial reading-focus move around the strongest grounded UI region.",
-          "confidence": 0.82,
+          "scale": 1.07,
+          "focus_region": "center",
+          "reason": "grounded action focus",
+          "confidence": 0.9,
           "focus_box": {
-            "x": 0.39,
-            "y": 0.22,
-            "width": 0.22,
-            "height": 0.16
+            "x": 0.4412,
+            "y": 0.4496,
+            "width": 0.1176,
+            "height": 0.1008
           },
-          "easing": "ease-out",
+          "easing": "ease-in-out",
           "x_offset": 0.0,
-          "y_offset": -0.024,
-          "smoothing": 0.97,
-          "hold_ratio": 0.88
+          "y_offset": 0.0,
+          "smoothing": 0.22,
+          "hold_ratio": 0.86
         }
       ],
       "highlights": [
@@ -268,10 +268,10 @@
           "anchor_region": "center",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.39,
-            "y": 0.22,
-            "width": 0.22,
-            "height": 0.16
+            "x": 0.4412,
+            "y": 0.4496,
+            "width": 0.1176,
+            "height": 0.1008
           },
           "placement_preference": "avoid-ui-cover",
           "ui_label": "Pick Your Japanese Level"
@@ -280,9 +280,9 @@
     }
   ],
   "render_spec": {
-    "title_card": "Getting Started with Pronouncly",
+    "title_card": "Getting Started with Pronouncly: Logging In and Selecting a Course",
     "title_options": [
-      "Getting Started with Pronouncly"
+      "Getting Started with Pronouncly: Logging In and Selecting a Course"
     ],
     "cta": "Turn rough recordings into polished launch videos.",
     "total_duration_seconds": 23.02
