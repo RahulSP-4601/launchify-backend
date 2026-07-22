@@ -53,19 +53,37 @@ def build_scene_composition(scene: EditPlanScene, stage: str) -> PreviewSceneCom
 
 
 def resolved_layout_mode(scene: EditPlanScene, stage: str) -> str:
-    if "account" in scene.on_screen_text.lower() or "account" in scene.source_excerpt.lower():
+    profile = scene_layout_profile(scene)
+    if profile in {"auth_card", "auth_button", "result_hold"}:
         return "screen-only"
-    if scene.action_class in {"auth_action", "card_selection"}:
-        return "screen-only"
-    if scene.scene_role == "result":
-        return "screen-only"
-    if stage == "establish":
+    if stage == "establish" and profile in {"course_card", "setup_choice", "generic"}:
+        return "dashboard-wide"
+    if profile in {"course_card", "setup_choice"}:
         return "screen-only"
     return "dashboard-wide"
 
 
 def should_show_captions(layout_mode: str, stage: str) -> bool:
     return False
+
+
+def scene_layout_profile(scene: EditPlanScene) -> str:
+    combined = " ".join(
+        part.lower()
+        for part in (scene.on_screen_text, scene.source_excerpt, scene.spoken_line, scene.title, scene.specific_target_label)
+        if part
+    )
+    if scene.scene_role == "result":
+        return "result_hold"
+    if scene.action_class == "auth_action":
+        if "account" in combined or "continue" in combined:
+            return "auth_card"
+        return "auth_button"
+    if scene.action_class == "card_selection":
+        return "course_card"
+    if any(token in combined for token in ("difficulty", "setup", "preferences", "level")):
+        return "setup_choice"
+    return "generic"
 
 
 def composed_headline(scene: EditPlanScene) -> str:

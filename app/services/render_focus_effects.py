@@ -204,12 +204,17 @@ def crop_focus_box(scene: EditPlanScene, clip_start: float, clip_end: float) -> 
 
 def action_refined_focus_box(scene: EditPlanScene, box: FocusBox) -> FocusBox:
     refined = refined_focus_box(box)
-    if scene.action_class == "auth_action":
+    profile = scene_focus_profile(scene)
+    if profile == "auth_button":
+        return focused_box(refined, 0.72, 0.78)
+    if profile == "auth_card":
+        return focused_box(refined, 0.76, 0.82)
+    if profile == "course_card":
         return focused_box(refined, 0.78, 0.84)
-    if scene.action_class == "card_selection":
-        return focused_box(refined, 0.8, 0.86)
+    if profile == "setup_choice":
+        return focused_box(refined, 0.82, 0.88)
     if scene.action_class in {"button_click", "focus"}:
-        return focused_box(refined, 0.86, 0.9)
+        return focused_box(refined, 0.84, 0.9)
     return refined
 
 
@@ -291,21 +296,21 @@ def draw_mask(x: float, y: float, width: float, height: float, alpha: float, ena
 
 def highlight_alpha(style: str) -> float:
     if style == "ambient":
-        return 0.08
+        return 0.09
     if style == "ambient-lift":
-        return 0.1
-    if style == "spotlight":
         return 0.12
-    return 0.08
+    if style == "spotlight":
+        return 0.14
+    return 0.09
 
 
 def target_lift_alpha(style: str) -> float:
     if style == "ambient":
         return 0.0
     if style == "ambient-lift":
-        return 0.032
-    if style == "spotlight":
         return 0.04
+    if style == "spotlight":
+        return 0.05
     return 0.0
 
 
@@ -328,8 +333,8 @@ def target_lift_filters(left: float, top: float, right: float, bottom: float, al
 
 
 def refined_focus_box(box: FocusBox) -> FocusBox:
-    width = clamp(box.width * 0.86, 0.045, 0.24)
-    height = clamp(box.height * 0.86, 0.045, 0.24)
+    width = clamp(box.width * (0.82 if box.width >= 0.22 else 0.86), 0.04, 0.22)
+    height = clamp(box.height * (0.82 if box.height >= 0.22 else 0.86), 0.04, 0.22)
     center_x = box.x + box.width / 2
     center_y = box.y + box.height / 2
     return FocusBox(
@@ -342,6 +347,23 @@ def refined_focus_box(box: FocusBox) -> FocusBox:
 
 def focus_area(box: FocusBox) -> float:
     return box.width * box.height
+
+
+def scene_focus_profile(scene: EditPlanScene) -> str:
+    combined = " ".join(
+        part.lower()
+        for part in (scene.title, scene.purpose, scene.spoken_line, scene.on_screen_text, scene.source_excerpt, scene.specific_target_label)
+        if part
+    )
+    if scene.action_class == "auth_action":
+        if any(token in combined for token in ("account", "existing", "continue")):
+            return "auth_card"
+        return "auth_button"
+    if scene.action_class == "card_selection":
+        return "course_card"
+    if any(token in combined for token in ("difficulty", "setup", "preferences", "level")):
+        return "setup_choice"
+    return "generic"
 
 
 def clamp(value: float, minimum: float, maximum: float) -> float:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.models.projects import EditPlanCaption, EditPlanHighlight, EditPlanRecord, EditPlanScene, EditPlanZoom, ProjectRecord, VoiceoverMode
+from app.services.preview_render_intelligence import PreviewRenderIntelligence, SceneCoveragePlan, build_preview_render_intelligence
 from app.services.render_proxy_clips import RenderClip, highlight_clips
 from app.services.preview_scene_composition import PreviewSceneComposition, build_scene_composition
 
@@ -54,6 +55,11 @@ class PreviewManifestClip:
     composition: PreviewSceneComposition
     animated_crop: bool
     spotlight: bool
+    scene_type: str = "generic"
+    target_coverage_seconds: float = 0.0
+    coverage_gap_seconds: float = 0.0
+    has_voiceover_fit: bool = True
+    freeze_allowed: bool = False
     freeze_frame: bool = False
 
     @property
@@ -81,6 +87,11 @@ class PreviewManifest:
                 "voiceover_line": clip.voiceover_line,
                 "clip_start": round(clip.source_start, 2),
                 "clip_end": round(clip.source_end, 2),
+                "scene_type": clip.scene_type,
+                "target_coverage_seconds": clip.target_coverage_seconds,
+                "coverage_gap_seconds": clip.coverage_gap_seconds,
+                "has_voiceover_fit": clip.has_voiceover_fit,
+                "freeze_allowed": clip.freeze_allowed,
                 "voiceover_ready": voiceover_ready,
             }
             for clip in clips_for_logging(self.clips)
@@ -94,15 +105,17 @@ def build_preview_manifest(
 ) -> PreviewManifest:
     clips = highlight_clips(project)
     voice_map = voiceover_segments(project, voiceover_mode)
-    voiced_indexes = voiced_clip_indexes(clips, voice_map)
+    intelligence = build_preview_render_intelligence(project, clips, voice_map)
+    voiced_indexes = voiced_clip_indexes(intelligence.clips, voice_map)
     manifest_clips = [
         build_manifest_clip(
             clip,
             voice_map.get(clip.scene.scene_number) if index in voiced_indexes else None,
             quality,
+            intelligence.scene_plans.get(clip.scene.scene_number),
             suppress_duplicate_spoken_line=clip.scene.scene_number in voice_map and index not in voiced_indexes,
         )
-        for index, clip in enumerate(clips)
+        for index, clip in enumerate(intelligence.clips)
     ]
     validated_clips = validate_manifest_clips(manifest_clips)
     return PreviewManifest(
@@ -163,6 +176,7 @@ def build_manifest_clip(
     clip: RenderClip,
     voiceover_segment: PreviewVoiceoverSegment | None,
     quality: str,
+    scene_plan: SceneCoveragePlan | None,
     suppress_duplicate_spoken_line: bool = False,
 ) -> PreviewManifestClip:
     source_start = round(clip.start, 2)
@@ -177,7 +191,7 @@ def build_manifest_clip(
             "start": source_start,
             "end": trim_end,
             "render_duration_seconds": round(trim_end - source_start, 2),
-            "spoken_line": resolved_spoken_line(clip, voiceover_segment, suppress_duplicate_spoken_line),
+            "spoken_line": resolved_spoken_line(clip, voiceover_segment, scene_plan, suppress_duplicate_spoken_line),
             "captions": filtered_caption_events,
             "highlights": filtered_highlight_events,
             "zooms": filtered_zoom_events,
@@ -201,6 +215,11 @@ def build_manifest_clip(
         composition=build_scene_composition(scene, clip.stage),
         animated_crop=bool(filtered_zoom_events),
         spotlight=bool(filtered_highlight_events),
+        scene_type=scene_plan.scene_type if scene_plan is not None else "generic",
+        target_coverage_seconds=scene_plan.target_coverage_seconds if scene_plan is not None else round(trim_end - source_start, 2),
+        coverage_gap_seconds=scene_plan.coverage_gap_seconds if scene_plan is not None else 0.0,
+        has_voiceover_fit=scene_plan.has_voiceover_fit if scene_plan is not None else True,
+        freeze_allowed=scene_plan.freeze_allowed if scene_plan is not None else scene.scene_role != "action",
         freeze_frame=False,
     )
 
@@ -300,6 +319,11 @@ def validated_manifest_clip(clip: PreviewManifestClip, previous_end: float) -> P
         composition=clip.composition,
         animated_crop=clip.animated_crop,
         spotlight=clip.spotlight,
+        scene_type=clip.scene_type,
+        target_coverage_seconds=clip.target_coverage_seconds,
+        coverage_gap_seconds=clip.coverage_gap_seconds,
+        has_voiceover_fit=clip.has_voiceover_fit,
+        freeze_allowed=clip.freeze_allowed,
         freeze_frame=freeze_frame,
     )
 
@@ -398,10 +422,13 @@ def voiceover_text(voiceover_segment: PreviewVoiceoverSegment | None, fallback: 
 def resolved_spoken_line(
     clip: RenderClip,
     voiceover_segment: PreviewVoiceoverSegment | None,
+    scene_plan: SceneCoveragePlan | None,
     suppress_duplicate_spoken_line: bool,
 ) -> str:
     if voiceover_segment is not None:
         return voiceover_segment.text
+    if scene_plan is not None and scene_plan.fitted_voiceover_line:
+        return scene_plan.fitted_voiceover_line
     if suppress_duplicate_spoken_line:
         return ""
     return clip.scene.spoken_line

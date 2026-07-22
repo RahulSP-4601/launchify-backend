@@ -45,7 +45,7 @@ def validate_rendered_preview(
         return f"audio_tail_without_video:{duration - video_duration:.2f}"
     if any(clip.duration_seconds <= 0.05 for clip in manifest.clips):
         return "zero_visible_scene"
-    if any(clip.voiceover_segment and clip.voiceover_segment.duration_seconds > clip.duration_seconds + 0.45 for clip in manifest.clips):
+    if scene_voiceover_outlives_visual(manifest.clips):
         return "voiceover_outlives_visual"
     if any(narrated_scene_without_source_coverage(clip) for clip in manifest.clips):
         return "narrated_scene_without_visual_coverage"
@@ -76,12 +76,33 @@ def validate_rendered_clip(clip: PreviewManifestClip, clip_path: Path) -> str | 
 def narrated_scene_without_source_coverage(clip: PreviewManifestClip) -> bool:
     if not clip.voiceover_line.strip():
         return False
+    if not clip.has_voiceover_fit:
+        return True
     return clip.source_end - clip.source_start < 0.35
+
+
+def scene_voiceover_outlives_visual(clips: list[PreviewManifestClip]) -> bool:
+    coverage_by_scene: dict[int, float] = {}
+    voiceover_by_scene: dict[int, float] = {}
+    for clip in clips:
+        scene_number = clip.scene.scene_number
+        coverage_by_scene[scene_number] = round(coverage_by_scene.get(scene_number, 0.0) + clip.duration_seconds, 2)
+        if clip.voiceover_segment is not None:
+            voiceover_by_scene[scene_number] = max(
+                voiceover_by_scene.get(scene_number, 0.0),
+                clip.voiceover_segment.duration_seconds,
+            )
+    return any(
+        voiceover_duration > coverage_by_scene.get(scene_number, 0.0) + 0.45
+        for scene_number, voiceover_duration in voiceover_by_scene.items()
+    )
 
 
 def action_scene_without_focus_emphasis(clip: PreviewManifestClip) -> bool:
     if clip.scene.scene_role != "action":
         return False
+    if clip.scene_type in {"auth_button", "auth_card", "course_card", "setup_choice"} and clip.scene_priority >= 2:
+        return not clip.scene.zooms and not clip.scene.highlights and not clip.animated_crop
     return not clip.scene.zooms and not clip.scene.highlights and not clip.animated_crop
 
 
@@ -125,6 +146,7 @@ def degraded_clip(
     simple_crop: bool,
     freeze_frame: bool,
 ) -> PreviewManifestClip:
+    allow_freeze = freeze_frame and clip.freeze_allowed and clip.stage == "settle"
     scene = clip.scene.model_copy(
         update={
             "zooms": [] if disable_motion else clip.scene.zooms,
@@ -144,5 +166,5 @@ def degraded_clip(
         transition_out=PreviewTransition(style="fade", duration_seconds=min(clip.transition_out.duration_seconds, 0.18)) if simple_crop else clip.transition_out,
         animated_crop=not disable_motion and clip.animated_crop,
         spotlight=not disable_spotlight and clip.spotlight,
-        freeze_frame=freeze_frame,
+        freeze_frame=allow_freeze,
     )

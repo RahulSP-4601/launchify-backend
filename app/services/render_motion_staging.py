@@ -29,7 +29,12 @@ def stage_motion_clip(clip: RenderClip) -> list[RenderClip]:
 
 
 def minimum_stageable_seconds(clip: RenderClip) -> float:
+    profile = scene_stage_profile(clip)
     if clip.scene.layout_mode in {"screen-only", "dashboard-wide"}:
+        if profile in {"auth_button", "auth_card"}:
+            return 1.35
+        if profile in {"course_card", "setup_choice"}:
+            return 1.55
         return 1.45 if clip.scene.scene_role == "action" else 1.7
     return MIN_STAGEABLE_SECONDS
 
@@ -54,8 +59,13 @@ def stage_boundaries(clip: RenderClip, pivot_times: list[float]) -> list[float]:
     anchors = sorted({round(point, 2) for point in pivot_times if clip.start + 0.16 < point < clip.end - 0.16})
     if not anchors:
         return [clip.start, clip.end]
-    first_focus = max(clip.start + MIN_SEGMENT_SECONDS, anchors[0] - TRANSITION_MARGIN_SECONDS)
-    last_focus = min(clip.end - MIN_SEGMENT_SECONDS, anchors[-1] + TRANSITION_MARGIN_SECONDS)
+    profile = scene_stage_profile(clip)
+    intro_ratio, settle_ratio = stage_balance(profile)
+    duration = clip.end - clip.start
+    establish_floor = max(MIN_SEGMENT_SECONDS, round(duration * intro_ratio, 2))
+    settle_floor = max(MIN_SEGMENT_SECONDS, round(duration * settle_ratio, 2))
+    first_focus = max(clip.start + establish_floor, anchors[0] - transition_margin(profile, "establish"))
+    last_focus = min(clip.end - settle_floor, anchors[-1] + transition_margin(profile, "settle"))
     if last_focus - first_focus < MIN_SEGMENT_SECONDS:
         return [clip.start, clip.end]
     boundaries = [round(clip.start, 2), round(first_focus, 2)]
@@ -80,6 +90,28 @@ def coalesced_boundaries(boundaries: list[float]) -> list[float]:
     if compact[-1] != boundaries[-1]:
         compact[-1] = boundaries[-1]
     return compact if len(compact) >= 2 else [boundaries[0], boundaries[-1]]
+
+
+def stage_balance(profile: str) -> tuple[float, float]:
+    if profile == "auth_button":
+        return 0.22, 0.2
+    if profile == "auth_card":
+        return 0.24, 0.22
+    if profile == "course_card":
+        return 0.26, 0.24
+    if profile == "setup_choice":
+        return 0.24, 0.28
+    if profile == "result_hold":
+        return 0.18, 0.34
+    return 0.22, 0.24
+
+
+def transition_margin(profile: str, stage: str) -> float:
+    if profile in {"auth_button", "course_card"} and stage == "establish":
+        return TRANSITION_MARGIN_SECONDS * 1.25
+    if profile in {"setup_choice", "result_hold"} and stage == "settle":
+        return TRANSITION_MARGIN_SECONDS * 1.45
+    return TRANSITION_MARGIN_SECONDS
 
 
 def partition_clip(clip: RenderClip, boundaries: list[float]) -> list[RenderClip]:
@@ -112,3 +144,29 @@ def clip_part(
     if end - start < MIN_SEGMENT_SECONDS:
         return None
     return clip.__class__(scene=clip.scene, start=round(start, 2), end=round(end, 2), stage=stage)
+
+
+def scene_stage_profile(clip: RenderClip) -> str:
+    combined = " ".join(
+        part.lower()
+        for part in (
+            clip.scene.title,
+            clip.scene.purpose,
+            clip.scene.spoken_line,
+            clip.scene.on_screen_text,
+            clip.scene.source_excerpt,
+            clip.scene.specific_target_label,
+        )
+        if part
+    )
+    if clip.scene.scene_role == "result":
+        return "result_hold"
+    if clip.scene.action_class == "auth_action":
+        if any(token in combined for token in ("account", "existing", "continue")):
+            return "auth_card"
+        return "auth_button"
+    if clip.scene.action_class == "card_selection":
+        return "course_card"
+    if any(token in combined for token in ("difficulty", "setup", "preferences", "level")):
+        return "setup_choice"
+    return "generic"
