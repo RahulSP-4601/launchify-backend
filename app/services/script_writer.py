@@ -95,10 +95,6 @@ def system_prompt() -> str:
 def user_prompt(project: ProjectRecord, transcript_text: str) -> str:
     return (
         f"Project name: {project.project_name}\n"
-        f"Product name: {project.product_name}\n"
-        f"Product description: {project.product_description or 'Not provided'}\n"
-        f"Target audience: {project.target_audience or 'Not provided'}\n"
-        f"Video goal: {project.video_goal}\n\n"
         "Rewrite the transcript into a sharper launch video script. Keep it concise, clearer, "
         "and more persuasive than the raw narration. Preserve factual meaning. Create 3 to 6 scenes.\n"
         "Target a final runtime of roughly 30 to 35 seconds. Prioritize the strongest product actions, user wins, "

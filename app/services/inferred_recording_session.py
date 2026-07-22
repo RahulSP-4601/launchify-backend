@@ -84,7 +84,7 @@ def infer_recording_session(
         source="manual_upload_inferred",
         viewport_width=viewport_width,
         viewport_height=viewport_height,
-        page_title=project.product_name,
+        page_title=project.project_name,
         grounding_diagnostics=recording_diagnostics(final_events, transcript, list(analyses_by_scene.values())),
         extraction_artifacts=artifacts,
         events=final_events,

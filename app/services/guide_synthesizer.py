@@ -241,10 +241,6 @@ def grounded_user_prompt(
     )
     return (
         f"Project name: {project.project_name}\n"
-        f"Product name: {project.product_name}\n"
-        f"Product description: {project.product_description or 'Not provided'}\n"
-        f"Target audience: {project.target_audience or 'Not provided'}\n"
-        f"Video goal: {project.video_goal}\n"
         f"Viewport: {session.viewport_width}x{session.viewport_height}\n"
         f"Page title: {session.page_title or 'Not provided'}\n"
         f"Page url: {session.page_url or 'Not provided'}\n\n"

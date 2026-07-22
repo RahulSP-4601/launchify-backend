@@ -30,10 +30,6 @@ def create_project_params(project: ProjectRecord, user_id: str) -> tuple[object,
         project.id,
         user_id,
         project.project_name,
-        project.product_name,
-        project.product_description,
-        project.target_audience,
-        project.video_goal,
         project.status,
         None,
         None,
@@ -128,26 +124,22 @@ def create_processing_job_params(
 
 
 def project_from_row(row: tuple[object, ...]) -> ProjectRecord:
-    asset = AssetRecord.model_validate(row[7]) if row[7] is not None else None
-    recording_session = RecordingSessionRecord.model_validate(row[8]) if row[8] is not None else None
-    transcript = [TranscriptSegment.model_validate(item) for item in as_list(row[9])]
-    guide = GuideRecord.model_validate(row[10]) if row[10] is not None else None
-    launch_script = LaunchScriptRecord.model_validate(row[11]) if row[11] is not None else None
-    edit_plan = EditPlanRecord.model_validate(row[12]) if row[12] is not None else None
-    template_config = TemplateConfigRecord.model_validate(row[13]) if row[13] is not None else None
-    manual_overrides = ManualOverrideRecord.model_validate(row[14]) if row[14] is not None else None
-    quality_report = QualityReportRecord.model_validate(row[15]) if row[15] is not None else None
-    benchmark_report = BenchmarkReportRecord.model_validate(row[16]) if row[16] is not None else None
-    voiceover = VoiceoverRecord.model_validate(row[17]) if row[17] is not None else None
-    preview_video = RenderedVideoRecord.model_validate(row[18]) if row[18] is not None else None
+    asset = AssetRecord.model_validate(row[3]) if row[3] is not None else None
+    recording_session = RecordingSessionRecord.model_validate(row[4]) if row[4] is not None else None
+    transcript = [TranscriptSegment.model_validate(item) for item in as_list(row[5])]
+    guide = GuideRecord.model_validate(row[6]) if row[6] is not None else None
+    launch_script = LaunchScriptRecord.model_validate(row[7]) if row[7] is not None else None
+    edit_plan = EditPlanRecord.model_validate(row[8]) if row[8] is not None else None
+    template_config = TemplateConfigRecord.model_validate(row[9]) if row[9] is not None else None
+    manual_overrides = ManualOverrideRecord.model_validate(row[10]) if row[10] is not None else None
+    quality_report = QualityReportRecord.model_validate(row[11]) if row[11] is not None else None
+    benchmark_report = BenchmarkReportRecord.model_validate(row[12]) if row[12] is not None else None
+    voiceover = VoiceoverRecord.model_validate(row[13]) if row[13] is not None else None
+    preview_video = RenderedVideoRecord.model_validate(row[14]) if row[14] is not None else None
     return ProjectRecord(
         id=str(row[0]),
         project_name=str(row[1]),
-        product_name=str(row[2]),
-        product_description=str(row[3]),
-        target_audience=str(row[4]),
-        video_goal=str(row[5]),
-        status=cast(Any, row[6]),
+        status=cast(Any, row[2]),
         asset=asset,
         recording_session=recording_session,
         transcript=transcript,
@@ -160,9 +152,9 @@ def project_from_row(row: tuple[object, ...]) -> ProjectRecord:
         benchmark_report=benchmark_report,
         voiceover=voiceover,
         preview_video=preview_video,
-        error_message=str(row[19]),
-        created_at=cast(datetime, row[20]),
-        updated_at=cast(datetime, row[21]),
+        error_message=str(row[15]),
+        created_at=cast(datetime, row[16]),
+        updated_at=cast(datetime, row[17]),
     )
 
 

@@ -370,9 +370,8 @@ def build_overview(
     launch_script: LaunchScriptRecord,
     used_visual_analysis: bool,
 ) -> str:
-    audience = project.target_audience or "the intended product audience"
     visual_note = "frame-level focus analysis" if used_visual_analysis else "script-led motion planning"
-    return f"Launchify tightened the recording for {audience}, aligned {len(launch_script.scenes)} scenes to the source walkthrough, and prepared captions, zooms, and highlights using {visual_note}."
+    return f"Launchify tightened the recording for {project.project_name}, aligned {len(launch_script.scenes)} scenes to the source walkthrough, and prepared captions, zooms, and highlights using {visual_note}."
 
 
 def build_grounded_overview(project: ProjectRecord, guide: GuideRecord) -> str:

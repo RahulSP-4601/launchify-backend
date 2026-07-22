@@ -172,8 +172,7 @@ def grounded_focus_anchor(policy: ScenePolicy, event_focus_box: FocusBox) -> Foc
 
 
 def build_grounded_overview(project: ProjectRecord, guide: GuideRecord) -> str:
-    audience = project.target_audience or "the intended product audience"
-    return f"Launchify grounded {len(guide.steps)} captured product actions for {audience}, turned them into synchronized steps, and prepared captions, zooms, and highlights from the event-backed guide."
+    return f"Launchify grounded {len(guide.steps)} captured product actions for {project.project_name}, turned them into synchronized steps, and prepared captions, zooms, and highlights from the event-backed guide."
 
 
 def grounded_decision_summary(step: GuideStepRecord, primary_event: SessionEventRecord | None) -> str:

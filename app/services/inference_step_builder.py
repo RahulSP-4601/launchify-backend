@@ -64,9 +64,9 @@ def build_inference_script(
         for index, step in enumerate(steps, start=1)
     ]
     script = LaunchScriptRecord(
-        hook=f"{project.product_name} grounded walkthrough",
-        summary=f"Step-by-step inferred walkthrough for {project.product_name}.",
-        title_options=[f"{project.product_name} walkthrough"],
+        hook=f"{project.project_name} grounded walkthrough",
+        summary=f"Step-by-step inferred walkthrough for {project.project_name}.",
+        title_options=[f"{project.project_name} walkthrough"],
         scenes=scenes,
         cta="Turn rough recordings into polished product walkthroughs.",
         notes=["Manual-upload inference uses short transcript-aligned action steps before grounded guide synthesis."],

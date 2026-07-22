@@ -30,10 +30,6 @@ def parse_args() -> argparse.Namespace:
         help="Directory where JSON artifacts will be written.",
     )
     parser.add_argument("--project-name", default="Pronouncly walkthrough probe")
-    parser.add_argument("--product-name", default="Pronouncly")
-    parser.add_argument("--product-description", default="Local raw upload extraction probe.")
-    parser.add_argument("--target-audience", default="Internal QA")
-    parser.add_argument("--video-goal", default="launch_video")
     parser.add_argument(
         "--content-type",
         default="",
@@ -114,10 +110,6 @@ def probe_project(args: argparse.Namespace) -> ProjectRecord:
     return ProjectRecord(
         id="raw-upload-probe",
         project_name=args.project_name,
-        product_name=args.product_name,
-        product_description=args.product_description,
-        target_audience=args.target_audience,
-        video_goal=args.video_goal,
         status="uploading",
         created_at=now,
         updated_at=now,

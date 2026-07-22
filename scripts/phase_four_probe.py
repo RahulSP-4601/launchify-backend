@@ -116,10 +116,6 @@ def probe_project(
     return ProjectRecord(
         id="phase-four-probe",
         project_name=args.project_name,
-        product_name=args.product_name,
-        product_description=args.product_description,
-        target_audience=args.target_audience,
-        video_goal=args.video_goal,
         status="planning",
         created_at=now,
         updated_at=now,

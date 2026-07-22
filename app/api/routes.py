@@ -241,10 +241,6 @@ def to_project_detail(user_id: str, project_id: str) -> ProjectDetail:
     return ProjectDetail(
         id=project.id,
         project_name=project.project_name,
-        product_name=project.product_name,
-        product_description=project.product_description,
-        target_audience=project.target_audience,
-        video_goal=project.video_goal,
         status=project.status,
         created_at=project.created_at,
         updated_at=project.updated_at,

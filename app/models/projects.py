@@ -21,10 +21,6 @@ ResponseStateKind = Literal["response", "waiting", "static", "unknown"]
 
 class CreateProjectRequest(BaseModel):
     project_name: str = Field(min_length=1, max_length=120)
-    product_name: str = Field(min_length=1, max_length=120)
-    product_description: str = Field(default="", max_length=1000)
-    target_audience: str = Field(default="", max_length=240)
-    video_goal: str = Field(default="launch_video", max_length=120)
 
 
 class AssetRecord(BaseModel):
@@ -375,10 +371,6 @@ class RenderedVideoRecord(BaseModel):
 class ProjectRecord(BaseModel):
     id: str
     project_name: str
-    product_name: str
-    product_description: str
-    target_audience: str
-    video_goal: str
     status: ProjectStatus
     created_at: datetime
     updated_at: datetime
@@ -400,8 +392,6 @@ class ProjectRecord(BaseModel):
 class ProjectSummary(BaseModel):
     id: str
     project_name: str
-    product_name: str
-    video_goal: str
     status: ProjectStatus
     created_at: datetime
     updated_at: datetime
@@ -416,8 +406,6 @@ class ProjectSummary(BaseModel):
 
 
 class ProjectDetail(ProjectSummary):
-    product_description: str
-    target_audience: str
     asset: AssetRecord | None = None
     recording_session: RecordingSessionRecord | None = None
     guide: GuideRecord | None = None

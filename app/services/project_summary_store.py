@@ -13,7 +13,7 @@ class ProjectSummaryStore:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    select id, project_name, product_name, video_goal, status, created_at, updated_at,
+                    select id, project_name, status, created_at, updated_at,
                            transcript <> '[]'::jsonb as has_transcript,
                            guide is not null and jsonb_array_length(coalesce(guide->'steps', '[]'::jsonb)) > 0 as has_guide,
                            launch_script is not null as has_launch_script,
@@ -33,19 +33,17 @@ class ProjectSummaryStore:
             ProjectSummary(
                 id=str(row[0]),
                 project_name=str(row[1]),
-                product_name=str(row[2]),
-                video_goal=str(row[3]),
-                status=cast(Any, row[4]),
-                created_at=cast(datetime, row[5]),
-                updated_at=cast(datetime, row[6]),
-                has_transcript=bool(row[7]),
-                has_guide=bool(row[8]),
-                has_launch_script=bool(row[9]),
-                has_edit_plan=bool(row[10]),
-                has_quality_report=bool(row[11]),
-                has_benchmark_report=bool(row[12]),
-                has_voiceover=bool(row[13]),
-                has_preview_video=bool(row[14]),
+                status=cast(Any, row[2]),
+                created_at=cast(datetime, row[3]),
+                updated_at=cast(datetime, row[4]),
+                has_transcript=bool(row[5]),
+                has_guide=bool(row[6]),
+                has_launch_script=bool(row[7]),
+                has_edit_plan=bool(row[8]),
+                has_quality_report=bool(row[9]),
+                has_benchmark_report=bool(row[10]),
+                has_voiceover=bool(row[11]),
+                has_preview_video=bool(row[12]),
             )
             for row in rows
         ]

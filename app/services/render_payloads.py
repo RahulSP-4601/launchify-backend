@@ -17,7 +17,7 @@ def build_render_payload(
     return {
         "projectId": project.id,
         "projectName": project.project_name,
-        "productName": project.product_name,
+        "productName": project.project_name,
         "quality": quality,
         "dimensions": dimensions,
         "introDurationSeconds": INTRO_DURATION_SECONDS,

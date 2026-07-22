@@ -27,7 +27,7 @@ from app.services.walkthrough_voice_style import (
 def polish_voiceover_script(project: ProjectRecord, edit_plan: EditPlanRecord) -> EditPlanRecord:
     scenes: list[EditPlanScene] = []
     previous_line = ""
-    descriptor = product_descriptor(project.product_description, project.product_name)
+    descriptor = ""
     for index, scene in enumerate(edit_plan.scenes):
         duration = max(scene.render_duration_seconds or (scene.end - scene.start), 0.8)
         context_excerpt = contextual_scene_excerpt(project, edit_plan.scenes, index)
@@ -36,7 +36,7 @@ def polish_voiceover_script(project: ProjectRecord, edit_plan: EditPlanRecord) -
         tuned_duration = max(tuned_scene.render_duration_seconds or duration, 0.8)
         draft = scene_voiceover_line(
             tuned_scene,
-            project.product_name,
+            project.project_name,
             descriptor,
             index == 0,
             previous_line,

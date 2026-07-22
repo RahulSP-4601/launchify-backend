@@ -42,8 +42,7 @@ class ProjectStore:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    select id, project_name, product_name, product_description, target_audience,
-                           video_goal, status, asset, recording_session, transcript, guide, launch_script, edit_plan,
+                    select id, project_name, status, asset, recording_session, transcript, guide, launch_script, edit_plan,
                            template_config, manual_overrides, quality_report, benchmark_report, voiceover, preview_video,
                            error_message, created_at, updated_at
                     from projects
@@ -60,10 +59,6 @@ class ProjectStore:
         project = ProjectRecord(
             id=str(uuid4()),
             project_name=payload.project_name,
-            product_name=payload.product_name,
-            product_description=payload.product_description,
-            target_audience=payload.target_audience,
-            video_goal=payload.video_goal,
             status="draft",
             template_config=TemplateConfigRecord(),
             manual_overrides=ManualOverrideRecord(),
@@ -76,12 +71,11 @@ class ProjectStore:
                 cursor.execute(
                     """
                     insert into projects (
-                        id, user_id, project_name, product_name, product_description, target_audience,
-                        video_goal, status, asset, recording_session, transcript, guide, launch_script, edit_plan,
+                        id, user_id, project_name, status, asset, recording_session, transcript, guide, launch_script, edit_plan,
                         template_config, manual_overrides, quality_report, benchmark_report, voiceover, preview_video,
                         error_message, created_at, updated_at
                     )
-                    values (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s)
+                    values (%s, %s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s, %s, %s)
                     """,
                     create_project_params(project, user_id),
                 )
@@ -91,8 +85,7 @@ class ProjectStore:
             with connection.cursor() as cursor:
                 cursor.execute(
                     """
-                    select id, project_name, product_name, product_description, target_audience,
-                           video_goal, status, asset, recording_session, transcript, guide, launch_script, edit_plan,
+                    select id, project_name, status, asset, recording_session, transcript, guide, launch_script, edit_plan,
                            template_config, manual_overrides, quality_report, benchmark_report, voiceover, preview_video,
                            error_message, created_at, updated_at
                     from projects

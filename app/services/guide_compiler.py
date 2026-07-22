@@ -56,8 +56,8 @@ def compile_guide_from_clusters(
         )
         article_steps.append(ArticleStepRecord(step_index=cluster.index, title=title, body=instruction))
     return GuideRecord(
-        title=f"{project.product_name}: grounded walkthrough",
-        summary=f"A grounded walkthrough for {project.product_name} generated from recovered user actions.",
+        title=f"{project.project_name}: grounded walkthrough",
+        summary=f"A grounded walkthrough for {project.project_name} generated from recovered user actions.",
         steps=steps,
         article_steps=article_steps,
         generation_notes=[note],
