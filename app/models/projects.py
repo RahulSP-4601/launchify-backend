@@ -23,6 +23,10 @@ class CreateProjectRequest(BaseModel):
     project_name: str = Field(min_length=1, max_length=120)
 
 
+class UpdateProjectRequest(BaseModel):
+    project_name: str = Field(min_length=1, max_length=120)
+
+
 class AssetRecord(BaseModel):
     filename: str
     content_type: str

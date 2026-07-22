@@ -95,6 +95,15 @@ class ProjectStore:
                 )
                 row = cursor.fetchone()
         return project_from_row(row) if row else None
+    def rename_project(self, user_id: str, project_id: str, project_name: str) -> None:
+        self._execute_update(
+            """
+            update projects
+            set project_name = %s, updated_at = %s
+            where id = %s and user_id = %s
+            """,
+            (project_name, datetime.now(UTC), project_id, user_id),
+        )
     def update_status(self, user_id: str, project_id: str, status: ProjectStatus, error_message: str = "") -> None:
         self._execute_update(
             """
@@ -381,7 +390,6 @@ class ProjectStore:
             (*payload, asset_path),
             stale_error_message="Project asset was replaced before the reviewed edit plan could be saved.",
         )
-
     def save_render_outputs(
         self,
         user_id: str,
@@ -438,7 +446,6 @@ class ProjectStore:
             (*payload, asset_path),
             stale_error_message=f"Project asset was replaced before the {output_label} could be saved.",
         )
-
     def save_phase_four_state(
         self,
         user_id: str,
@@ -489,5 +496,4 @@ class ProjectStore:
         stale_error_message: str | None = None,
     ) -> None:
         execute_project_update(sql, params, stale_error_message)
-
 project_store = ProjectStore()

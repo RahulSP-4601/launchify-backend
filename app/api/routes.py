@@ -15,6 +15,7 @@ from app.models.projects import (
     ProjectSummary,
     RenderedVideoRecord,
     TranscriptResponse,
+    UpdateProjectRequest,
     UpdateRecordingSessionRequest,
     UpdatePhaseFourRequest,
     UsageSummary,
@@ -66,6 +67,14 @@ async def create_project(payload: CreateProjectRequest, request: Request) -> Pro
 @router.get("/projects/{project_id}", response_model=ProjectDetail, tags=["projects"])
 async def get_project(project_id: str, request: Request) -> ProjectDetail:
     user_id = get_authenticated_user_id(request)
+    return to_project_detail(user_id, project_id)
+
+
+@router.put("/projects/{project_id}", response_model=ProjectDetail, tags=["projects"])
+async def update_project(project_id: str, payload: UpdateProjectRequest, request: Request) -> ProjectDetail:
+    user_id = get_authenticated_user_id(request)
+    must_get_project(user_id, project_id)
+    project_store.rename_project(user_id, project_id, payload.project_name)
     return to_project_detail(user_id, project_id)
 
 
