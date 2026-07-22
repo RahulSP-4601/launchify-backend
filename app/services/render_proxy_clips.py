@@ -4,6 +4,13 @@ from dataclasses import dataclass
 from typing import Literal
 
 from app.models.projects import EditPlanScene, ProjectRecord
+from app.services.editorial_coverage import (
+    chapter_lead_seconds,
+    chapter_tail_seconds,
+    minimum_scene_seconds,
+    scene_weight,
+    target_scene_seconds,
+)
 from app.services.render_motion_staging import stage_motion_clips
 from app.services.render_scene_deduper import prune_redundant_render_scenes
 from app.services.walkthrough_guardrails import guide_is_under_grounded, recording_duration_seconds, session_is_under_grounded
@@ -124,7 +131,7 @@ def walkthrough_clips(project: ProjectRecord) -> list[RenderClip]:
         previous_end = chapter_clips[-1].end
     if not clips:
         return contextual_highlight_clips(project)
-    return clips
+    return rebalance_walkthrough_coverage(clips, source_start, source_end)
 
 
 def grouped_chapters(scenes: list[EditPlanScene]) -> list[list[EditPlanScene]]:
@@ -161,8 +168,8 @@ def chapter_bounds(
 ) -> tuple[float, float]:
     first = chapter[0]
     last = chapter[-1]
-    start = max(previous_end, source_start, round(first.start - chapter_lead(first), 2))
-    end = min(source_end, round(last.end + chapter_tail(last), 2))
+    start = max(previous_end, source_start, round(first.start - chapter_lead_seconds(first), 2))
+    end = min(source_end, round(last.end + chapter_tail_seconds(last), 2))
     return start, max(end, start + MIN_WALKTHROUGH_CLIP_SECONDS)
 
 
@@ -183,12 +190,16 @@ def chapter_scene_clips(
     clips: list[RenderClip] = []
     cursor = chapter_start
     for index, scene in enumerate(chapter):
+        remaining_budget = max(min(chapter_start + available, source_end) - cursor, 0.0)
+        if remaining_budget < MIN_CLIP_DURATION_SECONDS:
+            break
         end = cursor + durations[index]
         if index == len(chapter) - 1:
             end = chapter_start + available
         end = min(end, source_end)
-        if end - cursor < MIN_WALKTHROUGH_CLIP_SECONDS:
-            end = min(source_end, max(end, cursor + MIN_WALKTHROUGH_CLIP_SECONDS))
+        scene_floor = min(max(minimum_scene_seconds(scene), MIN_WALKTHROUGH_CLIP_SECONDS), remaining_budget)
+        if end - cursor < scene_floor:
+            end = min(source_end, max(end, cursor + scene_floor))
         if end - cursor < MIN_CLIP_DURATION_SECONDS:
             continue
         clips.append(RenderClip(scene=scene, start=round(cursor, 2), end=round(end, 2)))
@@ -200,8 +211,8 @@ def allocated_chapter_durations(
     chapter: list[EditPlanScene],
     available: float,
 ) -> list[float]:
-    minimums = [MIN_WALKTHROUGH_CLIP_SECONDS] * len(chapter)
-    desired = [max(scene_target_seconds(scene), MIN_WALKTHROUGH_CLIP_SECONDS) for scene in chapter]
+    minimums = [max(minimum_scene_seconds(scene), MIN_WALKTHROUGH_CLIP_SECONDS) for scene in chapter]
+    desired = [max(target_scene_seconds(scene), minimum) for scene, minimum in zip(chapter, minimums)]
     minimum_total = sum(minimums)
     if available <= minimum_total:
         base = available / max(len(chapter), 1)
@@ -216,38 +227,6 @@ def allocated_chapter_durations(
         minimum + (remaining * ((target - minimum) / desired_headroom))
         for minimum, target in zip(minimums, desired)
     ]
-
-
-def scene_target_seconds(scene: EditPlanScene) -> float:
-    target = scene.render_duration_seconds or (scene.end - scene.start)
-    floor = TARGET_RESULT_SCENE_SECONDS if scene.scene_role == "result" else TARGET_WALKTHROUGH_SCENE_SECONDS
-    return max(target, floor, MIN_WALKTHROUGH_CLIP_SECONDS)
-
-
-def scene_weight(scene: EditPlanScene) -> float:
-    if scene.scene_role == "result":
-        return 1.3
-    if scene.action_class in {"auth_action", "card_selection"}:
-        return 1.15
-    return 1.0
-
-
-def chapter_lead(scene: EditPlanScene) -> float:
-    if scene.action_class == "auth_action":
-        return CHAPTER_LEAD_SECONDS + 0.2
-    if scene.scene_role == "result":
-        return 0.15
-    return CHAPTER_LEAD_SECONDS
-
-
-def chapter_tail(scene: EditPlanScene) -> float:
-    if scene.scene_role == "result":
-        return CHAPTER_TAIL_SECONDS + 0.35
-    if scene.action_class in {"auth_action", "navigation", "tab_switch"}:
-        return CHAPTER_TAIL_SECONDS + 0.55
-    if scene.action_class == "card_selection":
-        return CHAPTER_TAIL_SECONDS + 0.8
-    return CHAPTER_TAIL_SECONDS
 
 
 def carried_scene_gap(scene: EditPlanScene, next_scene: EditPlanScene) -> float:

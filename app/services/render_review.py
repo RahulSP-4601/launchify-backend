@@ -129,9 +129,9 @@ def review_system_prompt() -> str:
         "You review AI-generated product video frames for premium quality. "
         "Return JSON with key issues containing an array of objects. "
         "Each object must contain code, severity, message, action. "
-        "Allowed actions: keep, soften_zoom, remove_zoom, remove_highlight, tighten_caption. "
+        "Allowed actions: keep, soften_zoom, remove_zoom, remove_highlight, tighten_caption, extend_hold, compress_wait. "
         "Only report real visible quality issues such as over-zooming, poor framing, subtitle crowding, "
-        "or distracting highlight placement."
+        "or distracting highlight placement. Also flag waiting states that stay on screen too long or result states that do not hold long enough to read."
     )
 
 
@@ -143,7 +143,12 @@ def review_text(scene: EditPlanScene) -> dict[str, object]:
             f"Purpose: {scene.purpose}\n"
             f"Spoken line: {scene.spoken_line}\n"
             f"On-screen text: {scene.on_screen_text}\n"
-            "Review whether the framing feels premium, whether captions feel crowded, and whether highlights are distracting."
+            f"Before state: {scene.before_state_label}\n"
+            f"Action target: {scene.action_target_label}\n"
+            f"After state: {scene.after_state_label}\n"
+            f"Response kind: {scene.response_state_kind}\n"
+            f"Final destination: {scene.final_destination_label}\n"
+            "Review whether the framing feels premium, whether captions feel crowded, whether highlights are distracting, whether waiting is overheld, and whether the resulting state lands long enough to read."
         ),
     }
 
@@ -176,13 +181,29 @@ def review_issue(scene_number: int, payload: dict[str, object]) -> ReviewIssue:
 
 def apply_review_actions(edit_plan: EditPlanRecord, issues: list[ReviewIssue]) -> EditPlanRecord:
     issues_by_scene = {issue.scene_number: [item for item in issues if item.scene_number == issue.scene_number] for issue in issues}
-    scenes = [apply_scene_actions(scene, issues_by_scene.get(scene.scene_number, [])) for scene in edit_plan.scenes]
-    return edit_plan.model_copy(update={"scenes": scenes})
+    ordered = list(edit_plan.scenes)
+    scenes = [
+        apply_scene_actions(
+            scene,
+            issues_by_scene.get(scene.scene_number, []),
+            ordered[index + 1].start if index + 1 < len(ordered) else None,
+        )
+        for index, scene in enumerate(ordered)
+    ]
+    total_duration = round(sum(max(scene.render_duration_seconds or (scene.end - scene.start), 0.8) for scene in scenes), 2)
+    return edit_plan.model_copy(
+        update={
+            "scenes": scenes,
+            "total_duration_seconds": total_duration,
+            "render_spec": edit_plan.render_spec.model_copy(update={"total_duration_seconds": total_duration}),
+        }
+    )
 
 
 def apply_scene_actions(
     scene: EditPlanScene,
     issues: list[ReviewIssue],
+    next_scene_start: float | None = None,
 ) -> EditPlanScene:
     updated_scene = scene
     for issue in issues:
@@ -196,7 +217,37 @@ def apply_scene_actions(
             updated_scene = updated_scene.model_copy(update={"highlights": []})
         elif issue.action == "tighten_caption":
             updated_scene = updated_scene.model_copy(update={"captions": [caption.model_copy(update={"text": balanced_break(caption.text[:64].strip())}) for caption in updated_scene.captions]})
+        elif issue.action == "extend_hold":
+            extra = 0.65 if updated_scene.response_state_kind == "response" else 0.35
+            unclamped_end = round(updated_scene.end + extra, 2)
+            new_end = bounded_review_end(updated_scene.start, unclamped_end, next_scene_start)
+            applied_extra = round(max(new_end - updated_scene.end, 0.0), 2)
+            updated_scene = updated_scene.model_copy(
+                update={
+                    "end": new_end,
+                    "render_duration_seconds": round(max(updated_scene.render_duration_seconds or 0.0, new_end - updated_scene.start), 2),
+                    "readable_hold_seconds": round(max(updated_scene.readable_hold_seconds, updated_scene.readable_hold_seconds + applied_extra), 2),
+                }
+            )
+        elif issue.action == "compress_wait":
+            if updated_scene.response_state_kind == "waiting":
+                target_end = round(max(updated_scene.start + 1.05, updated_scene.end - 0.7), 2)
+                new_end = bounded_review_end(updated_scene.start, target_end, next_scene_start)
+                updated_scene = updated_scene.model_copy(
+                    update={
+                        "end": new_end,
+                        "render_duration_seconds": round(max(new_end - updated_scene.start, 0.8), 2),
+                        "readable_hold_seconds": round(min(updated_scene.readable_hold_seconds, max(new_end - (updated_scene.action_timestamp or updated_scene.start), 0.55)), 2),
+                    }
+                )
     return updated_scene
+
+
+def bounded_review_end(scene_start: float, proposed_end: float, next_scene_start: float | None) -> float:
+    if next_scene_start is None:
+        return proposed_end
+    max_end = round(max(scene_start, next_scene_start), 2)
+    return round(min(proposed_end, max_end), 2)
 
 
 def report_with_review(

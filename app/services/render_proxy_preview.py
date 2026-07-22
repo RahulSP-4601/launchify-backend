@@ -358,7 +358,7 @@ def highlight_draw_filters(
         box = rebased_highlight_box(highlight.focus_box, crop_bounds) or focus_box
         if box is None:
             continue
-        filters.extend(spotlight_filters(box, start, end, highlight.style))
+        filters.extend(spotlight_filters(box, start, end, highlight.style, highlight.placement_preference, highlight.ui_label))
     return filters
 def video_finish_filters(clip: PreviewManifestClip) -> list[str]:
     duration = round(max(clip.trim_end - clip.trim_start, 0.1), 2)

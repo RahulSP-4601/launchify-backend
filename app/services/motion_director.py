@@ -27,6 +27,7 @@ def build_zooms(
     plan: MotionPlan,
     template_config: TemplateConfigRecord | None,
 ) -> list[EditPlanZoom]:
+    del template_config
     return planned_zooms(start, end, policy, plan)
 
 
@@ -64,9 +65,9 @@ def action_led_zooms(start: float, end: float, policy: ScenePolicy, plan: Motion
     zooms: list[EditPlanZoom] = []
     focus_start = round(max(focus_start, start + 0.18), 2)
     if focus_peak_end - focus_start >= 0.55:
-        zooms.append(zoom_record(focus_start, focus_peak_end, policy, plan, 1.0, "ease-in-out", 0.94, 0.76))
+        zooms.append(zoom_record(focus_start, focus_peak_end, policy, plan, 0.99, "ease-out", 0.96, 0.58))
     if settle_end - focus_peak_end >= 0.32:
-        zooms.append(zoom_record(focus_peak_end, settle_end, policy, plan, 0.98, "ease-out", 0.96, 0.86))
+        zooms.append(zoom_record(focus_peak_end, settle_end, policy, plan, 1.02, "ease-in-out", 0.94, 0.88))
     if zooms:
         return zooms
     focus_end = min(end, round(max(focus_start + 0.6, end - 0.18), 2))
@@ -74,30 +75,28 @@ def action_led_zooms(start: float, end: float, policy: ScenePolicy, plan: Motion
 
 
 def multi_step_action_zoom(start: float, end: float, duration: float, policy: ScenePolicy, plan: MotionPlan) -> list[EditPlanZoom]:
-    if plan.intent == "selection-focus":
-        return two_step_zoom(start, end, duration, policy, plan)
-    if duration >= 7.5 and focus_area(policy) < 0.08 and plan.strength == "medium":
+    if duration >= 5.2 and focus_area(policy) < 0.12 and plan.strength in {"medium", "low"}:
         return three_step_zoom(start, end, duration, policy, plan)
     return two_step_zoom(start, end, duration, policy, plan)
 
 
 def two_step_zoom(start: float, end: float, duration: float, policy: ScenePolicy, plan: MotionPlan) -> list[EditPlanZoom]:
-    first_start = round(start + duration * 0.06, 2)
-    second_start = round(start + duration * 0.42, 2)
+    first_start = round(start + duration * 0.05, 2)
+    second_start = round(start + duration * 0.38, 2)
     return [
-        zoom_record(first_start, second_start, policy, plan, 0.98, "ease-out", 0.94, 0.48),
-        zoom_record(second_start, min(end, second_start + duration * 0.4), policy, plan, 1.01, "ease-in-out", 0.92, 0.82),
+        zoom_record(first_start, second_start, policy, plan, 0.96, "ease-out", 0.97, 0.44),
+        zoom_record(second_start, min(end, second_start + duration * 0.46), policy, plan, 1.03, "ease-in-out", 0.95, 0.9),
     ]
 
 
 def three_step_zoom(start: float, end: float, duration: float, policy: ScenePolicy, plan: MotionPlan) -> list[EditPlanZoom]:
-    first = round(start + duration * 0.06, 2)
-    second = round(start + duration * 0.3, 2)
-    third = round(start + duration * 0.58, 2)
+    first = round(start + duration * 0.04, 2)
+    second = round(start + duration * 0.28, 2)
+    third = round(start + duration * 0.56, 2)
     return [
-        zoom_record(first, second, policy, plan, 0.98, "ease-out", 0.95, 0.42),
-        zoom_record(second, third, policy, plan, 1.0, "ease-in-out", 0.93, 0.62),
-        zoom_record(third, min(end, third + duration * 0.26), policy, plan, 1.02, "ease-in", 0.91, 0.82),
+        zoom_record(first, second, policy, plan, 0.95, "ease-out", 0.98, 0.4),
+        zoom_record(second, third, policy, plan, 1.02, "ease-in-out", 0.96, 0.68),
+        zoom_record(third, min(end, third + duration * 0.3), policy, plan, 1.04, "ease-in-out", 0.95, 0.92),
     ]
 
 
@@ -143,6 +142,7 @@ def build_highlights(
     if should_skip_highlight(policy, focus_box):
         return []
     highlight_start, highlight_end = highlight_window(start, end, policy)
+    shape = highlight_shape(policy, focus_box)
     return [
         EditPlanHighlight(
             start=highlight_start,
@@ -152,7 +152,7 @@ def build_highlights(
             anchor_region=policy.anchor_region,
             confidence=policy.highlight_confidence,
             focus_box=focus_box,
-            placement_preference="avoid-ui-cover" if motion_profile(template_config) != "calm" else "static-edge",
+            placement_preference=highlight_placement(shape, template_config),
             ui_label=policy.target_label,
         )
     ]
@@ -167,12 +167,12 @@ def highlight_window(start: float, end: float, policy: ScenePolicy) -> tuple[flo
         scene_role=policy.scene_role,
         action_class=policy.action_class,
     )
-    tightened_start = max(start, highlight_start - 0.1)
-    tightened_end = min(end, max(tightened_start + 0.78, highlight_end + 0.22))
+    tightened_start = max(start, highlight_start - 0.16)
+    tightened_end = min(end, max(tightened_start + 0.94, highlight_end + 0.34))
     if policy.action_class in {"auth_action", "card_selection"}:
-        tightened_end = min(end, max(tightened_end, tightened_start + 1.16))
+        tightened_end = min(end, max(tightened_end, tightened_start + 1.34))
     if policy.action_class in {"navigation", "tab_switch"}:
-        tightened_end = min(end, max(tightened_end, tightened_start + 0.96))
+        tightened_end = min(end, max(tightened_end, tightened_start + 1.02))
     if policy.scene_role != "action":
         tightened_end = min(tightened_end, tightened_start + 0.82)
     return round(tightened_start, 2), round(tightened_end, 2)
@@ -233,6 +233,8 @@ def should_skip_highlight(policy: ScenePolicy, focus_box: FocusBox | None) -> bo
     if focus_box is None:
         return policy.scene_role != "action"
     area = focus_box.width * focus_box.height
+    if highlight_shape(policy, focus_box) in {"card", "panel"} and area > 0.16:
+        return True
     if area > 0.2:
         return True
     return policy.scene_role == "result" and area > 0.1
@@ -241,7 +243,7 @@ def should_skip_highlight(policy: ScenePolicy, focus_box: FocusBox | None) -> bo
 def should_use_multi_step_zoom(policy: ScenePolicy, duration: float, plan: MotionPlan) -> bool:
     if policy.scene_role != "action":
         return False
-    if duration < 2.45:
+    if duration < 1.95:
         return False
     if plan.strength == "none":
         return False
@@ -251,6 +253,32 @@ def should_use_multi_step_zoom(policy: ScenePolicy, duration: float, plan: Motio
     if policy.zoom_confidence < 0.7:
         return False
     return policy.action_class in {"auth_action", "button_click", "card_selection", "navigation", "tab_switch", "focus"}
+
+
+def highlight_shape(policy: ScenePolicy, focus_box: FocusBox | None) -> str:
+    label = (policy.target_label or "").lower()
+    if any(token in label for token in ("tab", "overview", "settings", "quality", "preview")):
+        return "tab"
+    if any(token in label for token in ("search", "email", "password", "input", "field")):
+        return "input"
+    if any(token in label for token in ("panel", "workspace", "dashboard")):
+        return "panel"
+    if policy.action_class == "card_selection":
+        return "card"
+    if policy.scene_role == "result":
+        return "panel"
+    if focus_box is None:
+        return "button"
+    if focus_box.width / max(focus_box.height, 0.01) >= 3.0:
+        return "tab" if focus_box.height < 0.1 else "input"
+    if focus_box.width * focus_box.height >= 0.06:
+        return "card"
+    return "button"
+
+
+def highlight_placement(shape: str, template_config: TemplateConfigRecord | None) -> str:
+    base = "avoid-ui-cover" if motion_profile(template_config) != "calm" else "static-edge"
+    return f"{base}/{shape}"
 
 
 def focus_area(policy: ScenePolicy) -> float:

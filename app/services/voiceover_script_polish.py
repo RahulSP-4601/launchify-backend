@@ -4,6 +4,7 @@ import re
 
 from app.models.projects import EditPlanRecord, EditPlanScene, ProjectRecord, RenderSpecRecord
 from app.services.editorial_labels import completed_selection_target
+from app.services.editorial_state_machine import semantic_voice_line
 from app.services.scene_beat_enrichment import (
     SceneBeatPlan,
     build_scene_beat_plan,
@@ -67,6 +68,9 @@ def polish_voiceover_script(project: ProjectRecord, edit_plan: EditPlanRecord) -
 def duration_safe_scene_line(scene: EditPlanScene, line: str, duration: float, context_excerpt: str = "") -> str:
     if estimated_duration(line) <= max(duration - 0.06, 0.95):
         return line
+    semantic_line = semantic_voice_line(scene)
+    if semantic_line and estimated_duration(semantic_line) <= max(duration - 0.06, 0.95):
+        return semantic_line
     if scene.action_class == "auth_action":
         return concise_auth_voiceover(scene, clean_click_target(scene_target(scene)), context_excerpt)
     if scene.action_class == "card_selection":
@@ -90,6 +94,7 @@ def scene_voiceover_line(
     beat_plan: SceneBeatPlan | None = None,
 ) -> str:
     target = scene_target(scene)
+    semantic_line = semantic_voice_line(scene)
     transcript_line = transcript_guided_line(scene, product_name, descriptor, is_first, duration, context_excerpt, beat_plan)
     if transcript_line:
         if is_first and not opener_mentions_target(transcript_line, target):
@@ -104,6 +109,8 @@ def scene_voiceover_line(
             previous_line,
             selection_voiceover_line(scene, premium_selection_target(target), transcript_mentions(scene, "course", "courses")),
         )
+    if semantic_line:
+        return duplicate_safe(previous_line, semantic_line)
     if "level" in scene_title(scene):
         return duplicate_safe(previous_line, level_voiceover_line(scene))
     if any(word in scene_title(scene) for word in ("setup", "preferences", "settings", "difficulty")):
@@ -125,9 +132,12 @@ def transcript_guided_line(
     plan = beat_plan or transcript_beat_plan(scene, context_excerpt, is_first, duration)
     beats = list(plan.lines) if plan else []
     if not beats:
-        return ""
+        return semantic_voice_line(scene)
+    beats = remap_beats_from_scene_states(scene, beats)
     polished = polish_transcript_line(" ".join(beats), scene, product_name, descriptor, is_first, context_excerpt)
-    return polished if len(polished.split()) >= 5 else ""
+    if len(polished.split()) >= 5:
+        return polished
+    return semantic_voice_line(scene)
 
 
 def product_descriptor(description: str, product_name: str) -> str:
@@ -379,7 +389,59 @@ def semantic_duration_floor(scene: EditPlanScene) -> float:
         return 8.6
     if "level" in scene_title(scene):
         return 5.4
+    if scene.response_state_kind == "response" and scene.final_destination_label:
+        return 3.6
     return 0.8
+
+
+def remap_beats_from_scene_states(scene: EditPlanScene, beats: list[str]) -> list[str]:
+    if not beats:
+        return beats
+    remapped = beats[:]
+    if scene.response_state_kind == "waiting":
+        filtered = [beat for beat in remapped if "loading" not in normalize(beat) and "wait" not in normalize(beat)]
+        remapped = filtered or remapped[:1]
+    if scene.action_target_label and not opener_mentions_target(remapped[0], scene.action_target_label):
+        remapped[0] = inject_target_phrase(scene, remapped[0], scene.action_target_label)
+    if scene.after_state_label and scene.before_state_label and normalize(scene.after_state_label) != normalize(scene.before_state_label):
+        remapped[-1] = inject_outcome_phrase(remapped[-1], scene.final_destination_label or scene.after_state_label)
+    return remapped
+
+
+def inject_outcome_phrase(beat: str, outcome: str) -> str:
+    cleaned = " ".join(beat.split()).strip().rstrip(".")
+    if not cleaned:
+        return f"You'll land on {outcome}."
+    lowered = normalize(cleaned)
+    if any(marker in lowered for marker in ("you'll see", "you can see", "land on", "opens", "open", "ready")):
+        return cleaned if cleaned.endswith(".") else f"{cleaned}."
+    return f"{cleaned}, and you'll land on {outcome}."
+
+
+def inject_target_phrase(scene: EditPlanScene, beat: str, target: str) -> str:
+    cleaned = " ".join(beat.split()).strip().rstrip(".")
+    target_clean = clean_click_target(target)
+    verb = target_intro_verb(scene)
+    if not cleaned:
+        return f"{verb.capitalize()} {target_clean}."
+    if normalize(target_clean) in normalize(cleaned):
+        return cleaned if cleaned.endswith(".") else f"{cleaned}."
+    starter = cleaned[0].lower() + cleaned[1:] if len(cleaned) > 1 else cleaned.lower()
+    return f"{verb.capitalize()} {target_clean}, then {starter}."
+
+
+def target_intro_verb(scene: EditPlanScene) -> str:
+    if scene.action_class in {"auth_action", "button_click"}:
+        return "click"
+    if scene.action_class == "card_selection":
+        return "choose"
+    if scene.action_class in {"navigation", "tab_switch"}:
+        return "open"
+    if scene.action_class == "focus":
+        return "focus on"
+    if scene.scene_role == "result":
+        return "view"
+    return "open"
 
 
 def updated_render_spec(render_spec: RenderSpecRecord, total_duration: float) -> RenderSpecRecord:

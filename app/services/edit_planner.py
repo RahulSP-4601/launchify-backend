@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from typing import TypedDict
 
 from app.core.config import get_settings
-from app.models.projects import EditPlanCaption, EditPlanHighlight, EditPlanRecord, EditPlanScene, EditPlanZoom, GuideRecord, GuideStepRecord, LaunchScriptScene, LaunchScriptRecord, ProjectRecord, RenderSpecRecord, SceneRole, SessionEventRecord, SessionEventType, TranscriptSegment, VisualSceneAnalysisRecord
+from app.models.projects import EditPlanCaption, EditPlanHighlight, EditPlanRecord, EditPlanScene, EditPlanZoom, GuideRecord, GuideStepRecord, LaunchScriptScene, LaunchScriptRecord, ProjectRecord, RenderSpecRecord, ResponseStateKind, SceneRole, SessionEventRecord, SessionEventType, TranscriptSegment, VisualSceneAnalysisRecord
 from app.services.canonical_event_scene_builder import source_scene_number
 from app.services.action_classifier import classify_action, event_action_class
 from app.services.caption_designer import build_caption_track
 from app.services.editorial_targeting import ActionEnvelope, EditorialTargetDecision, build_action_envelope, resolve_editorial_target
 from app.services.editorial_planner import apply_editorial_direction, direct_scene
+from app.services.editorial_state_machine import SceneTransitionDecision, infer_scene_transition
 from app.services.edit_plan_guardrails import finalized_edit_plan
 from app.services.event_grounding import normalize_event_timestamp
 from app.services.focus_tracking import smooth_focus_handoffs
@@ -36,6 +38,28 @@ from app.services.edit_planner_grounded import (
     grounded_visual_summary,
     normalized_overrides,
 )
+
+
+class TransitionSceneFields(TypedDict):
+    before_state_label: str
+    before_state_structure: str
+    action_target_label: str
+    transition_evidence: str
+    after_state_label: str
+    after_state_structure: str
+    transition_confidence: float
+    response_state_kind: ResponseStateKind
+    final_destination_label: str
+
+
+class TimingSceneFields(TypedDict):
+    action_timestamp: float | None
+    result_anchor_timestamp: float | None
+    readable_hold_seconds: float
+    establish_end_timestamp: float | None
+    focus_start_timestamp: float | None
+    focus_end_timestamp: float | None
+    settle_end_timestamp: float | None
 
 
 def generate_edit_plan(
@@ -135,7 +159,8 @@ def build_edit_scene(
     target, envelope, policy = planned_scene_intelligence(scene, transcript_slice, visual_analysis, start, end, scene_role, action_class)
     captions = build_caption_track(transcript_slice, start, end, project.template_config)
     zooms, highlights = build_motion_track(scene, start, end, policy, project.template_config)
-    return scripted_edit_scene(scene, start, end, action_class, scene_role, target, envelope, policy, captions, zooms, highlights)
+    transition = infer_scene_transition(scene, visual_analysis, start_time=start, end_time=end, action_time=envelope.action_time)
+    return scripted_edit_scene(scene, start, end, action_class, scene_role, target, envelope, policy, captions, zooms, highlights, transition)
 
 
 def planned_scene_intelligence(
@@ -173,6 +198,7 @@ def scripted_edit_scene(
     captions: list[EditPlanCaption],
     zooms: list[EditPlanZoom],
     highlights: list[EditPlanHighlight],
+    transition: SceneTransitionDecision,
 ) -> EditPlanScene:
     scene_end = max(end, envelope.recommended_end)
     readable_hold = readable_hold_seconds(scene_end, envelope, start)
@@ -193,13 +219,8 @@ def scripted_edit_scene(
         source_excerpt=scene.source_excerpt,
         action_class=action_class,
         scene_role=scene_role,
-        action_timestamp=envelope.action_time,
-        result_anchor_timestamp=envelope.response_time,
-        readable_hold_seconds=readable_hold,
-        establish_end_timestamp=envelope.focus_start,
-        focus_start_timestamp=envelope.focus_start,
-        focus_end_timestamp=envelope.focus_end,
-        settle_end_timestamp=envelope.settle_end,
+        **transition_scene_fields(transition),
+        **timing_scene_fields(envelope.action_time, envelope.response_time, readable_hold, envelope),
         transition_style="fade",
         transition_duration_seconds=0.32,
         captions=captions,
@@ -249,10 +270,11 @@ def build_grounded_scene(
     policy, captions, zooms, highlights, envelope = grounded_motion_assets(
         project, step, synthetic_scene, transcript_slice, start, end, visual_analysis, primary_event,
     )
+    transition = infer_scene_transition(synthetic_scene, visual_analysis, start_time=start, end_time=end, action_time=envelope.action_time)
     event_time = normalize_event_timestamp(primary_event.timestamp) if primary_event is not None else start
     action_class = grounded_action_class(step, primary_event)
     scene_role: SceneRole = scene_role_from_action_class(action_class)
-    return grounded_edit_scene(step, start, end, primary_event, event_time, action_class, scene_role, policy, captions, zooms, highlights, envelope)
+    return grounded_edit_scene(step, start, end, primary_event, event_time, action_class, scene_role, policy, captions, zooms, highlights, envelope, transition)
 
 
 def grounded_edit_scene(
@@ -268,6 +290,7 @@ def grounded_edit_scene(
     zooms: list[EditPlanZoom],
     highlights: list[EditPlanHighlight],
     envelope: ActionEnvelope,
+    transition: SceneTransitionDecision,
 ) -> EditPlanScene:
     scene_end = max(end, envelope.recommended_end)
     readable_hold = readable_hold_seconds(scene_end, envelope, start)
@@ -288,13 +311,8 @@ def grounded_edit_scene(
         source_excerpt=step.source_excerpt or step.focus_label or step.title,
         action_class=action_class,
         scene_role=scene_role,
-        action_timestamp=envelope.action_time or event_time,
-        result_anchor_timestamp=envelope.response_time,
-        readable_hold_seconds=readable_hold,
-        establish_end_timestamp=envelope.focus_start,
-        focus_start_timestamp=envelope.focus_start,
-        focus_end_timestamp=envelope.focus_end,
-        settle_end_timestamp=envelope.settle_end,
+        **transition_scene_fields(transition),
+        **timing_scene_fields(envelope.action_time or event_time, envelope.response_time, readable_hold, envelope),
         transition_style="focus-push",
         transition_duration_seconds=0.24,
         captions=captions,
@@ -306,6 +324,37 @@ def grounded_edit_scene(
 def readable_hold_seconds(scene_end: float, envelope: ActionEnvelope, scene_start: float) -> float:
     anchor = envelope.response_time or envelope.action_time or scene_start
     return max(0.0, round(scene_end - max(anchor, scene_start), 2))
+
+
+def transition_scene_fields(transition: SceneTransitionDecision) -> TransitionSceneFields:
+    return {
+        "before_state_label": transition.before_state_label,
+        "before_state_structure": transition.before_state_structure,
+        "action_target_label": transition.action_target_label,
+        "transition_evidence": transition.transition_evidence,
+        "after_state_label": transition.after_state_label,
+        "after_state_structure": transition.after_state_structure,
+        "transition_confidence": transition.transition_confidence,
+        "response_state_kind": transition.response_state_kind,
+        "final_destination_label": transition.final_destination_label,
+    }
+
+
+def timing_scene_fields(
+    action_time: float | None,
+    response_time: float | None,
+    readable_hold: float,
+    envelope: ActionEnvelope,
+) -> TimingSceneFields:
+    return {
+        "action_timestamp": action_time,
+        "result_anchor_timestamp": response_time,
+        "readable_hold_seconds": readable_hold,
+        "establish_end_timestamp": envelope.focus_start,
+        "focus_start_timestamp": envelope.focus_start,
+        "focus_end_timestamp": envelope.focus_end,
+        "settle_end_timestamp": envelope.settle_end,
+    }
 
 
 def slice_transcript(

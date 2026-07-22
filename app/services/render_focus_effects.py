@@ -41,7 +41,7 @@ def scene_crop_plan(
         return None, end_state.focus_box if end_state is not None else None, None
     animated = clip_end - clip_start > MIN_DYNAMIC_CROP_SECONDS and fps >= MIN_ANIMATED_CROP_FPS
     crop_bounds = (end_state.origin_x, end_state.origin_y, end_state.crop_width, end_state.crop_height)
-    filter_text = animated_crop_filter(start_state, end_state, clip_end - clip_start, target_width, target_height, fps)
+    filter_text = animated_crop_filter(crop_motion_states(start_state, end_state, stage), clip_end - clip_start, target_width, target_height, fps)
     if animated:
         return filter_text, end_state.focus_box, None
     return filter_text, rebased_box(end_state.focus_box, *crop_bounds), crop_bounds
@@ -141,20 +141,20 @@ def neutral_crop(start_state: CropState, end_state: CropState) -> bool:
 
 
 def animated_crop_filter(
-    start_state: CropState,
-    end_state: CropState,
+    states: list[CropState],
     duration: float,
     target_width: int,
     target_height: int,
     fps: int,
 ) -> str:
+    start_state = states[0]
+    end_state = states[-1]
     if duration <= MIN_DYNAMIC_CROP_SECONDS:
         return static_crop_filter(end_state)
-    progress = frame_progress(duration, fps)
-    eased = eased_progress(progress)
-    zoom = animated_zoom(start_state.crop_width, end_state.crop_width, eased)
-    origin_x = animated_value(start_state.origin_x, end_state.origin_x, eased)
-    origin_y = animated_value(start_state.origin_y, end_state.origin_y, eased)
+    progress = segment_progress(duration, fps)
+    zoom = animated_value_expr([1 / max(state.crop_width, 0.01) for state in states], progress)
+    origin_x = animated_value_expr([state.origin_x for state in states], progress)
+    origin_y = animated_value_expr([state.origin_y for state in states], progress)
     return (
         "zoompan="
         f"z='{zoom}':"
@@ -170,13 +170,27 @@ def static_crop_filter(state: CropState) -> str:
     return f"crop=w=iw*{state.crop_width}:h=ih*{state.crop_height}:x=iw*{state.origin_x}:y=ih*{state.origin_y}"
 
 
-def frame_progress(duration: float, fps: int) -> str:
+def segment_progress(duration: float, fps: int) -> str:
     frames = max(int(round(max(duration, 0.2) * max(fps, 1))) - 1, 1)
     return f"min(on/{frames},1)"
 
 
+def animated_value_expr(values: list[float], progress: str) -> str:
+    rounded = [round(value, 4) for value in values]
+    if len(rounded) <= 2:
+        return animated_value(rounded[0], rounded[-1], eased_progress(progress))
+    first = eased_progress(f"{progress}/0.52")
+    second = eased_progress(f"({progress}-0.52)/0.48")
+    return (
+        f"if(lte({progress},0.52),"
+        f"{animated_value(rounded[0], rounded[1], first)},"
+        f"{animated_value(rounded[1], rounded[2], second)})"
+    )
+
+
 def eased_progress(progress: str) -> str:
-    return f"if(lt({progress},0.5),2*pow({progress},2),1-pow(-2*{progress}+2,2)/2)"
+    clamped = f"max(min({progress},1),0)"
+    return f"if(lt({clamped},0.5),2*pow({clamped},2),1-pow(-2*{clamped}+2,2)/2)"
 
 
 def animated_value(start: float, end: float, progress: str) -> str:
@@ -187,6 +201,28 @@ def animated_zoom(start_width: float, end_width: float, progress: str) -> str:
     start_zoom = round(1 / max(start_width, 0.01), 4)
     end_zoom = round(1 / max(end_width, 0.01), 4)
     return f"({start_zoom}+({round(end_zoom - start_zoom, 4)})*{progress})"
+
+
+def crop_motion_states(start_state: CropState, end_state: CropState, stage: str) -> list[CropState]:
+    if stage == "establish":
+        return [softened_state(start_state, 0.18) or start_state, blend_state(start_state, end_state, 0.56, tighten=-0.04), end_state]
+    if stage == "settle":
+        return [start_state, blend_state(start_state, end_state, 0.62, tighten=0.02), softened_state(end_state, 0.08) or end_state]
+    return [softened_state(start_state, 0.12) or start_state, blend_state(start_state, end_state, 0.58, tighten=-0.06), softened_state(end_state, 0.02) or end_state]
+
+
+def blend_state(left: CropState, right: CropState, ratio: float, tighten: float = 0.0) -> CropState:
+    crop_width = clamp(left.crop_width + (right.crop_width - left.crop_width) * ratio + tighten, 0.54, 0.98)
+    crop_height = clamp(left.crop_height + (right.crop_height - left.crop_height) * ratio + tighten * 0.8, 0.46, 0.98)
+    center_x = (left.origin_x + left.crop_width / 2) + ((right.origin_x + right.crop_width / 2) - (left.origin_x + left.crop_width / 2)) * ratio
+    center_y = (left.origin_y + left.crop_height / 2) + ((right.origin_y + right.crop_height / 2) - (left.origin_y + left.crop_height / 2)) * ratio
+    return CropState(
+        focus_box=right.focus_box,
+        origin_x=clamp(center_x - crop_width / 2, 0.0, 1.0 - crop_width),
+        origin_y=clamp(center_y - crop_height / 2, 0.0, 1.0 - crop_height),
+        crop_width=crop_width,
+        crop_height=crop_height,
+    )
 
 
 def crop_focus_box(scene: EditPlanScene, clip_start: float, clip_end: float) -> FocusBox | None:
@@ -253,23 +289,35 @@ def rebased_box(box: FocusBox, origin_x: float, origin_y: float, crop_width: flo
     )
 
 
-def spotlight_filters(box: FocusBox, start: float, end: float, style: str) -> list[str]:
-    softened = refined_focus_box(box)
+def spotlight_filters(
+    box: FocusBox,
+    start: float,
+    end: float,
+    style: str,
+    placement_preference: str = "avoid-ui-cover",
+    ui_label: str = "",
+) -> list[str]:
+    shape = highlight_shape(placement_preference, ui_label, box)
+    dense = dense_highlight_scene(ui_label, box)
+    softened = styled_focus_box(box, shape, dense)
     left = round(softened.x, 4)
     top = round(softened.y, 4)
     right = round(clamp(softened.x + softened.width, 0.0, 1.0), 4)
     bottom = round(clamp(softened.y + softened.height, 0.0, 1.0), 4)
-    alpha = highlight_alpha(style)
-    lift_alpha = target_lift_alpha(style)
-    enable = f"between(t,{round(start, 2)},{round(end, 2)})"
-    filters = [
-        draw_mask(0.0, 0.0, left, 1.0, alpha, enable),
-        draw_mask(right, 0.0, 1.0 - right, 1.0, alpha, enable),
-        draw_mask(left, 0.0, max(right - left, 0.02), top, alpha, enable),
-        draw_mask(left, bottom, max(right - left, 0.02), max(1.0 - bottom, 0.02), alpha, enable),
-    ]
-    if style in {"ambient-lift", "spotlight"} and focus_area(softened) <= 0.028:
-        filters.extend(target_lift_filters(left, top, right, bottom, lift_alpha, enable))
+    filters: list[str] = []
+    for phase_start, phase_end, alpha, lift_alpha in highlight_phases(start, end, style, dense):
+        enable = f"between(t,{round(phase_start, 2)},{round(phase_end, 2)})"
+        filters.extend(
+            [
+                draw_mask(0.0, 0.0, left, 1.0, alpha, enable),
+                draw_mask(right, 0.0, 1.0 - right, 1.0, alpha, enable),
+                draw_mask(left, 0.0, max(right - left, 0.02), top, alpha, enable),
+                draw_mask(left, bottom, max(right - left, 0.02), max(1.0 - bottom, 0.02), alpha, enable),
+            ]
+        )
+        filters.extend(shape_border_filters(left, top, right, bottom, shape, alpha, enable))
+        if style in {"ambient-lift", "spotlight"} and focus_area(softened) <= 0.034 and not dense:
+            filters.extend(target_lift_filters(left, top, right, bottom, lift_alpha, enable))
     return filters
 
 
@@ -330,6 +378,76 @@ def target_lift_filters(left: float, top: float, right: float, bottom: float, al
             f"color=white@{round(layer_alpha, 4)}:t=fill:enable='{enable}'"
         )
     return filters
+
+
+def highlight_shape(placement_preference: str, ui_label: str, box: FocusBox) -> str:
+    if "/" in placement_preference:
+        return placement_preference.rsplit("/", 1)[-1]
+    lowered = ui_label.lower()
+    if any(token in lowered for token in ("tab", "overview", "preview", "quality", "settings")):
+        return "tab"
+    if any(token in lowered for token in ("search", "email", "password", "input")):
+        return "input"
+    if box.width / max(box.height, 0.01) >= 3.0:
+        return "tab" if box.height < 0.11 else "input"
+    if focus_area(box) >= 0.06:
+        return "panel"
+    return "button"
+
+
+def dense_highlight_scene(ui_label: str, box: FocusBox) -> bool:
+    return len(ui_label.split()) >= 6 or focus_area(box) >= 0.09
+
+
+def styled_focus_box(box: FocusBox, shape: str, dense: bool) -> FocusBox:
+    refined = refined_focus_box(box)
+    if shape == "button":
+        return focused_box(refined, 0.76, 0.78)
+    if shape == "tab":
+        return focused_box(refined, 0.94, 0.62 if not dense else 0.7)
+    if shape == "input":
+        return focused_box(refined, 0.96, 0.72 if not dense else 0.78)
+    if shape in {"card", "panel"}:
+        return focused_box(refined, 0.9 if dense else 0.84, 0.88 if dense else 0.82)
+    return refined
+
+
+def highlight_phases(start: float, end: float, style: str, dense: bool) -> list[tuple[float, float, float, float]]:
+    duration = max(end - start, 0.24)
+    intro_end = start + duration * 0.28
+    peak_end = start + duration * 0.72
+    intro = highlight_alpha(style) * (0.72 if dense else 0.68)
+    peak = highlight_alpha(style) * (0.94 if dense else 1.02)
+    settle = highlight_alpha(style) * (0.82 if dense else 0.78)
+    lift = target_lift_alpha(style) * (0.82 if dense else 1.0)
+    return [
+        (start, intro_end, round(intro, 4), round(lift * 0.72, 4)),
+        (intro_end, peak_end, round(peak, 4), round(lift, 4)),
+        (peak_end, end, round(settle, 4), round(lift * 0.6, 4)),
+    ]
+
+
+def shape_border_filters(left: float, top: float, right: float, bottom: float, shape: str, alpha: float, enable: str) -> list[str]:
+    if shape == "tab":
+        return [draw_border(left, bottom - 0.008, max(right - left, 0.04), 0.008, alpha * 1.35, enable)]
+    thickness = 0.004 if shape == "button" else 0.005 if shape == "input" else 0.006
+    return [draw_outline(left, top, right, bottom, thickness, alpha * (1.18 if shape == "button" else 1.08), enable)]
+
+
+def draw_outline(left: float, top: float, right: float, bottom: float, thickness: float, alpha: float, enable: str) -> str:
+    return (
+        "drawbox="
+        f"x=iw*{left}:y=ih*{top}:w=iw*{max(right - left, 0.02)}:h=ih*{max(bottom - top, 0.02)}:"
+        f"color=white@{round(alpha, 4)}:t=max(iw*{round(thickness, 4)},1):replace=0:enable='{enable}'"
+    )
+
+
+def draw_border(left: float, top: float, width: float, height: float, alpha: float, enable: str) -> str:
+    return (
+        "drawbox="
+        f"x=iw*{round(left, 4)}:y=ih*{round(top, 4)}:w=iw*{round(width, 4)}:h=ih*{round(height, 4)}:"
+        f"color=white@{round(alpha, 4)}:t=fill:enable='{enable}'"
+    )
 
 
 def refined_focus_box(box: FocusBox) -> FocusBox:

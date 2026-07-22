@@ -4,9 +4,19 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Mapping
 
 from app.models.projects import EditPlanHighlight, EditPlanScene, EditPlanZoom, ProjectRecord
+from app.services.editorial_coverage import (
+    dense_intent_scene,
+    minimum_scene_seconds,
+    normalized_scene_text,
+    readability_floor_seconds,
+    scene_hold_budget,
+    scene_profile,
+    scene_split_weights,
+    semantic_clauses,
+)
+from app.services.editorial_state_machine import semantic_voice_line, should_compress_waiting
 from app.services.editorial_transition_signals import requires_stateful_split
 from app.services.preview_scene_timing import retime_scene_clips
-from app.services.scene_intent_resolver import split_clauses
 from app.services.voiceover_pacing import fit_voice_line
 
 if TYPE_CHECKING:
@@ -101,17 +111,7 @@ def requires_scene_split(scene: EditPlanScene, voiceover: object | None, clips: 
         return False
     if requires_stateful_split(scene):
         return True
-    text = " ".join(
-        part.strip()
-        for part in (
-            getattr(voiceover, "text", ""),
-            scene.spoken_line,
-            scene.purpose,
-            scene.source_excerpt,
-        )
-        if part and part.strip()
-    )
-    clauses = [clause for clause in split_clauses(text) if clause.strip()]
+    clauses = semantic_clauses(scene, voiceover)
     if len(clauses) < 2:
         return False
     if len(clips) == 1:
@@ -123,7 +123,7 @@ def split_scene_clips(scene: EditPlanScene, voiceover: object | None, clips: lis
     if duration < MIN_SPLIT_CLIP_SECONDS * 2:
         return clips
     clauses = semantic_clauses(scene, voiceover)
-    split_count = min(max(len(clauses), 2), 3)
+    split_count = target_split_count(scene, clips, clauses)
     segments = semantic_segments(ranges, split_count, scene_profile(scene))
     parts: list[RenderClip] = []
     for index, (start, end) in enumerate(segments):
@@ -155,14 +155,26 @@ def scene_coverage_plan(
     voiceover_seconds = round(max(getattr(voiceover, "duration_seconds", 0.0), 0.0), 2)
     hold_budget = scene_hold_budget(scene)
     scene_budget = scene_duration(scene)
-    target_coverage = round(max(visual_coverage, min(scene_budget, voiceover_seconds + hold_budget, scene_budget)), 2)
+    readability_floor = min(scene_budget, max(minimum_scene_seconds(scene), readability_floor_seconds(scene)))
+    voice_budget = min(scene_budget, voiceover_seconds + hold_budget)
+    target_coverage = round(max(visual_coverage, readability_floor, voice_budget), 2)
+    if should_compress_waiting(scene):
+        target_coverage = round(max(visual_coverage, min(target_coverage, max(readability_floor * 0.82, 1.05))), 2)
+    elif scene.response_state_kind == "response" and scene.transition_confidence >= 0.7:
+        target_coverage = round(min(scene_budget, max(target_coverage, readability_floor + 0.28)), 2)
     coverage_gap = round(max(target_coverage - visual_coverage, 0.0), 2)
     scene_type = scene_profile(scene)
     has_target = bool(primary_focus_signal(scene))
     has_emphasis = bool(scene.zooms or scene.highlights or has_target)
     freeze_allowed = scene.scene_role != "action"
     would_freeze_action = not freeze_allowed and visual_coverage < voiceover_seconds + max(hold_budget * 0.65, 0.55)
-    fitted_voiceover_seconds = round(min(voiceover_seconds or visual_coverage, max(visual_coverage - max(hold_budget * 0.18, 0.08), 0.85)), 2)
+    fitted_voiceover_seconds = round(
+        min(
+            voiceover_seconds or visual_coverage,
+            max(visual_coverage - max(hold_budget * 0.14, 0.06), min(readability_floor * 0.82, visual_coverage)),
+        ),
+        2,
+    )
     fitted_voiceover_line = fitted_line(scene, voiceover, fitted_voiceover_seconds)
     return SceneCoveragePlan(
         scene_number=scene.scene_number,
@@ -201,9 +213,20 @@ def apply_scene_profile(clips: list[RenderClip], plan: SceneCoveragePlan) -> lis
         )
         updated.append(clip.__class__(scene=scene, start=clip.start, end=clip.end, stage=clip.stage))
     return updated
+
+
+def target_split_count(scene: EditPlanScene, clips: list[RenderClip], clauses: list[str]) -> int:
+    base = min(max(len(clauses), 2), 4)
+    total_duration = clip_seconds(clips)
+    if scene_profile(scene) in {"course_card", "setup_choice"} and total_duration >= 4.8:
+        return max(base, 4)
+    if scene_profile(scene) == "auth_card" and total_duration >= 3.4:
+        return max(base, 3)
+    return base
 def fitted_line(scene: EditPlanScene, voiceover: object | None, available_seconds: float) -> str:
     candidates = [
         getattr(voiceover, "text", "").strip(),
+        semantic_voice_line(scene).strip(),
         scene.spoken_line.strip(),
         scene.purpose.strip(),
         scene.on_screen_text.strip(),
@@ -212,57 +235,6 @@ def fitted_line(scene: EditPlanScene, voiceover: object | None, available_second
         if candidate:
             return fit_voice_line(candidate, available_seconds)
     return ""
-
-
-def scene_hold_budget(scene: EditPlanScene) -> float:
-    baseline = max(scene.readable_hold_seconds, 0.0)
-    if scene.scene_role == "result":
-        return round(max(baseline, 1.25), 2)
-    if scene.action_class in {"card_selection", "auth_action"}:
-        return round(max(baseline, 0.8), 2)
-    if scene.action_class in {"focus", "button_click"}:
-        return round(max(baseline, 0.55), 2)
-    return round(max(baseline, 0.4), 2)
-
-
-def scene_profile(scene: EditPlanScene) -> str:
-    combined = normalized_scene_text(scene)
-    if scene.scene_role == "result":
-        return "result_hold"
-    if scene.action_class == "auth_action":
-        if any(token in combined for token in ("account", "existing", "continue")):
-            return "auth_card"
-        return "auth_button"
-    if scene.action_class == "card_selection":
-        return "course_card"
-    if any(token in combined for token in ("difficulty", "setup", "preferences", "level")):
-        return "setup_choice"
-    return "generic"
-
-
-def dense_intent_scene(scene: EditPlanScene, clauses: list[str]) -> bool:
-    combined = normalized_scene_text(scene)
-    semantic_hits = sum(
-        1
-        for token_group in (("login", "account"), ("dashboard", "home"), ("course", "card"), ("level", "difficulty", "setup"), ("result", "opened", "ready"))
-        if any(token in combined for token in token_group)
-    )
-    return semantic_hits >= 2 or len(clauses) >= 3
-
-
-def semantic_clauses(scene: EditPlanScene, voiceover: object | None) -> list[str]:
-    text = " ".join(
-        part.strip()
-        for part in (
-            getattr(voiceover, "text", ""),
-            scene.spoken_line,
-            scene.purpose,
-            scene.source_excerpt,
-        )
-        if part and part.strip()
-    )
-    clauses = [clause for clause in split_clauses(text) if clause.strip()]
-    return clauses[:3] or [scene.spoken_line or scene.purpose or scene.title]
 
 
 def semantic_segments(
@@ -307,22 +279,6 @@ def semantic_segments(
         if round(sum(end - start for start, end in beat_parts), 2) >= MIN_SPLIT_CLIP_SECONDS:
             beats.append(beat_parts)
     return flatten_beats(beats)
-
-
-def scene_split_weights(scene_type: str, split_count: int) -> tuple[float, ...]:
-    if split_count <= 2:
-        if scene_type == "course_card":
-            return (0.42, 0.58)
-        if scene_type == "setup_choice":
-            return (0.46, 0.54)
-        return (0.48, 0.52)
-    if scene_type == "auth_button":
-        return (0.3, 0.38, 0.32)
-    if scene_type == "course_card":
-        return (0.34, 0.4, 0.26)
-    if scene_type == "setup_choice":
-        return (0.32, 0.34, 0.34)
-    return (0.33, 0.37, 0.3)
 
 
 def covered_ranges(clips: list[RenderClip]) -> list[tuple[float, float]]:
@@ -449,21 +405,6 @@ def tuned_hold_ratio(value: float, stage: str, scene_type: str) -> float:
     return round(max(baseline, 0.62), 2)
 
 
-def normalized_scene_text(scene: EditPlanScene) -> str:
-    return " ".join(
-        part.lower()
-        for part in (
-            scene.title,
-            scene.purpose,
-            scene.spoken_line,
-            scene.on_screen_text,
-            scene.source_excerpt,
-            scene.specific_target_label,
-        )
-        if part
-    )
-
-
 def primary_focus_signal(scene: EditPlanScene) -> bool:
     return any(
         box is not None
@@ -476,7 +417,7 @@ def primary_focus_signal(scene: EditPlanScene) -> bool:
 
 def scene_duration(scene: EditPlanScene) -> float:
     base = scene.render_duration_seconds or (scene.end - scene.start)
-    return round(max(base, scene.end - scene.start, MIN_SCENE_COVERAGE_SECONDS), 2)
+    return round(max(base, scene.end - scene.start, minimum_scene_seconds(scene), MIN_SCENE_COVERAGE_SECONDS), 2)
 
 
 def clip_seconds(clips: list[RenderClip]) -> float:

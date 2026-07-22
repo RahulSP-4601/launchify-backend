@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 from app.models.projects import EditPlanHighlight, EditPlanRecord, EditPlanScene, EditPlanZoom, FocusBox
+from app.services.editorial_coverage import scene_profile
 
 CALM_LAYOUTS = {"screen-only", "dashboard-wide"}
+SAFE_MARGIN = 0.05
+TARGET_MIN_AREA = 0.05
+TARGET_MAX_AREA = 0.22
 
 
 def apply_camera_strategy(edit_plan: EditPlanRecord) -> EditPlanRecord:
@@ -14,7 +18,7 @@ def apply_camera_strategy(edit_plan: EditPlanRecord) -> EditPlanRecord:
 def direct_scene_camera(scene: EditPlanScene) -> EditPlanScene:
     if scene.layout_mode in CALM_LAYOUTS:
         return calm_scene(scene)
-    return scene.model_copy(
+    directed = scene.model_copy(
         update={
             "zooms": beat_aligned_zooms(scene),
             "highlights": beat_aligned_highlights(scene),
@@ -22,11 +26,13 @@ def direct_scene_camera(scene: EditPlanScene) -> EditPlanScene:
             "transition_duration_seconds": scene_transition_duration(scene),
         }
     )
+    return normalize_scene_focus(directed)
 
 
 def calm_scene(scene: EditPlanScene) -> EditPlanScene:
     if should_preserve_calm_motion(scene):
-        return scene.model_copy(
+        return normalize_scene_focus(
+            scene.model_copy(
             update={
                 "camera_mode": "focus",
                 "zooms": seeded_calm_zooms(scene),
@@ -34,6 +40,7 @@ def calm_scene(scene: EditPlanScene) -> EditPlanScene:
                 "transition_style": "fade",
                 "transition_duration_seconds": 0.24,
             }
+            )
         )
     return scene.model_copy(
         update={
@@ -63,6 +70,7 @@ def beat_aligned_zooms(scene: EditPlanScene) -> list[EditPlanZoom]:
                     "end": end,
                     "hold_ratio": zoom_hold_ratio(index, zoom.hold_ratio),
                     "smoothing": zoom_smoothing(index, zoom.smoothing),
+                    "focus_box": composition_safe_box(zoom.focus_box, scene, stage=index),
                 }
             )
         )
@@ -75,15 +83,17 @@ def beat_aligned_highlights(scene: EditPlanScene) -> list[EditPlanHighlight]:
     focus_start = scene.focus_start_timestamp or scene.start
     focus_end = scene.focus_end_timestamp or scene.end
     refined: list[EditPlanHighlight] = []
+    scene_type = scene_profile(scene)
     for highlight in scene.highlights:
         start = max(scene.start, min(highlight.start, focus_start))
-        end = min(scene.end, max(highlight.end, focus_end))
+        end = min(scene.end, max(highlight.end, focus_end, highlight_end_floor(scene, scene_type, start)))
         refined.append(
             highlight.model_copy(
                 update={
                     "start": round(start, 2),
                     "end": round(end, 2),
                     "style": "soft-glow" if highlight.style == "spotlight" else highlight.style,
+                    "focus_box": composition_safe_box(highlight.focus_box, scene),
                 }
             )
         )
@@ -123,7 +133,7 @@ def seeded_calm_zooms(scene: EditPlanScene) -> list[EditPlanZoom]:
     aligned = beat_aligned_zooms(scene)
     if aligned:
         return aligned
-    focus_box = scene_focus_box(scene) or default_calm_focus_box(scene)
+    focus_box = composition_safe_box(scene_focus_box(scene) or default_calm_focus_box(scene), scene)
     focus_start = round(scene.focus_start_timestamp or scene.start, 2)
     focus_end = round(scene.focus_end_timestamp or min(scene.end, focus_start + 1.0), 2)
     settle_end = round(scene.settle_end_timestamp or min(scene.end, focus_end + 0.7), 2)
@@ -148,7 +158,7 @@ def seeded_calm_highlights(scene: EditPlanScene) -> list[EditPlanHighlight]:
     aligned = beat_aligned_highlights(scene)
     if aligned:
         return aligned
-    focus_box = scene_focus_box(scene) or default_calm_focus_box(scene)
+    focus_box = composition_safe_box(scene_focus_box(scene) or default_calm_focus_box(scene), scene)
     focus_start = round(scene.focus_start_timestamp or scene.start, 2)
     focus_end = round(min(scene.end, (scene.focus_end_timestamp or focus_start + 0.95)), 2)
     return [
@@ -199,6 +209,21 @@ def scene_focus_box(scene: EditPlanScene) -> FocusBox | None:
     if scene.zooms and scene.zooms[0].focus_box is not None:
         return scene.zooms[0].focus_box
     return None
+
+
+def normalize_scene_focus(scene: EditPlanScene) -> EditPlanScene:
+    return scene.model_copy(
+        update={
+            "zooms": [
+                zoom.model_copy(update={"focus_box": composition_safe_box(zoom.focus_box, scene, stage=index)})
+                for index, zoom in enumerate(scene.zooms)
+            ],
+            "highlights": [
+                highlight.model_copy(update={"focus_box": composition_safe_box(highlight.focus_box, scene)})
+                for highlight in scene.highlights
+            ],
+        }
+    )
 
 
 def nearest_focus_box(scenes: list[EditPlanScene], start_index: int, step: int) -> FocusBox | None:
@@ -263,22 +288,56 @@ def safe_zoom_window(scene: EditPlanScene, start: float, end: float) -> tuple[fl
 
 def zoom_hold_ratio(index: int, current: float) -> float:
     if index == 0:
-        return max(current, 0.74)
+        return max(current, 0.78)
     if index == 1:
-        return max(current, 0.82)
-    return max(current, 0.88)
+        return max(current, 0.86)
+    return max(current, 0.9)
 
 
 def zoom_smoothing(index: int, current: float) -> float:
-    baseline = 0.16 if index <= 1 else 0.2
+    baseline = 0.2 if index <= 1 else 0.24
     return max(current, baseline)
 
 
 def softened_neighbor_highlights(highlights: list[EditPlanHighlight]) -> list[EditPlanHighlight]:
     return [
-        highlight.model_copy(update={"style": "ambient" if highlight.style == "soft-glow" else highlight.style})
+        highlight.model_copy(update={"style": "ambient" if highlight.style == "soft-glow" else highlight.style, "confidence": max(highlight.confidence, 0.72)})
         for highlight in highlights
     ]
+
+
+def highlight_end_floor(scene: EditPlanScene, scene_type: str, start: float) -> float:
+    if scene_type == "auth_card":
+        return start + 1.35
+    if scene_type in {"course_card", "setup_choice"}:
+        return start + 1.25
+    if scene.scene_role == "action":
+        return start + 0.96
+    return start + 0.72
+
+
+def composition_safe_box(box: FocusBox | None, scene: EditPlanScene, stage: int = 0) -> FocusBox | None:
+    if box is None:
+        return None
+    width = max(box.width, TARGET_MIN_AREA ** 0.5)
+    height = max(box.height, TARGET_MIN_AREA ** 0.5)
+    area = width * height
+    if area > TARGET_MAX_AREA:
+        shrink = (TARGET_MAX_AREA / area) ** 0.5
+        width *= shrink
+        height *= shrink
+    if stage == 0 and scene.scene_role == "action":
+        width = min(width * 1.08, 0.42)
+        height = min(height * 1.08, 0.34)
+    center_x = box.x + box.width / 2
+    center_y = box.y + box.height / 2
+    x = clamp(center_x - width / 2, SAFE_MARGIN, 1.0 - SAFE_MARGIN - width)
+    y = clamp(center_y - height / 2, SAFE_MARGIN, 1.0 - SAFE_MARGIN - height)
+    return FocusBox(x=round(x, 4), y=round(y, 4), width=round(width, 4), height=round(height, 4))
+
+
+def clamp(value: float, minimum: float, maximum: float) -> float:
+    return max(minimum, min(value, maximum))
 
 
 def box_distance(left: FocusBox, right: FocusBox) -> float:

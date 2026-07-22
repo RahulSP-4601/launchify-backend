@@ -24,6 +24,9 @@ class SceneRenderDiagnostics:
     has_voiceover_fit: bool
     requires_split: bool
     would_freeze_action: bool
+    transition_confidence: float
+    response_state_kind: str
+    final_destination_label: str
 
 
 def render_scene_diagnostics(project: ProjectRecord, clips: list[RenderClip]) -> list[SceneRenderDiagnostics]:
@@ -50,6 +53,9 @@ def render_scene_diagnostics(project: ProjectRecord, clips: list[RenderClip]) ->
                 has_voiceover_fit=scene_plan.has_voiceover_fit if scene_plan is not None else True,
                 requires_split=scene_plan.requires_split if scene_plan is not None else False,
                 would_freeze_action=scene_plan.would_freeze_action if scene_plan is not None else False,
+                transition_confidence=clip.scene.transition_confidence,
+                response_state_kind=clip.scene.response_state_kind,
+                final_destination_label=clip.scene.final_destination_label,
             )
         )
     return diagnostics
@@ -73,6 +79,9 @@ def diagnostic_payloads(project: ProjectRecord, clips: list[RenderClip]) -> list
             "has_voiceover_fit": item.has_voiceover_fit,
             "requires_split": item.requires_split,
             "would_freeze_action": item.would_freeze_action,
+            "transition_confidence": item.transition_confidence,
+            "response_state_kind": item.response_state_kind,
+            "final_destination_label": item.final_destination_label,
             "voiceover_ready": project.voiceover is not None and project.voiceover.status == "ready",
         }
         for item in render_scene_diagnostics(project, clips)

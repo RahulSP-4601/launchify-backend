@@ -97,6 +97,12 @@ def delivery_issues(
         issues.append("uneven_scene_pacing")
     if continuity_score < MIN_CONTINUITY_SCORE:
         issues.append("weak_editorial_continuity")
+    if any(scene.response_state_kind == "waiting" and scene.render_duration_seconds and scene.render_duration_seconds > 2.2 for scene in edit_plan.scenes):
+        issues.append("overlong_waiting_state")
+    if any(scene.transition_confidence < 0.46 for scene in edit_plan.scenes if scene.scene_role == "action"):
+        issues.append("weak_state_transition_confidence")
+    if any(scene.scene_role in {"action", "result"} and not scene.final_destination_label.strip() for scene in edit_plan.scenes):
+        issues.append("missing_scene_destination")
     return tuple(issues)
 
 
@@ -168,6 +174,12 @@ def scene_continuity_score(scene: EditPlanScene) -> float:
         score += 0.08
     if scene.result_anchor_timestamp is not None:
         score += 0.08
+    if scene.transition_confidence >= 0.72:
+        score += 0.06
+    if scene.final_destination_label.strip():
+        score += 0.04
+    if scene.response_state_kind == "waiting" and (scene.render_duration_seconds or 0.0) > 2.2:
+        score -= 0.1
     return min(score, 1.0)
 
 

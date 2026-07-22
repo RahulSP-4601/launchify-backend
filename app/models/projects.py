@@ -16,6 +16,7 @@ MotionProfile = Literal["balanced", "dynamic", "calm"]
 IssueSeverity = Literal["low", "medium", "high"]
 TransitionStyle = Literal["cut", "fade", "slide-up", "focus-push"]
 SceneRole = Literal["action", "result", "explanation"]
+ResponseStateKind = Literal["response", "waiting", "static", "unknown"]
 
 
 class CreateProjectRequest(BaseModel):
@@ -228,6 +229,15 @@ class EditPlanScene(BaseModel):
     source_excerpt: str
     action_class: str = "generic_action"
     scene_role: SceneRole = "action"
+    before_state_label: str = ""
+    before_state_structure: str = ""
+    action_target_label: str = ""
+    transition_evidence: str = ""
+    after_state_label: str = ""
+    after_state_structure: str = ""
+    transition_confidence: float = Field(ge=0.0, le=1.0, default=0.0)
+    response_state_kind: ResponseStateKind = "unknown"
+    final_destination_label: str = ""
     action_timestamp: float | None = None
     result_anchor_timestamp: float | None = None
     readable_hold_seconds: float = 0.0

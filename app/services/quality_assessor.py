@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from app.models.projects import EditPlanRecord, EditPlanScene, IssueSeverity, ProjectRecord, QualityIssueRecord, QualityReportRecord
 from app.services.reference_style_metrics import (
+    composition_score,
     cursor_commitment_score,
+    dead_air_score,
     highlight_continuity_score,
+    plan_continuity_score,
     reference_style_score,
     result_readability_score,
     scene_reference_score,
@@ -125,6 +128,12 @@ def editorial_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRecord]:
             issues.append(issue("thin-auth-context", "medium", scene.scene_number, "Authentication narration lands the action but skips meaningful sign-in context.", "Preserve account-choice or entry-result context around the auth step."))
         if setup_scene(scene) and setup_line_missing_outcome(scene):
             issues.append(issue("thin-setup-outcome", "medium", scene.scene_number, "Setup narration sounds instructional but does not explain the outcome clearly.", "Explain how the choice shapes the next product state."))
+        if scene.scene_role == "action" and scene.transition_confidence < 0.48:
+            issues.append(issue("weak-transition-evidence", "medium", scene.scene_number, "This scene does not yet have strong enough evidence that the action clearly caused the visible next state.", "Recover stronger before-action-response coverage or improve the detected target and result state."))
+        if scene.response_state_kind == "waiting" and scene_duration(scene) > 2.25:
+            issues.append(issue("overheld-waiting-state", "medium", scene.scene_number, "A waiting-style state is being held too long relative to the visible payoff.", "Compress the waiting portion and preserve more time for the useful response state instead."))
+        if scene.scene_role in {"action", "result"} and not scene.final_destination_label.strip():
+            issues.append(issue("missing-destination-read", "low", scene.scene_number, "The scene does not clearly identify the next meaningful product destination.", "Hold on the resulting state long enough to make the next place explicit."))
     return issues
 
 
@@ -141,6 +150,7 @@ def timing_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRecord]:
 def reference_style_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRecord]:
     issues: list[QualityIssueRecord] = []
     overall = reference_style_score(edit_plan)
+    continuity = plan_continuity_score(edit_plan)
     if overall < 0.72:
         issues.append(
             issue(
@@ -149,6 +159,16 @@ def reference_style_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRecord
                 None,
                 "The edit plan still falls short of premium reference-style motion and readability behavior.",
                 "Recover cleaner approach-action-result pacing before exporting the preview.",
+            )
+        )
+    if continuity < 0.68:
+        issues.append(
+            issue(
+                "weak-plan-continuity",
+                "medium",
+                None,
+                "Adjacent scenes still jump too abruptly in framing or layout to feel like one directed walkthrough.",
+                "Preserve more crop continuity between related beats and avoid abrupt scale changes across the same page.",
             )
         )
     for scene in edit_plan.scenes:
@@ -180,6 +200,10 @@ def scene_reference_issues(scene: EditPlanScene) -> list[QualityIssueRecord]:
         issues.append(issue("weak-cursor-commitment", "medium", scene.scene_number, "Cursor-led intent is not clearly established before the action fires.", "Recover more cursor-led approach timing before the committed interaction."))
     if result_readability_score(scene) < 0.6:
         issues.append(issue("thin-result-hold", "medium", scene.scene_number, "Important state does not hold long enough to read cleanly.", "Preserve more readable result time after the action lands."))
+    if composition_score(scene) < 0.58:
+        issues.append(issue("unsafe-focus-composition", "medium", scene.scene_number, "The focus target is framed too tightly or too close to the edges to feel premium.", "Keep the active control readable inside a safer crop with steadier target occupancy."))
+    if scene.scene_role == "action" and dead_air_score(scene) < 0.56:
+        issues.append(issue("flat-scene-pacing", "medium", scene.scene_number, "This action beat still contains too much static or weakly motivated motion.", "Split the beat further or recover a stronger target-led zoom and highlight path."))
     return issues
 
 
