@@ -6,7 +6,7 @@ from app.models.projects import EditPlanCaption, EditPlanRecord, EditPlanScene
 from app.services.editorial_labels import completed_selection_target
 from app.services.editorial_flow import AUTH_FAMILY, CONFIG_FAMILY, FlowSceneContext, SELECTION_FAMILY, scene_contexts
 from app.services.voiceover_pacing import fit_voice_line
-from app.services.walkthrough_narration import scene_voice_line
+from app.services.walkthrough_narration import scene_voice_line, transcript_like_label
 
 GENERIC_SETUP_WORDS = {
     "before",
@@ -99,7 +99,10 @@ def refined_purpose(scene: EditPlanScene) -> str:
 
 
 def refined_on_screen_text(scene: EditPlanScene, purpose: str) -> str:
+    action_label = concise_action_label(scene)
     setup_label = specific_setup_label(scene)
+    if scene.layout_mode == "screen-only" and action_label:
+        return action_label
     if scene.layout_mode == "screen-only" and setup_label:
         return setup_label
     if scene.layout_mode == "screen-only":
@@ -107,6 +110,22 @@ def refined_on_screen_text(scene: EditPlanScene, purpose: str) -> str:
     if scene.layout_mode == "dashboard-wide" and purpose:
         return purpose
     return scene.on_screen_text or purpose
+
+
+def concise_action_label(scene: EditPlanScene) -> str:
+    for candidate in (
+        scene.specific_target_label,
+        scene.on_screen_text,
+        scene.title,
+    ):
+        refined = normalized_scene_copy(candidate)
+        if not refined or transcript_like_label(refined):
+            continue
+        if scene.action_class == "auth_action" and any(token in refined.lower() for token in ("login", "google", "sign in", "account")):
+            return refined
+        if scene.action_class == "card_selection":
+            return spoken_target(scene)
+    return ""
 
 
 def normalized_scene_copy(text: str) -> str:
@@ -157,9 +176,10 @@ def auth_spoken_line(scene: EditPlanScene, context: FlowSceneContext, label: str
 
 def selection_spoken_line(scene: EditPlanScene, context: FlowSceneContext, label: str) -> str:
     if any(token in label for token in ("japanese", "course", "workspace", "template", "plan", "project")):
+        target = premium_selection_target(scene)
         if context.next_scene is not None:
-            return f"{spoken_target(scene)} becomes the entry point for the guided setup."
-        return f"{spoken_target(scene)} sets the direction for the rest of the journey."
+            return f"From the course library, choose {target} to enter the guided setup."
+        return f"From the course library, choose {target} to set the direction for the rest of the journey."
     if context.previous_scene is not None and context.previous_scene.action_class == "auth_action":
         return "This selection carries the user from login into the onboarding flow."
     return "This selection defines the guided path the product opens next."
@@ -194,6 +214,17 @@ def spoken_target(scene: EditPlanScene) -> str:
         canonical_label=scene.title or scene.on_screen_text,
         transcript_excerpt=scene.source_excerpt,
     )
+
+
+def premium_selection_target(scene: EditPlanScene) -> str:
+    target = spoken_target(scene).strip()
+    lowered = target.lower()
+    if lowered.startswith("the "):
+        target = target[4:].strip()
+        lowered = target.lower()
+    if lowered.endswith(" course"):
+        target = target[:-7].strip()
+    return target or "the next course"
 
 
 def auth_target(scene: EditPlanScene) -> str:

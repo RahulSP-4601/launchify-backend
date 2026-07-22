@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
 
 from app.models.projects import EditPlanRecord, EditPlanScene, VoiceoverRecord
 
 MIN_DYNAMIC_SCENE_RATIO = 0.6
 MIN_HIGHLIGHT_SCENE_RATIO = 0.5
+MIN_ACTION_DYNAMIC_RATIO = 0.75
+MIN_ACTION_HIGHLIGHT_RATIO = 0.75
 MAX_VOICE_WORDS = 12
 MIN_PACING_SCORE = 0.72
 MIN_CONTINUITY_SCORE = 0.75
@@ -71,6 +74,10 @@ def delivery_issues(
         issues.append("limited_motion_coverage")
     if highlight_scene_ratio < MIN_HIGHLIGHT_SCENE_RATIO:
         issues.append("limited_highlight_coverage")
+    if action_scene_ratio(edit_plan, lambda scene: bool(scene.zooms)) < MIN_ACTION_DYNAMIC_RATIO:
+        issues.append("limited_action_motion")
+    if action_scene_ratio(edit_plan, lambda scene: bool(scene.highlights)) < MIN_ACTION_HIGHLIGHT_RATIO:
+        issues.append("limited_action_highlights")
     if voiceover_status != "ready":
         issues.append("voiceover_not_ready")
     elif voiced_scene_ratio < 0.85:
@@ -138,6 +145,14 @@ def scene_continuity_score(scene: EditPlanScene) -> float:
     return min(score, 1.0)
 
 
+def action_scene_ratio(edit_plan: EditPlanRecord, predicate: Callable[[EditPlanScene], bool]) -> float:
+    action_scenes = [scene for scene in edit_plan.scenes if scene.scene_role == "action"]
+    if not action_scenes:
+        return 1.0
+    matched = sum(1 for scene in action_scenes if predicate(scene))
+    return round(matched / len(action_scenes), 2)
+
+
 def voice_continuity_score(text: str, *, is_first: bool = False) -> float:
     words = text.split()
     if len(words) < 4:
@@ -152,4 +167,6 @@ def voice_continuity_score(text: str, *, is_first: bool = False) -> float:
 
 def is_launch_intro(scene: EditPlanScene) -> bool:
     lowered = scene.spoken_line.lower()
-    return scene.action_class == "auth_action" and scene.scene_role == "action" and lowered.startswith("we're launching ")
+    return scene.action_class == "auth_action" and scene.scene_role == "action" and (
+        lowered.startswith("we're launching ") or lowered.startswith("this is ")
+    )

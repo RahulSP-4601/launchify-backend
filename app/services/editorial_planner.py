@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.models.projects import FocusBox
-from app.models.projects import EditPlanCaption, EditPlanHighlight, EditPlanRecord, EditPlanScene, EditPlanZoom, VisualSceneAnalysisRecord
+from app.models.projects import EditPlanHighlight, EditPlanRecord, EditPlanScene, EditPlanZoom, VisualSceneAnalysisRecord
 from app.services.focus_tracking import tracked_focus_box
 
 SCREEN_ONLY_LAYOUTS = {"screen-only", "dashboard-wide"}
@@ -35,8 +35,6 @@ def direct_scene(
     beats = beat_plan(scene, visual_analysis, layout_mode)
     readable_hold = readable_hold_seconds(scene, visual_analysis, layout_mode)
     focus_box = stable_focus_box(scene, visual_analysis, beats)
-    show_captions = should_show_captions(scene, layout_mode)
-    captions = polished_captions(scene, show_captions, layout_mode)
     zooms = calibrated_zooms(scene, layout_mode, beats, focus_box)
     highlights = calibrated_highlights(scene, layout_mode, beats, focus_box)
     camera_mode = "static" if prefer_static_camera(scene, layout_mode) else scene.camera_mode
@@ -50,8 +48,8 @@ def direct_scene(
             "focus_start_timestamp": beats.focus_start,
             "focus_end_timestamp": beats.focus_end,
             "settle_end_timestamp": beats.settle_end,
-            "show_captions": show_captions,
-            "captions": captions,
+            "show_captions": False,
+            "captions": [],
             "zooms": zooms,
             "highlights": highlights,
             "camera_mode": camera_mode,
@@ -74,7 +72,7 @@ def infer_layout_mode(
     if is_account_picker_scene(scene):
         return "screen-only"
     if scene.scene_role == "action" and scene.action_class in {"auth_action", "card_selection"}:
-        return "split-right"
+        return "screen-only"
     if is_setup_scene(scene):
         return setup_layout_mode(scene, visual_analysis)
     if scene.scene_role == "result" and any(token in combined for token in ("select a course", "pick your", "choose a course", "dashboard")):
@@ -166,34 +164,7 @@ def stable_focus_box(
     )
     if tracked is not None:
         return tracked
-    if scene.scene_role == "action" and is_setup_scene(scene):
-        return fallback_setup_focus_box()
-    return None
-
-
-def should_show_captions(scene: EditPlanScene, layout_mode: str) -> bool:
-    if not scene.show_captions:
-        return False
-    if layout_mode == "split-right":
-        return True
-    if layout_mode == "screen-only":
-        return True
-    if layout_mode == "feature-center":
-        return True
-    return False
-
-
-def polished_captions(scene: EditPlanScene, show_captions: bool, layout_mode: str) -> list[EditPlanCaption]:
-    if not show_captions:
-        return []
-    text = premium_caption_text(scene, layout_mode)
-    if not text:
-        return []
-    if scene.captions:
-        selected = scene.captions[0]
-        return [selected.model_copy(update={"text": text, "variant": "minimal"})]
-    return [EditPlanCaption(start=scene.start, end=scene.end, text=text, emphasis_words=[], variant="minimal")]
-
+    return fallback_action_focus_box(scene, visual_analysis)
 
 def compact_caption_text(text: str) -> str:
     cleaned = " ".join(text.split()).strip()
@@ -204,18 +175,6 @@ def compact_caption_text(text: str) -> str:
     if len(words) > 12 and not compact.endswith(("...", ".", "!", "?")):
         compact = f"{compact}..."
     return compact[:84]
-
-
-def premium_caption_text(scene: EditPlanScene, layout_mode: str) -> str:
-    if layout_mode in SCREEN_ONLY_LAYOUTS:
-        return ""
-    if scene.action_class == "auth_action":
-        return compact_caption_text(scene.spoken_line or scene.on_screen_text or scene.title)
-    if scene.action_class == "card_selection":
-        return compact_caption_text(scene.spoken_line or scene.on_screen_text or scene.title)
-    if scene.scene_role == "result":
-        return compact_caption_text(scene.purpose or scene.on_screen_text or scene.spoken_line)
-    return compact_caption_text(scene.spoken_line or scene.purpose)
 
 
 def polished_spoken_line(scene: EditPlanScene, layout_mode: str) -> str:
@@ -250,7 +209,32 @@ def calibrated_zooms(scene: EditPlanScene, layout_mode: str, beats: EditorialBea
                 }
             )
         )
+    if scene.action_class in {"auth_action", "card_selection"}:
+        return premium_action_zoom(scene, beats, focus_box, tuned)
     return tuned
+
+
+def premium_action_zoom(
+    scene: EditPlanScene,
+    beats: EditorialBeatPlan,
+    focus_box: FocusBox | None,
+    tuned: list[EditPlanZoom],
+) -> list[EditPlanZoom]:
+    if not tuned:
+        return []
+    primary = tuned[0]
+    return [
+        primary.model_copy(
+            update={
+                "start": round(beats.focus_start, 2),
+                "end": round(min(scene.end, max(beats.settle_end, beats.focus_start + 0.96)), 2),
+                "scale": min(primary.scale, 1.08 if scene.action_class == "auth_action" else 1.05),
+                "hold_ratio": max(primary.hold_ratio, 0.84),
+                "smoothing": max(primary.smoothing, 0.2),
+                "focus_box": focus_box or primary.focus_box,
+            }
+        )
+    ]
 
 
 def softened_editorial_scale(current_scale: float, target_scale: float) -> float:
@@ -271,9 +255,17 @@ def calibrated_highlights(scene: EditPlanScene, layout_mode: str, beats: Editori
 
 
 def screen_only_highlights(scene: EditPlanScene, beats: EditorialBeatPlan, focus_box: FocusBox | None) -> list[EditPlanHighlight]:
-    if scene.scene_role != "action" or not is_setup_scene(scene) or focus_box is None:
+    if focus_box is None or not is_screen_guided_action(scene):
         return []
-    return [build_highlight(scene, round(beats.focus_start, 2), round(min(beats.settle_end, beats.focus_start + 1.1), 2), 0.82, focus_box)]
+    return [
+        build_highlight(
+            scene,
+            round(beats.focus_start, 2),
+            round(min(beats.settle_end, beats.focus_start + highlight_duration_seconds(scene)), 2),
+            0.82,
+            focus_box,
+        )
+    ]
 
 
 def seeded_highlight(scene: EditPlanScene, beats: EditorialBeatPlan, focus_box: FocusBox) -> EditPlanHighlight:
@@ -308,7 +300,7 @@ def build_highlight(
         start=start,
         end=end,
         label=compact_caption_text(scene.on_screen_text or scene.title or scene.purpose),
-        style="soft-glow",
+        style="ambient",
         anchor_region="center",
         confidence=confidence,
         focus_box=focus_box,
@@ -319,7 +311,7 @@ def build_highlight(
 
 def prefer_static_camera(scene: EditPlanScene, layout_mode: str) -> bool:
     if layout_mode in SCREEN_ONLY_LAYOUTS:
-        return not (scene.scene_role == "action" and is_setup_scene(scene))
+        return not is_screen_guided_action(scene)
     return scene.scene_role == "result" and not scene.highlights
 
 
@@ -380,26 +372,41 @@ def setup_layout_mode(
 
 def highlight_duration_seconds(scene: EditPlanScene) -> float:
     if scene.action_class == "auth_action":
-        return 1.45
+        return 0.92
     if scene.action_class == "card_selection":
-        return 1.35
-    return 1.15
+        return 0.84
+    return 0.96
 
 
-def fallback_setup_focus_box() -> FocusBox:
-    return FocusBox(x=0.24, y=0.2, width=0.52, height=0.32)
+def fallback_action_focus_box(scene: EditPlanScene, visual_analysis: VisualSceneAnalysisRecord | None) -> FocusBox | None:
+    if scene.scene_role != "action":
+        return None
+    if visual_analysis is not None and visual_analysis.frames:
+        for frame in visual_analysis.frames:
+            for box in (frame.click_target_box, frame.dominant_box):
+                if box is not None and (box.width * box.height) <= 0.22:
+                    return box
+    for box in (visual_analysis.click_target_box if visual_analysis else None, visual_analysis.primary_focus_box if visual_analysis else None, visual_analysis.anchor_box if visual_analysis else None):
+        if box is None:
+            continue
+        if (box.width * box.height) <= 0.22:
+            return box
+        width, height = (0.16, 0.1) if scene.action_class == "auth_action" else (0.2, 0.14) if scene.action_class == "card_selection" else (0.18, 0.12)
+        center_x, center_y = box.x + (box.width / 2), box.y + (box.height / 2)
+        return FocusBox(x=round(min(max(center_x - (width / 2), 0.0), 1.0 - width), 4), y=round(min(max(center_y - (height / 2), 0.0), 1.0 - height), 4), width=width, height=height)
+    return FocusBox(x=0.24, y=0.2, width=0.52, height=0.32) if is_setup_scene(scene) else None
 
 
 def zoom_profile(scene: EditPlanScene, layout_mode: str) -> tuple[float, float]:
     if layout_mode == "dashboard-wide":
-        return 1.08, 1.05
+        return 1.05, 1.03
     if scene.action_class == "auth_action":
-        return 1.14, 1.08
+        return 1.08, 1.05
     if scene.action_class == "card_selection":
-        return 1.18, 1.1
+        return 1.05, 1.03
     if is_setup_scene(scene):
-        return 1.1, 1.06
-    return 1.12, 1.07
+        return 1.07, 1.04
+    return 1.08, 1.05
 
 
 def subtle_screen_zoom(
@@ -408,7 +415,7 @@ def subtle_screen_zoom(
     focus_box: FocusBox | None,
     existing: list[EditPlanZoom],
 ) -> list[EditPlanZoom]:
-    if not (scene.scene_role == "action" and is_setup_scene(scene) and focus_box is not None):
+    if focus_box is None or not is_screen_guided_action(scene):
         return []
     base = existing[0] if existing else EditPlanZoom(
         start=scene.start,
@@ -427,14 +434,28 @@ def subtle_screen_zoom(
         base.model_copy(
             update={
                 "start": round(beats.focus_start, 2),
-                "end": round(min(scene.end, max(beats.settle_end, beats.focus_start + 1.2)), 2),
-                "scale": 1.07,
+                "end": round(min(scene.end, max(beats.focus_end, beats.focus_start + 0.86)), 2),
+                "scale": screen_action_scale(scene),
                 "focus_box": focus_box,
-                "hold_ratio": max(base.hold_ratio, 0.82),
-                "smoothing": max(base.smoothing, 0.18),
+                "hold_ratio": max(base.hold_ratio, 0.86),
+                "smoothing": max(base.smoothing, 0.22),
             }
         )
     ]
+
+
+def screen_action_scale(scene: EditPlanScene) -> float:
+    if scene.action_class == "auth_action":
+        return 1.06
+    if scene.action_class == "card_selection":
+        return 1.04
+    return 1.07
+
+
+def is_screen_guided_action(scene: EditPlanScene) -> bool:
+    return scene.scene_role == "action" and (
+        scene.action_class in {"auth_action", "card_selection"} or is_setup_scene(scene)
+    )
 
 
 def seeded_dynamic_zooms(

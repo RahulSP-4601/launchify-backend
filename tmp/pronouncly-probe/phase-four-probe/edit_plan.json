@@ -1,19 +1,19 @@
 {
   "overview": "Launchify grounded 4 captured product actions for Internal QA, turned them into synchronized steps, and prepared captions, zooms, and highlights from the event-backed guide.",
-  "total_duration_seconds": 25.57,
+  "total_duration_seconds": 23.02,
   "scenes": [
     {
       "scene_number": 1,
       "title": "Google Login",
       "purpose": "Click google login on the landing page to start authentication",
       "start": 10.6,
-      "end": 19.85,
-      "render_duration_seconds": 9.25,
+      "end": 19.12,
+      "render_duration_seconds": 8.52,
       "confidence": 0.82,
       "camera_mode": "focus",
-      "decision_summary": "Grounded from captured click event near Google Login at 10.82s with event-led camera timing. Editorial layout=split-right; beats=10.64-14.06/14.64. result_anchor=13.80s",
+      "decision_summary": "Grounded from captured click event near Google Login at 10.82s with event-led camera timing. Editorial layout=screen-only; beats=10.60-13.90/14.68. result_anchor=13.80s",
       "visual_summary": "Spotlight the real UI action around Google Login and keep surrounding context subdued. Editorial planning emphasized a stable result frame and reduced overlay noise.",
-      "spoken_line": "We're launching Pronouncly and you can start by clicking Google Login to enter the product and begin the guided flow.",
+      "spoken_line": "This is Pronouncly. Start by clicking Google Login to enter the product and begin the guided flow.",
       "on_screen_text": "Google Login",
       "specific_target_label": "",
       "source_excerpt": "hey. so we are launching pronouncely. it's an ai powered land language learning platform. , first,",
@@ -21,81 +21,50 @@
       "scene_role": "action",
       "action_timestamp": 10.82,
       "result_anchor_timestamp": 13.8,
-      "readable_hold_seconds": 1.8,
-      "establish_end_timestamp": 11.02,
-      "focus_start_timestamp": 10.64,
-      "focus_end_timestamp": 14.06,
-      "settle_end_timestamp": 14.64,
-      "layout_mode": "split-right",
-      "show_captions": true,
-      "transition_style": "focus-push",
-      "transition_duration_seconds": 0.28,
-      "captions": [
-        {
-          "start": 10.6,
-          "end": 19.85,
-          "text": "We're launching Pronouncly and you can\nstart by clicking Google Login to enter the product and begin the guided flow.",
-          "emphasis_words": [
-            "launching",
-            "Pronouncely",
-            "powered"
-          ],
-          "variant": "minimal"
-        }
-      ],
+      "readable_hold_seconds": 2.1,
+      "establish_end_timestamp": 10.6,
+      "focus_start_timestamp": 10.6,
+      "focus_end_timestamp": 13.9,
+      "settle_end_timestamp": 14.68,
+      "layout_mode": "screen-only",
+      "show_captions": false,
+      "transition_style": "fade",
+      "transition_duration_seconds": 0.24,
+      "captions": [],
       "zooms": [
         {
-          "start": 10.64,
-          "end": 14.06,
-          "scale": 1.12,
+          "start": 10.6,
+          "end": 13.9,
+          "scale": 1.06,
           "focus_region": "top-right",
           "reason": "Editorial action-focus move around the strongest grounded UI region.",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.88,
-            "y": 0.02,
-            "width": 0.11,
-            "height": 0.04
+            "x": 0.6978,
+            "y": 0.0788,
+            "width": 0.1919,
+            "height": 0.1445
           },
           "easing": "ease-out",
           "x_offset": 0.051,
           "y_offset": -0.055,
           "smoothing": 0.93,
-          "hold_ratio": 0.74
-        },
-        {
-          "start": 14.06,
-          "end": 14.64,
-          "scale": 1.08,
-          "focus_region": "top-right",
-          "reason": "Editorial action-focus move around the strongest grounded UI region.",
-          "confidence": 0.82,
-          "focus_box": {
-            "x": 0.88,
-            "y": 0.02,
-            "width": 0.11,
-            "height": 0.04
-          },
-          "easing": "ease-in-out",
-          "x_offset": 0.051,
-          "y_offset": -0.055,
-          "smoothing": 0.91,
-          "hold_ratio": 0.82
+          "hold_ratio": 0.86
         }
       ],
       "highlights": [
         {
-          "start": 10.64,
-          "end": 11.99,
+          "start": 10.6,
+          "end": 11.95,
           "label": "Google Login",
-          "style": "soft-glow",
-          "anchor_region": "top-right",
-          "confidence": 0.84,
+          "style": "ambient",
+          "anchor_region": "center",
+          "confidence": 0.82,
           "focus_box": {
-            "x": 0.88,
-            "y": 0.02,
-            "width": 0.11,
-            "height": 0.04
+            "x": 0.6978,
+            "y": 0.0788,
+            "width": 0.1919,
+            "height": 0.1445
           },
           "placement_preference": "avoid-ui-cover",
           "ui_label": "Google Login"
@@ -111,9 +80,9 @@
       "render_duration_seconds": 3.05,
       "confidence": 0.82,
       "camera_mode": "focus",
-      "decision_summary": "Grounded from captured click event near Continue With Google at 26.53s with event-led camera timing. Editorial layout=split-right; beats=26.35-27.34/27.92. result_anchor=27.08s",
+      "decision_summary": "Grounded from captured click event near Continue With Google at 26.53s with event-led camera timing. Editorial layout=screen-only; beats=26.31-27.21/27.99. result_anchor=27.08s",
       "visual_summary": "Spotlight the real UI action around Continue With Google and keep surrounding context subdued. Editorial planning emphasized a stable result frame and reduced overlay noise.",
-      "spoken_line": "Continue with Google to keep sign-in quick.",
+      "spoken_line": "Continue with Google to sign in and move.",
       "on_screen_text": "Continue With Google",
       "specific_target_label": "",
       "source_excerpt": "created the account, i'll log in to the existing one. after log in, you can see",
@@ -121,78 +90,47 @@
       "scene_role": "action",
       "action_timestamp": 26.53,
       "result_anchor_timestamp": 27.08,
-      "readable_hold_seconds": 1.74,
-      "establish_end_timestamp": 26.73,
-      "focus_start_timestamp": 26.35,
-      "focus_end_timestamp": 27.34,
-      "settle_end_timestamp": 27.92,
-      "layout_mode": "split-right",
-      "show_captions": true,
-      "transition_style": "focus-push",
-      "transition_duration_seconds": 0.28,
-      "captions": [
-        {
-          "start": 26.31,
-          "end": 29.36,
-          "text": "Continue with Google\nto keep sign-in quick.",
-          "emphasis_words": [
-            "Since",
-            "already",
-            "created"
-          ],
-          "variant": "minimal"
-        }
-      ],
+      "readable_hold_seconds": 1.77,
+      "establish_end_timestamp": 26.31,
+      "focus_start_timestamp": 26.31,
+      "focus_end_timestamp": 27.21,
+      "settle_end_timestamp": 27.99,
+      "layout_mode": "screen-only",
+      "show_captions": false,
+      "transition_style": "fade",
+      "transition_duration_seconds": 0.24,
+      "captions": [],
       "zooms": [
         {
-          "start": 26.35,
-          "end": 27.34,
-          "scale": 1.14,
-          "focus_region": "center",
+          "start": 26.31,
+          "end": 27.21,
+          "scale": 1.06,
+          "focus_region": "mid-left",
           "reason": "Editorial action-focus move around the strongest grounded UI region.",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.4206,
+            "x": 0.1706,
             "y": 0.4405,
             "width": 0.1588,
             "height": 0.1189
           },
           "easing": "ease-in-out",
-          "x_offset": 0.0,
+          "x_offset": -0.03,
           "y_offset": 0.0,
           "smoothing": 0.94,
-          "hold_ratio": 0.76
-        },
-        {
-          "start": 27.34,
-          "end": 27.92,
-          "scale": 1.08,
-          "focus_region": "center",
-          "reason": "Editorial action-focus move around the strongest grounded UI region.",
-          "confidence": 0.82,
-          "focus_box": {
-            "x": 0.4206,
-            "y": 0.4405,
-            "width": 0.1588,
-            "height": 0.1189
-          },
-          "easing": "ease-out",
-          "x_offset": 0.0,
-          "y_offset": 0.0,
-          "smoothing": 0.96,
           "hold_ratio": 0.86
         }
       ],
       "highlights": [
         {
-          "start": 26.35,
-          "end": 27.34,
+          "start": 26.31,
+          "end": 27.21,
           "label": "Continue With Google",
-          "style": "soft-glow",
+          "style": "ambient",
           "anchor_region": "center",
-          "confidence": 0.84,
+          "confidence": 0.82,
           "focus_box": {
-            "x": 0.4206,
+            "x": 0.1706,
             "y": 0.4405,
             "width": 0.1588,
             "height": 0.1189
@@ -205,55 +143,43 @@
     {
       "scene_number": 3,
       "title": "Select A Course",
-      "purpose": "Choose the japanese course to continue into setup",
+      "purpose": "Choose the select japanese course to continue into setup",
       "start": 29.37,
-      "end": 38.29,
-      "render_duration_seconds": 8.92,
+      "end": 36.47,
+      "render_duration_seconds": 7.1,
       "confidence": 0.82,
       "camera_mode": "focus",
-      "decision_summary": "Grounded from captured click event near Select A Course at 29.55s with event-led camera timing. Editorial layout=split-right; beats=29.37-30.36/30.94. result_anchor=30.10s",
+      "decision_summary": "Grounded from captured click event near Select A Course at 29.55s with event-led camera timing. Editorial layout=screen-only; beats=29.37-30.27/31.05. result_anchor=30.10s",
       "visual_summary": "Spotlight the real UI action around Select A Course and keep surrounding context subdued. Editorial planning emphasized a stable result frame and reduced overlay noise.",
-      "spoken_line": "From here, choose the Japanese course to continue deeper into the main product experience.",
-      "on_screen_text": "Japanese",
-      "specific_target_label": "Japanese",
+      "spoken_line": "From here, choose Japanese to continue into the main product flow.",
+      "on_screen_text": "the Japanese Course",
+      "specific_target_label": "Select Japanese Course",
       "source_excerpt": "created the account, i'll log in to the existing one. after log in, you can see",
       "action_class": "card_selection",
       "scene_role": "action",
       "action_timestamp": 29.55,
       "result_anchor_timestamp": 30.1,
-      "readable_hold_seconds": 1.74,
-      "establish_end_timestamp": 29.79,
+      "readable_hold_seconds": 1.83,
+      "establish_end_timestamp": 29.37,
       "focus_start_timestamp": 29.37,
-      "focus_end_timestamp": 30.36,
-      "settle_end_timestamp": 30.94,
-      "layout_mode": "split-right",
-      "show_captions": true,
-      "transition_style": "focus-push",
-      "transition_duration_seconds": 0.28,
-      "captions": [
-        {
-          "start": 29.37,
-          "end": 38.29,
-          "text": "From here, choose the Japanese course\nto continue deeper into the main product experience.",
-          "emphasis_words": [
-            "Since",
-            "already",
-            "created"
-          ],
-          "variant": "minimal"
-        }
-      ],
+      "focus_end_timestamp": 30.27,
+      "settle_end_timestamp": 31.05,
+      "layout_mode": "screen-only",
+      "show_captions": false,
+      "transition_style": "fade",
+      "transition_duration_seconds": 0.24,
+      "captions": [],
       "zooms": [
         {
           "start": 29.37,
-          "end": 30.36,
-          "scale": 1.03,
+          "end": 30.27,
+          "scale": 1.04,
           "focus_region": "center",
           "reason": "Editorial selection-focus move around the strongest grounded UI region.",
           "confidence": 0.82,
           "focus_box": {
             "x": 0.3942,
-            "y": 0.4269,
+            "y": 0.4769,
             "width": 0.2117,
             "height": 0.1462
           },
@@ -261,44 +187,25 @@
           "x_offset": 0.0,
           "y_offset": 0.0,
           "smoothing": 0.93,
-          "hold_ratio": 0.76
-        },
-        {
-          "start": 30.36,
-          "end": 30.94,
-          "scale": 1.05,
-          "focus_region": "center",
-          "reason": "Editorial selection-focus move around the strongest grounded UI region.",
-          "confidence": 0.82,
-          "focus_box": {
-            "x": 0.3942,
-            "y": 0.4269,
-            "width": 0.2117,
-            "height": 0.1462
-          },
-          "easing": "ease-in-out",
-          "x_offset": 0.0,
-          "y_offset": 0.0,
-          "smoothing": 0.91,
-          "hold_ratio": 0.82
+          "hold_ratio": 0.86
         }
       ],
       "highlights": [
         {
           "start": 29.37,
-          "end": 30.36,
-          "label": "Japanese",
-          "style": "ambient-lift",
+          "end": 30.27,
+          "label": "Select Japanese Course",
+          "style": "ambient",
           "anchor_region": "center",
-          "confidence": 0.84,
+          "confidence": 0.82,
           "focus_box": {
             "x": 0.3942,
-            "y": 0.4269,
+            "y": 0.4769,
             "width": 0.2117,
             "height": 0.1462
           },
           "placement_preference": "avoid-ui-cover",
-          "ui_label": "Japanese"
+          "ui_label": "Select Japanese Course"
         }
       ]
     },
@@ -314,48 +221,40 @@
       "decision_summary": "Grounded from captured focus event near Pick your Japanese level before you start learning. at 41.54s with event-led camera timing. Editorial layout=screen-only; beats=41.32-42.22/43.00. result_anchor=42.09s",
       "visual_summary": "Spotlight the real UI action around Pick your Japanese level before you start learning. and keep surrounding context subdued. Editorial planning emphasized a stable result frame and reduced overlay noise.",
       "spoken_line": "Next, choose the Japanese level that matches the learner's starting point.",
-      "on_screen_text": "Pick your Japanese level",
+      "on_screen_text": "Pick Your Japanese Level",
       "specific_target_label": "",
       "source_excerpt": "created the account, i'll log in to the existing one. after log in, you can see",
       "action_class": "button_click",
       "scene_role": "action",
       "action_timestamp": 41.54,
       "result_anchor_timestamp": 42.09,
-      "readable_hold_seconds": 1.68,
+      "readable_hold_seconds": 1.79,
       "establish_end_timestamp": 41.32,
       "focus_start_timestamp": 41.32,
       "focus_end_timestamp": 42.22,
       "settle_end_timestamp": 43.0,
       "layout_mode": "screen-only",
-      "show_captions": true,
+      "show_captions": false,
       "transition_style": "fade",
       "transition_duration_seconds": 0.24,
-      "captions": [
-        {
-          "start": 41.32,
-          "end": 45.67,
-          "text": "Next, choose the Japanese level\nthat matches the learner's starting point.",
-          "emphasis_words": [],
-          "variant": "minimal"
-        }
-      ],
+      "captions": [],
       "zooms": [
         {
           "start": 41.32,
           "end": 42.22,
           "scale": 1.07,
-          "focus_region": "mid-left",
+          "focus_region": "top-center",
           "reason": "Editorial reading-focus move around the strongest grounded UI region.",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.055,
-            "y": 0.675,
-            "width": 0.12,
-            "height": 0.1
+            "x": 0.39,
+            "y": 0.22,
+            "width": 0.22,
+            "height": 0.16
           },
           "easing": "ease-out",
-          "x_offset": -0.045,
-          "y_offset": 0.0,
+          "x_offset": 0.0,
+          "y_offset": -0.024,
           "smoothing": 0.97,
           "hold_ratio": 0.88
         }
@@ -364,28 +263,28 @@
         {
           "start": 41.32,
           "end": 42.22,
-          "label": "Pick your Japanese level",
-          "style": "soft-glow",
+          "label": "Pick Your Japanese Level",
+          "style": "ambient",
           "anchor_region": "center",
           "confidence": 0.82,
           "focus_box": {
-            "x": 0.055,
-            "y": 0.675,
-            "width": 0.12,
-            "height": 0.1
+            "x": 0.39,
+            "y": 0.22,
+            "width": 0.22,
+            "height": 0.16
           },
           "placement_preference": "avoid-ui-cover",
-          "ui_label": "Pick your Japanese level"
+          "ui_label": "Pick Your Japanese Level"
         }
       ]
     }
   ],
   "render_spec": {
-    "title_card": "Getting Started with Pronouncly",
+    "title_card": "Getting Started with Pronouncly: Your AI-Powered Language Learning Platform",
     "title_options": [
-      "Getting Started with Pronouncly"
+      "Getting Started with Pronouncly: Your AI-Powered Language Learning Platform"
     ],
     "cta": "Turn rough recordings into polished launch videos.",
-    "total_duration_seconds": 25.57
+    "total_duration_seconds": 23.02
   }
 }

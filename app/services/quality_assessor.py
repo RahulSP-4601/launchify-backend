@@ -29,6 +29,8 @@ def caption_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRecord]:
     issues: list[QualityIssueRecord] = []
     ordered = sorted(edit_plan.scenes, key=lambda scene: (scene.start, scene.scene_number))
     for index, scene in enumerate(ordered):
+        if not scene.show_captions:
+            continue
         if not scene.captions:
             issues.append(issue("missing-captions", "high", scene.scene_number, "Scene has no captions.", "Regenerate or add a caption line for this scene."))
             continue
@@ -209,7 +211,9 @@ def caption_length_limit(scene: EditPlanScene, is_first: bool) -> int:
 
 def is_launch_intro(scene: EditPlanScene) -> bool:
     lowered = normalize(scene.spoken_line)
-    return scene.action_class == "auth_action" and scene.scene_role == "action" and lowered.startswith("we're launching ")
+    return scene.action_class == "auth_action" and scene.scene_role == "action" and (
+        lowered.startswith("we're launching ") or lowered.startswith("this is ")
+    )
 
 
 def title_is_overliteral(title: str) -> bool:

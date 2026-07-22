@@ -41,7 +41,7 @@
     "grounded_event_ratio": "1.00",
     "result_grounding_ratio": "0.82",
     "branch_grounding_ratio": "0.73",
-    "timeline_coverage_ratio": "0.88",
+    "timeline_coverage_ratio": "0.92",
     "weak_label_ratio": "0.00",
     "low_confidence_ratio": "0.00",
     "auth_state_ratio": "0.50",

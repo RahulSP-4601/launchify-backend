@@ -153,7 +153,7 @@ def safe_selection_target(
     label: str,
     transcript_excerpt: str,
 ) -> str:
-    cleaned = clean_editorial_text(label)
+    cleaned = object_phrase(label) or clean_editorial_text(label)
     if cleaned and cleaned.lower() not in {"select a course", "choose a course", "select course", "a course", "course", "select an option", "choose an option"}:
         return title_case(cleaned)
     candidate = selection_target_from_excerpt(transcript_excerpt)
@@ -321,7 +321,7 @@ def completed_selection_target(
     canonical_label: str,
     transcript_excerpt: str,
 ) -> str:
-    target = clean_editorial_text(specific_target_label)
+    target = object_phrase(specific_target_label) or clean_editorial_text(specific_target_label)
     if not target:
         return safe_selection_target(label=canonical_label, transcript_excerpt=transcript_excerpt)
     noun = selection_noun_from_label_or_excerpt(canonical_label, transcript_excerpt)

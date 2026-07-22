@@ -1,10 +1,10 @@
 {
-  "hook": "Getting Started with Pronouncly",
-  "summary": "Learn how to log in to Pronouncly using Google, access the available courses, and select your Japanese learning level to begin your language journey.",
+  "hook": "Getting Started with Pronouncly: Your AI-Powered Language Learning Platform",
+  "summary": "This guide walks you through logging into Pronouncly using Google, selecting the Japanese course, and preparing to choose your proficiency level to start learning effectively.",
   "title_options": [
-    "Getting Started with Pronouncly",
-    "Getting Started with Pronouncly in minutes",
-    "How getting started with pronouncly"
+    "Getting Started with Pronouncly: Your AI-Powered Language Learning Platform",
+    "Getting Started with Pronouncly: Your AI-Powered Language Learning Platform in minutes",
+    "How getting started with pronouncly: your ai-powered language learning platform"
   ],
   "scenes": [
     {
@@ -27,10 +27,10 @@
     },
     {
       "scene_number": 3,
-      "purpose": "Choose the Japanese course to continue into setup.",
-      "spoken_line": "Open the Japanese course to continue into setup.",
-      "on_screen_text": "Japanese",
-      "specific_target_label": "Japanese",
+      "purpose": "Choose the Select Japanese Course to continue into setup.",
+      "spoken_line": "Open the Select Japanese Course to continue into setup.",
+      "on_screen_text": "Select Japanese Course",
+      "specific_target_label": "Select Japanese Course",
       "source_excerpt": "Since I've already created the account, I'll log in to the existing one. After log in, you can see the five courses. Right now, we have opened the Japan courses, and the rest of the four courses are coming soon. So under Japan click on the Japan courses. And once the Japan course has been opened so, officially, there are five",
       "estimated_duration_seconds": 6.9
     },
@@ -38,7 +38,7 @@
       "scene_number": 4,
       "purpose": "Choose the starting level before the lesson begins.",
       "spoken_line": "Choose the level that matches the learner's starting point.",
-      "on_screen_text": "Pick your Japanese level",
+      "on_screen_text": "Pick Your Japanese Level",
       "specific_target_label": "",
       "source_excerpt": "Since I've already created the account, I'll log in to the existing one. After log in, you can see the five courses. Right now, we have opened the Japan courses, and the rest of the four courses are coming soon. So under Japan click on the Japan courses. And once the Japan course has been opened so, officially, there are five",
       "estimated_duration_seconds": 4.35
@@ -46,11 +46,11 @@
   ],
   "cta": "Turn rough recordings into polished launch videos.",
   "notes": [
-    "Followed the chronological order of captured events without reordering.",
-    "Merged related actions into single steps for clarity.",
-    "Used concise and premium on-screen text for better user engagement.",
-    "Ensured narration matches exactly the actions in the event log.",
-    "Focused on internal QA audience with clear and precise instructions.",
+    "Used only the event log and transcript to ensure accuracy.",
+    "Merged related clicks into single steps where appropriate.",
+    "Kept the original order and timestamps intact.",
+    "Created concise and premium on-screen text for clarity.",
+    "Focused narration on guiding internal QA through the launch process.",
     "Grounded step timing was expanded into continuous walkthrough ranges anchored to captured actions."
   ]
 }

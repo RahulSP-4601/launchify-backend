@@ -54,7 +54,7 @@ def anchor_coverage(edit_plan: EditPlanRecord) -> float:
 def caption_balance(edit_plan: EditPlanRecord) -> float:
     captions = [caption for scene in edit_plan.scenes for caption in scene.captions]
     if not captions:
-        return 0.0
+        return 1.0
     balanced = sum(1 for caption in captions if "\n" in caption.text or len(caption.text) <= 36)
     return balanced / len(captions)
 

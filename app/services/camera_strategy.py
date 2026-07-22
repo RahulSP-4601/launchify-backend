@@ -109,6 +109,10 @@ def scene_transition_duration(scene: EditPlanScene) -> float:
 def should_preserve_calm_motion(scene: EditPlanScene) -> bool:
     if scene.scene_role != "action":
         return False
+    if scene.zooms or scene.highlights:
+        return True
+    if scene.action_class in {"auth_action", "card_selection"}:
+        return scene_focus_box(scene) is not None
     if scene.action_class not in {"button_click", "focus"}:
         return False
     combined = " ".join(part.lower() for part in (scene.title, scene.on_screen_text, scene.purpose) if part)
@@ -119,7 +123,7 @@ def seeded_calm_zooms(scene: EditPlanScene) -> list[EditPlanZoom]:
     aligned = beat_aligned_zooms(scene)
     if aligned:
         return aligned
-    focus_box = default_setup_focus_box()
+    focus_box = scene_focus_box(scene) or default_calm_focus_box(scene)
     focus_start = round(scene.focus_start_timestamp or scene.start, 2)
     focus_end = round(scene.focus_end_timestamp or min(scene.end, focus_start + 1.0), 2)
     settle_end = round(scene.settle_end_timestamp or min(scene.end, focus_end + 0.7), 2)
@@ -144,7 +148,7 @@ def seeded_calm_highlights(scene: EditPlanScene) -> list[EditPlanHighlight]:
     aligned = beat_aligned_highlights(scene)
     if aligned:
         return aligned
-    focus_box = default_setup_focus_box()
+    focus_box = scene_focus_box(scene) or default_calm_focus_box(scene)
     focus_start = round(scene.focus_start_timestamp or scene.start, 2)
     focus_end = round(min(scene.end, (scene.focus_end_timestamp or focus_start + 0.95)), 2)
     return [
@@ -164,6 +168,10 @@ def seeded_calm_highlights(scene: EditPlanScene) -> list[EditPlanHighlight]:
 
 def default_setup_focus_box() -> FocusBox:
     return FocusBox(x=0.24, y=0.2, width=0.52, height=0.32)
+
+
+def default_calm_focus_box(scene: EditPlanScene) -> FocusBox:
+    return default_setup_focus_box()
 
 
 def continuous_scene_camera(index: int, scenes: list[EditPlanScene]) -> EditPlanScene:

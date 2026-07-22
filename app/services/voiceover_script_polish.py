@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.models.projects import EditPlanCaption, EditPlanRecord, EditPlanScene, ProjectRecord
+from app.models.projects import EditPlanRecord, EditPlanScene, ProjectRecord
 from app.services.editorial_labels import completed_selection_target
 from app.services.voiceover_pacing import fit_voice_line
 
@@ -8,14 +8,22 @@ from app.services.voiceover_pacing import fit_voice_line
 def polish_voiceover_script(project: ProjectRecord, edit_plan: EditPlanRecord) -> EditPlanRecord:
     scenes: list[EditPlanScene] = []
     previous_line = ""
-    descriptor = product_descriptor(project.product_description)
+    descriptor = product_descriptor(project.product_description, project.product_name)
     for index, scene in enumerate(edit_plan.scenes):
         duration = max(scene.render_duration_seconds or (scene.end - scene.start), 0.8)
         line = fit_voice_line(
             scene_voiceover_line(scene, project.product_name, descriptor, index == 0, previous_line),
             duration,
         )
-        scenes.append(scene.model_copy(update={"spoken_line": line, "captions": synced_captions(scene, line)}))
+        scenes.append(
+            scene.model_copy(
+                update={
+                    "spoken_line": line,
+                    "show_captions": False,
+                    "captions": [],
+                }
+            )
+        )
         previous_line = line
     return edit_plan.model_copy(update={"scenes": scenes})
 
@@ -43,18 +51,26 @@ def scene_voiceover_line(
     return duplicate_safe(previous_line, scene.spoken_line or scene.purpose or scene.title)
 
 
-def product_descriptor(description: str) -> str:
+def product_descriptor(description: str, product_name: str) -> str:
     cleaned = " ".join((description or "").split()).strip().rstrip(".")
+    lowered = cleaned.lower()
+    product_lower = product_name.lower().strip()
     if not cleaned or looks_like_probe_metadata(cleaned):
         return ""
+    if any(token in lowered for token in ("we are launching", "we're launching", "to get started", "click", "google login")):
+        return ""
+    if product_lower and product_lower in lowered:
+        return ""
     words = cleaned.split()
-    snippet = " ".join(words[:5]).strip()
-    if "platform" in cleaned.lower() and "platform" not in snippet.lower():
+    snippet = " ".join(words[:6]).strip(" ,-")
+    if len(words) > 6 and "platform" not in snippet.lower() and "platform" in lowered:
         snippet = f"{snippet} platform".strip()
-    return snippet
+    return snippet if 1 <= len(snippet.split()) <= 7 else ""
 
 
 def scene_target(scene: EditPlanScene) -> str:
+    if scene.action_class == "auth_action":
+        return auth_scene_target(scene)
     if scene.action_class == "card_selection":
         return completed_selection_target(
             specific_target_label=scene.specific_target_label or scene.on_screen_text,
@@ -65,10 +81,25 @@ def scene_target(scene: EditPlanScene) -> str:
     return source if source.lower().startswith(("the ", "your ")) else source
 
 
+def auth_scene_target(scene: EditPlanScene) -> str:
+    for candidate in (
+        scene.specific_target_label,
+        scene.on_screen_text,
+        scene.title,
+    ):
+        cleaned = " ".join((candidate or "").split()).strip().rstrip(".")
+        if not cleaned:
+            continue
+        lowered = cleaned.lower()
+        if any(token in lowered for token in ("google login", "continue with google", "account", "sign in", "login")):
+            return cleaned
+    return "Google Login"
+
+
 def auth_voiceover_line(scene: EditPlanScene, target: str) -> str:
     lowered = target.lower()
     if lowered == "continue with google":
-        return "Continue with Google to keep sign-in quick and move straight into the product."
+        return "Continue with Google to sign in and move straight into the workspace."
     if "account" in lowered:
         return f"Choose {target} so the workspace opens right away and the walkthrough can continue."
     return f"Use {target} to finish sign-in and continue into the core product experience."
@@ -80,10 +111,10 @@ def level_voiceover_line(scene: EditPlanScene) -> str:
 
 
 def launch_intro_line(product_name: str, descriptor: str, target: str) -> str:
-    opener = f"We're launching {product_name}"
+    opener = f"This is {product_name}"
     if descriptor:
         opener = f"{opener}, {descriptor}"
-    return f"{opener} and you can start by clicking {target} to enter the product and begin the guided flow."
+    return f"{opener}. Start by clicking {clean_click_target(target)} to enter the product and begin the guided flow."
 
 
 def looks_like_probe_metadata(description: str) -> bool:
@@ -93,9 +124,10 @@ def looks_like_probe_metadata(description: str) -> bool:
 
 
 def selection_voiceover_line(scene: EditPlanScene, target: str) -> str:
+    refined_target = premium_selection_target(target)
     if transcript_mentions(scene, "course", "courses"):
-        return f"From here, open {target} to move from the course catalog into the guided setup experience."
-    return f"From here, choose {target} to continue deeper into the main product experience."
+        return f"From the course library, choose {refined_target} to enter the guided learning flow."
+    return f"From here, choose {refined_target} to continue into the main product flow."
 
 
 def should_use_launch_intro(scene: EditPlanScene, target: str) -> bool:
@@ -128,32 +160,47 @@ def scene_title(scene: EditPlanScene) -> str:
 
 
 def duplicate_safe(previous_line: str, line: str) -> str:
-    return line if normalize(previous_line) != normalize(line) else "That keeps the walkthrough moving into the next product step."
+    if normalize(previous_line) == normalize(line):
+        return "That keeps the walkthrough moving into the next product step."
+    if repeated_launch_phrase(line):
+        return strip_repeated_launch_phrase(line)
+    return line
+
+
+def clean_click_target(target: str) -> str:
+    cleaned = " ".join(target.split()).strip().rstrip(".")
+    lowered = cleaned.lower()
+    if lowered.startswith("click "):
+        return cleaned[6:].strip()
+    if lowered.startswith("choose "):
+        return cleaned[7:].strip()
+    return cleaned
+
+
+def premium_selection_target(target: str) -> str:
+    cleaned = " ".join(target.split()).strip().rstrip(".")
+    lowered = cleaned.lower()
+    if lowered.startswith("the "):
+        cleaned = cleaned[4:].strip()
+        lowered = cleaned.lower()
+    if lowered.endswith(" course"):
+        cleaned = cleaned[:-7].strip()
+    return cleaned or "the next course"
 
 
 def normalize(text: str) -> str:
     return " ".join((text or "").lower().split()).strip().rstrip(".")
 
-
-def synced_captions(scene: EditPlanScene, spoken_line: str) -> list[EditPlanCaption]:
-    if not scene.show_captions:
-        return []
-    text = compact_caption(spoken_line)
-    if not text:
-        return []
-    if scene.captions:
-        first = scene.captions[0]
-        return [first.model_copy(update={"text": text, "start": round(scene.start, 2), "end": round(scene.end, 2)})]
-    return [EditPlanCaption(start=round(scene.start, 2), end=round(scene.end, 2), text=text, emphasis_words=[], variant="minimal")]
+def repeated_launch_phrase(text: str) -> bool:
+    lowered = normalize(text)
+    return "we are launching" in lowered and "we're launching" in lowered
 
 
-def compact_caption(text: str) -> str:
-    words = " ".join(text.split()).strip().split()
-    if not words:
-        return ""
-    if len(words) <= 6:
-        return " ".join(words)
-    midpoint = min(max(len(words) // 2, 3), 6)
-    first_line = " ".join(words[:midpoint])
-    second_line = " ".join(words[midpoint:])
-    return f"{first_line}\n{second_line}".strip()
+def strip_repeated_launch_phrase(text: str) -> str:
+    cleaned = " ".join(text.split()).strip()
+    duplicate = "We are launching"
+    if duplicate not in cleaned:
+        return cleaned
+    first, _, remainder = cleaned.partition(duplicate)
+    fallback = f"{first.strip().rstrip(',')}. {remainder.strip()}".replace("..", ".")
+    return " ".join(fallback.split()).strip()

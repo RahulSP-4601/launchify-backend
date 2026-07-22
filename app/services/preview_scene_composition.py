@@ -6,9 +6,9 @@ from textwrap import wrap
 
 from app.models.projects import EditPlanScene
 
-COMPOSITION_BG = "0x08131E"
-PANEL_BG = "0x102232"
-PANEL_BORDER = "0x5A7E96"
+COMPOSITION_BG = "0x04070B"
+PANEL_BG = "0x0A1118"
+PANEL_BORDER = "0x22303B"
 ACCENT = "0xFFD27A"
 TEXT_PRIMARY = "white"
 TEXT_SECONDARY = "0xB8C6CF"
@@ -55,13 +55,13 @@ def build_scene_composition(scene: EditPlanScene, stage: str) -> PreviewSceneCom
 def resolved_layout_mode(scene: EditPlanScene, stage: str) -> str:
     if "account" in scene.on_screen_text.lower() or "account" in scene.source_excerpt.lower():
         return "screen-only"
-    if scene.scene_role == "result":
-        return "dashboard-wide"
-    if stage == "establish":
-        return "feature-center"
     if scene.action_class in {"auth_action", "card_selection"}:
-        return "split-right"
-    return "feature-center"
+        return "screen-only"
+    if scene.scene_role == "result":
+        return "screen-only"
+    if stage == "establish":
+        return "screen-only"
+    return "dashboard-wide"
 
 
 def should_show_captions(layout_mode: str, stage: str) -> bool:
@@ -219,18 +219,8 @@ def centered_panel_pad_filter(
 
 
 def panel_filter(screen_x: int, screen_y: int, screen_w: int, screen_h: int) -> str:
-    outer_x = max(screen_x - 20, 0)
-    outer_y = max(screen_y - 20, 0)
-    outer_w = min(screen_w + 40, 4096)
-    outer_h = min(screen_h + 40, 4096)
-    return (
-        "drawbox="
-        f"x={outer_x}:y={outer_y}:w={outer_w}:h={outer_h}:"
-        f"color={PANEL_BG}@0.56:t=fill,"
-        "drawbox="
-        f"x={outer_x}:y={outer_y}:w={outer_w}:h={outer_h}:"
-        f"color={PANEL_BORDER}@0.52:t=2"
-    )
+    del screen_x, screen_y, screen_w, screen_h
+    return "eq=brightness=0.03:contrast=1.03:saturation=1.01"
 
 
 def text_filters(
@@ -332,9 +322,9 @@ def escaped_text(text: str) -> str:
 def layout_metrics(layout_mode: str, quality: str) -> LayoutMetrics:
     premium = quality == "final"
     if layout_mode == "split-right":
-        return LayoutMetrics(0.72, 0.78, 0.16, 0.11, 0.0, 0.0, 0.0, 0, 0, 0, 0, False)
+        return LayoutMetrics(0.94, 0.88, 0.0, 0.06, 0.0, 0.0, 0.0, 0, 0, 0, 0, False)
     if layout_mode == "screen-only":
-        return LayoutMetrics(0.9, 0.82, 0.0, 0.08, 0.0, 0.0, 0.0, 0, 0, 0, 0, False)
+        return LayoutMetrics(0.96, 0.9, 0.0, 0.05, 0.0, 0.0, 0.0, 0, 0, 0, 0, False)
     if layout_mode == "dashboard-wide":
-        return LayoutMetrics(0.92, 0.74, 0.0, 0.14, 0.0, 0.0, 0.0, 0, 0, 0, 0, False)
-    return LayoutMetrics(0.84, 0.78, 0.0, 0.1, 0.0, 0.0, 0.0, 0, 0, 0, 0, False)
+        return LayoutMetrics(0.95, 0.86, 0.0, 0.07, 0.0, 0.0, 0.0, 0, 0, 0, 0, False)
+    return LayoutMetrics(0.94, 0.86, 0.0, 0.07, 0.0, 0.0, 0.0, 0, 0, 0, 0, False)

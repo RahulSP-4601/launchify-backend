@@ -13,6 +13,8 @@ def caption_draw_filters(
     quality: str,
     working_dir: Path,
 ) -> list[str]:
+    if not scene.show_captions:
+        return []
     filters: list[str] = []
     for index, caption in enumerate(scene.captions, start=1):
         start = max(caption.start, clip_start) - clip_start

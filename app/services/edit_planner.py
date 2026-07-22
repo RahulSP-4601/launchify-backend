@@ -101,7 +101,9 @@ def generate_grounded_edit_plan(
             total_duration_seconds=total_duration,
         ),
     )
-    overridden_edit = apply_manual_overrides(edit_plan, normalized_overrides(project.manual_overrides))
+    editorial_edit = apply_editorial_direction(edit_plan, visual_analyses)
+    focus_stable_edit = smooth_focus_handoffs(editorial_edit)
+    overridden_edit = apply_manual_overrides(focus_stable_edit, normalized_overrides(project.manual_overrides))
     return finalized_edit_plan(project, overridden_edit)
 
 
@@ -152,7 +154,7 @@ def build_edit_scene(
         zooms=zooms,
         highlights=highlights,
     )
-    return direct_scene(planned_scene, visual_analysis)
+    return planned_scene
 
 
 def scene_action_class(
@@ -222,7 +224,7 @@ def build_grounded_scene(
         zooms=zooms,
         highlights=highlights,
     )
-    return direct_scene(planned_scene, visual_analysis)
+    return planned_scene
 
 
 def slice_transcript(

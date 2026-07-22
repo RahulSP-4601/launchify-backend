@@ -53,15 +53,15 @@ def duration_band(scene: EditPlanScene, context: FlowSceneContext) -> tuple[floa
     readability = max(scene.readable_hold_seconds, 0.8)
     if context.family == AUTH_FAMILY:
         if context.is_first:
-            return 8.8 + min(readability * 0.25, 0.8), 12.8
-        return 3.2, 5.6
+            return 7.0 + min(readability * 0.2, 0.6), 9.2
+        return 2.8, 4.4
     if context.family == SELECTION_FAMILY:
-        return (6.8 + min(readability * 0.25, 0.7), 11.2) if context.next_scene is not None else (5.2, 9.2)
+        return (5.2 + min(readability * 0.18, 0.5), 7.1) if context.next_scene is not None else (4.6, 6.6)
     if context.family == CONFIG_FAMILY:
-        return 3.8 + min(readability * 0.18, 0.5), 5.8
+        return 3.4 + min(readability * 0.16, 0.45), 5.2
     if scene.scene_role == "result":
-        return 2.8, 5.4
-    return 2.4, 6.8
+        return 2.6, 4.8
+    return 2.2, 5.8
 
 
 def scene_has_source_span(scene: EditPlanScene) -> bool:

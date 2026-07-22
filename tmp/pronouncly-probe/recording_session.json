@@ -15,7 +15,7 @@
     "grounded_event_ratio": "1.00",
     "result_grounding_ratio": "0.82",
     "branch_grounding_ratio": "0.73",
-    "timeline_coverage_ratio": "0.88",
+    "timeline_coverage_ratio": "0.92",
     "weak_label_ratio": "0.00",
     "low_confidence_ratio": "0.00",
     "auth_state_ratio": "0.50",
@@ -48,10 +48,10 @@
         "score": 0.64,
         "label": "Language learning that finally feels like a premium speaking coach.",
         "focus_box": {
-          "x": 0.88,
+          "x": 0.87,
           "y": 0.02,
           "width": 0.11,
-          "height": 0.04
+          "height": 0.05
         },
         "details": {}
       },
@@ -63,10 +63,25 @@
         "score": 0.7,
         "label": "Google Login",
         "focus_box": {
-          "x": 0.88,
+          "x": 0.87,
           "y": 0.02,
           "width": 0.11,
-          "height": 0.04
+          "height": 0.05
+        },
+        "details": {}
+      },
+      {
+        "timestamp": 12.21,
+        "scene_number": 1,
+        "source": "visual",
+        "signal_type": "click",
+        "score": 0.77,
+        "label": "Google Login",
+        "focus_box": {
+          "x": 0.87,
+          "y": 0.02,
+          "width": 0.11,
+          "height": 0.05
         },
         "details": {}
       },
@@ -78,10 +93,25 @@
         "score": 0.452,
         "label": "Google Login",
         "focus_box": {
-          "x": 0.88,
+          "x": 0.87,
           "y": 0.02,
           "width": 0.11,
-          "height": 0.04
+          "height": 0.05
+        },
+        "details": {}
+      },
+      {
+        "timestamp": 13.8,
+        "scene_number": 1,
+        "source": "visual",
+        "signal_type": "click",
+        "score": 0.72,
+        "label": "Google Login",
+        "focus_box": {
+          "x": 0.87,
+          "y": 0.02,
+          "width": 0.11,
+          "height": 0.05
         },
         "details": {}
       },
@@ -131,21 +161,6 @@
         "details": {}
       },
       {
-        "timestamp": 18.58,
-        "scene_number": 3,
-        "source": "visual",
-        "signal_type": "click",
-        "score": 0.77,
-        "label": "Create account",
-        "focus_box": {
-          "x": 0.58,
-          "y": 0.65,
-          "width": 0.35,
-          "height": 0.07
-        },
-        "details": {}
-      },
-      {
         "timestamp": 20.96,
         "scene_number": 3,
         "source": "visual",
@@ -153,9 +168,9 @@
         "score": 0.64,
         "label": "Create account",
         "focus_box": {
-          "x": 0.58,
+          "x": 0.65,
           "y": 0.45,
-          "width": 0.35,
+          "width": 0.3,
           "height": 0.25
         },
         "details": {}
@@ -165,32 +180,15 @@
         "scene_number": 3,
         "source": "visual",
         "signal_type": "click",
-        "score": 0.82,
-        "label": "Continue with Google",
+        "score": 0.77,
+        "label": "Sign up with Google",
         "focus_box": {
-          "x": 0.58,
-          "y": 0.65,
-          "width": 0.35,
+          "x": 0.65,
+          "y": 0.6,
+          "width": 0.3,
           "height": 0.07
         },
         "details": {}
-      },
-      {
-        "timestamp": 23.35,
-        "scene_number": 3,
-        "source": "visual",
-        "signal_type": "state_hint",
-        "score": 0.68,
-        "label": "Choose an account",
-        "focus_box": {
-          "x": 0.1,
-          "y": 0.1,
-          "width": 0.8,
-          "height": 0.8
-        },
-        "details": {
-          "structure": "picker"
-        }
       },
       {
         "timestamp": 23.35,
@@ -200,10 +198,42 @@
         "score": 0.7,
         "label": "Choose an account",
         "focus_box": {
-          "x": 0.1,
-          "y": 0.1,
-          "width": 0.8,
-          "height": 0.8
+          "x": 0.45,
+          "y": 0.4,
+          "width": 0.5,
+          "height": 0.55
+        },
+        "details": {}
+      },
+      {
+        "timestamp": 23.35,
+        "scene_number": 3,
+        "source": "visual",
+        "signal_type": "state_hint",
+        "score": 0.7,
+        "label": "Choose an account",
+        "focus_box": {
+          "x": 0.45,
+          "y": 0.4,
+          "width": 0.5,
+          "height": 0.55
+        },
+        "details": {
+          "structure": "picker"
+        }
+      },
+      {
+        "timestamp": 23.35,
+        "scene_number": 3,
+        "source": "visual",
+        "signal_type": "click",
+        "score": 0.87,
+        "label": "Choose an account",
+        "focus_box": {
+          "x": 0.45,
+          "y": 0.45,
+          "width": 0.4,
+          "height": 0.5
         },
         "details": {}
       },
@@ -217,7 +247,7 @@
         "focus_box": {
           "x": 0.05,
           "y": 0.15,
-          "width": 0.9,
+          "width": 0.4,
           "height": 0.7
         },
         "details": {
@@ -234,7 +264,7 @@
         "focus_box": {
           "x": 0.05,
           "y": 0.15,
-          "width": 0.9,
+          "width": 0.4,
           "height": 0.7
         },
         "details": {}
@@ -248,9 +278,9 @@
         "label": "Select a course",
         "focus_box": {
           "x": 0.05,
-          "y": 0.15,
+          "y": 0.3,
           "width": 0.9,
-          "height": 0.7
+          "height": 0.5
         },
         "details": {
           "structure": "dashboard"
@@ -262,12 +292,12 @@
         "source": "visual",
         "signal_type": "transition",
         "score": 0.7,
-        "label": "Select a course",
+        "label": "Japanese course",
         "focus_box": {
           "x": 0.05,
-          "y": 0.15,
+          "y": 0.3,
           "width": 0.9,
-          "height": 0.7
+          "height": 0.5
         },
         "details": {}
       },
@@ -293,9 +323,9 @@
         "label": "Japanese",
         "focus_box": {
           "x": 0.05,
-          "y": 0.4,
-          "width": 0.15,
-          "height": 0.3
+          "y": 0.65,
+          "width": 0.18,
+          "height": 0.1
         },
         "details": {}
       },
@@ -304,12 +334,12 @@
         "scene_number": 5,
         "source": "visual",
         "signal_type": "scene_presence",
-        "score": 0.6,
+        "score": 0.58,
         "label": "Japanese",
         "focus_box": {
           "x": 0.05,
           "y": 0.4,
-          "width": 0.15,
+          "width": 0.18,
           "height": 0.3
         },
         "details": {}
@@ -321,7 +351,12 @@
         "signal_type": "state_hint",
         "score": 0.64,
         "label": "Pick your Japanese level before you start learning.",
-        "focus_box": null,
+        "focus_box": {
+          "x": 0.05,
+          "y": 0.1,
+          "width": 0.9,
+          "height": 0.4
+        },
         "details": {
           "structure": "result"
         }
@@ -333,7 +368,12 @@
         "signal_type": "transition",
         "score": 0.7,
         "label": "Pick your Japanese level before you start learning.",
-        "focus_box": null,
+        "focus_box": {
+          "x": 0.05,
+          "y": 0.1,
+          "width": 0.9,
+          "height": 0.4
+        },
         "details": {}
       },
       {
@@ -345,9 +385,9 @@
         "label": "Pick your Japanese level before you start learning.",
         "focus_box": {
           "x": 0.05,
-          "y": 0.15,
+          "y": 0.3,
           "width": 0.9,
-          "height": 0.7
+          "height": 0.5
         },
         "details": {
           "structure": "result"
@@ -358,13 +398,13 @@
         "scene_number": 6,
         "source": "visual",
         "signal_type": "scene_presence",
-        "score": 0.54,
+        "score": 0.58,
         "label": "Pick your Japanese level before you start learning.",
         "focus_box": {
           "x": 0.05,
-          "y": 0.15,
+          "y": 0.3,
           "width": 0.9,
-          "height": 0.7
+          "height": 0.5
         },
         "details": {}
       }
@@ -380,10 +420,10 @@
         "screen_after": "auth_provider",
         "action_class": "auth_action",
         "focus_box": {
-          "x": 0.88,
-          "y": 0.02,
-          "width": 0.11,
-          "height": 0.04
+          "x": 0.05,
+          "y": 0.3,
+          "width": 0.5,
+          "height": 0.5
         },
         "confidence": 0.887,
         "confidence_breakdown": {
@@ -408,7 +448,7 @@
         "focus_box": {
           "x": 0.05,
           "y": 0.15,
-          "width": 0.9,
+          "width": 0.4,
           "height": 0.7
         },
         "confidence": 0.94,
@@ -433,9 +473,9 @@
         "action_class": "card_selection",
         "focus_box": {
           "x": 0.05,
-          "y": 0.15,
+          "y": 0.3,
           "width": 0.9,
-          "height": 0.7
+          "height": 0.5
         },
         "confidence": 0.868,
         "confidence_breakdown": {
@@ -459,9 +499,9 @@
         "action_class": "button_click",
         "focus_box": {
           "x": 0.05,
-          "y": 0.4,
-          "width": 0.15,
-          "height": 0.3
+          "y": 0.1,
+          "width": 0.9,
+          "height": 0.4
         },
         "confidence": 0.87,
         "confidence_breakdown": {
@@ -505,13 +545,13 @@
         "result_evidence": 0.83,
         "branch_evidence": 0.88,
         "transcript_evidence": 0.42,
-        "window_start": 21.55,
+        "window_start": 19.71,
         "window_end": 28.53,
-        "scene_start": 19.37,
+        "scene_start": 18.38,
         "scene_end": 29.75,
-        "support_window_start": 21.55,
+        "support_window_start": 19.71,
         "support_window_end": 28.53,
-        "support_scene_start": 19.37,
+        "support_scene_start": 18.38,
         "support_scene_end": 29.75,
         "support_count": 1.0,
         "status": "strong"
@@ -542,7 +582,7 @@
         "label": "Pick your Japanese level before you start learning.",
         "grounding_score": 0.78,
         "action_evidence": 1.0,
-        "result_evidence": 0.88,
+        "result_evidence": 0.87,
         "branch_evidence": 0.58,
         "transcript_evidence": 0.42,
         "window_start": 39.54,
@@ -563,8 +603,8 @@
     {
       "type": "click",
       "timestamp": 10.82,
-      "x": 2664.75,
-      "y": 62.08,
+      "x": 2636.25,
+      "y": 69.84,
       "value": "",
       "url": "",
       "title": "",
@@ -574,10 +614,10 @@
         "role": "control",
         "text": "Google Login",
         "href": "",
-        "bbox_x": 2508.0,
-        "bbox_y": 31.04,
-        "bbox_width": 313.5,
-        "bbox_height": 62.08
+        "bbox_x": 142.5,
+        "bbox_y": 465.6,
+        "bbox_width": 1425.0,
+        "bbox_height": 776.0
       },
       "metadata": {
         "inferred": "true",
@@ -609,7 +649,7 @@
     {
       "type": "click",
       "timestamp": 26.53,
-      "x": 1425.0,
+      "x": 712.5,
       "y": 776.0,
       "value": "",
       "url": "",
@@ -622,7 +662,7 @@
         "href": "",
         "bbox_x": 142.5,
         "bbox_y": 232.79999999999995,
-        "bbox_width": 2565.0,
+        "bbox_width": 1140.0,
         "bbox_height": 1086.4
       },
       "metadata": {
@@ -649,9 +689,9 @@
         "grounding_scene_end": "29.75",
         "grounding_status": "strong",
         "grounding_support_count": "1",
-        "grounding_support_window_start": "21.55",
+        "grounding_support_window_start": "19.71",
         "grounding_support_window_end": "28.53",
-        "grounding_support_scene_start": "19.37",
+        "grounding_support_scene_start": "18.38",
         "grounding_support_scene_end": "29.75"
       }
     },
@@ -659,7 +699,7 @@
       "type": "click",
       "timestamp": 29.55,
       "x": 1425.0,
-      "y": 776.0,
+      "y": 853.6,
       "value": "",
       "url": "",
       "title": "",
@@ -670,9 +710,9 @@
         "text": "Japanese",
         "href": "",
         "bbox_x": 142.5,
-        "bbox_y": 232.79999999999995,
+        "bbox_y": 465.6,
         "bbox_width": 2565.0,
-        "bbox_height": 1086.4
+        "bbox_height": 776.0
       },
       "metadata": {
         "inferred": "true",
@@ -702,8 +742,8 @@
     {
       "type": "focus",
       "timestamp": 41.54,
-      "x": 356.25,
-      "y": 853.6,
+      "x": 1425.0,
+      "y": 465.6,
       "value": "",
       "url": "",
       "title": "",
@@ -714,9 +754,9 @@
         "text": "Pick your Japanese level before you start learning.",
         "href": "",
         "bbox_x": 142.5,
-        "bbox_y": 620.8,
-        "bbox_width": 427.5,
-        "bbox_height": 465.6
+        "bbox_y": 155.20000000000005,
+        "bbox_width": 2565.0,
+        "bbox_height": 620.8
       },
       "metadata": {
         "inferred": "true",
@@ -734,7 +774,7 @@
         "scene_state": "result_state",
         "result_label": "Pick your Japanese level before you start learning.",
         "grounding_action_evidence": "1.00",
-        "grounding_result_evidence": "0.88",
+        "grounding_result_evidence": "0.87",
         "grounding_branch_evidence": "0.58",
         "grounding_transcript_evidence": "0.42",
         "grounding_score": "0.78",

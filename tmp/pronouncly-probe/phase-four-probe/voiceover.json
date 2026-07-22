@@ -3,33 +3,33 @@
   "model": "aura-2-thalia-en",
   "mode": "original",
   "status": "disabled",
-  "script": "We're launching Pronouncly and you can start by clicking Google Login to enter the product and begin the guided flow. Continue with Google to keep sign-in quick. From here, choose the Japanese course to continue deeper into the main product experience. Next, choose the Japanese level that matches the learner's starting point.",
+  "script": "This is Pronouncly. Start by clicking Google Login to enter the product and begin the guided flow. Continue with Google to sign in and move. From here, choose Japanese to continue into the main product flow. Next, choose the Japanese level that matches the learner's starting point.",
   "cues": [
     {
       "scene_number": 1,
       "start": 0.0,
-      "end": 9.25,
-      "text": "We're launching Pronouncly and you can start by clicking Google Login to enter the product and begin the guided flow.",
-      "duration_seconds": 9.25
+      "end": 8.52,
+      "text": "This is Pronouncly. Start by clicking Google Login to enter the product and begin the guided flow.",
+      "duration_seconds": 8.52
     },
     {
       "scene_number": 2,
-      "start": 9.25,
-      "end": 12.3,
-      "text": "Continue with Google to keep sign-in quick.",
-      "duration_seconds": 3.05
+      "start": 8.52,
+      "end": 11.79,
+      "text": "Continue with Google to sign in and move.",
+      "duration_seconds": 3.27
     },
     {
       "scene_number": 3,
-      "start": 12.3,
-      "end": 21.22,
-      "text": "From here, choose the Japanese course to continue deeper into the main product experience.",
-      "duration_seconds": 8.92
+      "start": 11.79,
+      "end": 18.89,
+      "text": "From here, choose Japanese to continue into the main product flow.",
+      "duration_seconds": 7.1
     },
     {
       "scene_number": 4,
-      "start": 21.22,
-      "end": 25.71,
+      "start": 18.89,
+      "end": 23.38,
       "text": "Next, choose the Japanese level that matches the learner's starting point.",
       "duration_seconds": 4.49
     }
@@ -38,25 +38,25 @@
     {
       "scene_number": 1,
       "start": 10.6,
-      "end": 19.85,
-      "text": "We're launching Pronouncly and you can start by clicking Google Login to enter the product and begin the guided flow.",
-      "duration_seconds": 9.25,
+      "end": 19.12,
+      "text": "This is Pronouncly. Start by clicking Google Login to enter the product and begin the guided flow.",
+      "duration_seconds": 8.52,
       "audio_storage_path": ""
     },
     {
       "scene_number": 2,
       "start": 26.31,
       "end": 29.36,
-      "text": "Continue with Google to keep sign-in quick.",
-      "duration_seconds": 3.05,
+      "text": "Continue with Google to sign in and move.",
+      "duration_seconds": 3.27,
       "audio_storage_path": ""
     },
     {
       "scene_number": 3,
       "start": 29.37,
-      "end": 38.29,
-      "text": "From here, choose the Japanese course to continue deeper into the main product experience.",
-      "duration_seconds": 8.92,
+      "end": 36.47,
+      "text": "From here, choose Japanese to continue into the main product flow.",
+      "duration_seconds": 7.1,
       "audio_storage_path": ""
     },
     {
@@ -69,5 +69,5 @@
     }
   ],
   "audio_storage_path": "",
-  "duration_seconds": 25.71
+  "duration_seconds": 23.38
 }
