@@ -26,6 +26,7 @@ def build_benchmark_report(
 ) -> BenchmarkReportRecord:
     voiceover = project.voiceover or None
     metrics = [
+        metric("plan_quality_score", plan_quality_score(edit_plan), "Overall health of the executable preview plan before rendered-output penalties are applied."),
         metric("anchor_coverage", anchor_coverage(edit_plan), "Share of scenes with anchored zoom or highlight."),
         metric("caption_balance", caption_balance(edit_plan), "Share of longer captions balanced into readable lines."),
         metric("motion_confidence", motion_confidence(edit_plan), "Average confidence of approved zoom moves."),
@@ -42,10 +43,18 @@ def build_benchmark_report(
     ]
     if voiceover is not None:
         metrics.append(metric("voiceover_flow", editorial_continuity_score(edit_plan, voiceover), "Whether voiceover lines remain concise and continuous across the full walkthrough."))
+    if project.preview_video is not None and project.preview_video.diagnostics is not None:
+        metrics.append(metric("preview_duration_alignment", preview_duration_alignment(project, edit_plan), "How closely the stored preview asset duration matches the executable preview plan duration."))
+        metrics.append(metric("rendered_preview_score", project.preview_video.diagnostics.rendered_preview_score, "Whether the rendered preview preserved motion, highlight, timing, and sync in the actual exported asset."))
+        metrics.append(metric("semantic_consistency", project.preview_video.diagnostics.semantic_consistency_score, "Whether rendered scenes still preserve coherent target, transition, and destination semantics."))
+        metrics.append(metric("voiceover_visual_sync", project.preview_video.diagnostics.voiceover_visual_sync_score, "Whether the spoken timing remains aligned to the actual rendered screen coverage."))
+        metrics.append(metric("motion_preserved", project.preview_video.diagnostics.motion_preserved_ratio, "How much intended motion survived the actual preview render."))
+        metrics.append(metric("highlight_preserved", project.preview_video.diagnostics.highlight_preserved_ratio, "How much intended highlight behavior survived the actual preview render."))
+        metrics.append(metric("fallback_penalty", max(0.0, 1.0 - project.preview_video.diagnostics.fallback_severity), "Penalty for destructive fallback profiles appearing in the published preview."))
     overall = round(sum(item.score for item in metrics) / max(len(metrics), 1) * 100)
     return BenchmarkReportRecord(
         overall_score=overall,
-        verdict=verdict(overall),
+        verdict=verdict(overall, project),
         metrics=metrics,
     )
 
@@ -145,9 +154,39 @@ def quality_gate_score(quality_report: QualityReportRecord) -> float:
     return min(1.0, quality_report.score / 100 + readiness_bonus)
 
 
-def verdict(overall_score: int) -> str:
+def plan_quality_score(edit_plan: EditPlanRecord) -> float:
+    measures = [
+        anchor_coverage(edit_plan),
+        caption_balance(edit_plan),
+        motion_confidence(edit_plan),
+        timing_sync_score(edit_plan),
+        continuity_score(edit_plan),
+        reference_style_score(edit_plan),
+    ]
+    return round(sum(measures) / len(measures), 3)
+
+
+def verdict(overall_score: int, project: ProjectRecord) -> str:
+    diagnostics = project.preview_video.diagnostics if project.preview_video is not None else None
+    if diagnostics is not None and (diagnostics.motion_preserved_ratio < 0.6 or diagnostics.highlight_preserved_ratio < 0.5):
+        return "Needs more tuning"
     if overall_score >= 88:
         return "Clueso-class candidate"
     if overall_score >= 76:
         return "Strong but still tuneable"
     return "Needs more tuning"
+
+
+def preview_duration_alignment(project: ProjectRecord, edit_plan: EditPlanRecord) -> float:
+    if project.preview_video is None:
+        return 1.0
+    expected = max(edit_plan.total_duration_seconds, 0.1)
+    actual = max(project.preview_video.duration_seconds, 0.1)
+    gap = abs(expected - actual)
+    if gap <= 0.4:
+        return 1.0
+    if gap <= 1.2:
+        return 0.82
+    if gap <= 2.4:
+        return 0.58
+    return 0.28

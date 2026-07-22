@@ -65,6 +65,13 @@ def grounded_synthetic_scene(step: GuideStepRecord, start: float, end: float) ->
 
 
 def grounded_action_class(step: GuideStepRecord, primary_event: SessionEventRecord | None) -> str:
+    if primary_event is not None and primary_event.type == "focus":
+        return classify_action(
+            "focus",
+            step.focus_label or step.on_screen_text or step.title,
+            step.narration,
+            step.source_excerpt,
+        )
     if primary_event is not None:
         return event_action_class(primary_event)
     return step.action_class or classify_action("click", step.focus_label or step.title, step.narration, step.source_excerpt)

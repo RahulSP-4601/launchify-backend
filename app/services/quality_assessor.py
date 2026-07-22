@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.models.projects import EditPlanRecord, EditPlanScene, IssueSeverity, ProjectRecord, QualityIssueRecord, QualityReportRecord
+from app.services.preview_execution_semantics import adjacent_scene_score, scene_consistency_score, semantic_consistency_score
 from app.services.reference_style_metrics import (
     composition_score,
     cursor_commitment_score,
@@ -22,6 +23,7 @@ def build_quality_report(project: ProjectRecord, edit_plan: EditPlanRecord) -> Q
         *highlight_issues(edit_plan),
         *timing_issues(edit_plan),
         *editorial_issues(edit_plan),
+        *semantic_validation_issues(edit_plan),
         *visual_intelligence_issues(edit_plan),
         *reference_style_issues(edit_plan),
         *transcript_issues(project, edit_plan),
@@ -102,6 +104,20 @@ def visual_intelligence_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRe
             issues.append(issue("weak-visual-decision", "medium", scene.scene_number, "Focus scene has no strong visual action left after refinement.", "Keep the scene static or improve cursor/click detection."))
         if scene.scene_role == "action" and scene.camera_mode == "static" and not scene.highlights and not setup_scene(scene):
             issues.append(issue("flat-action-scene", "low", scene.scene_number, "Action scene has no visual emphasis left.", "Recover a highlight or add a short anchored focus move for the action."))
+    return issues
+
+
+def semantic_validation_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRecord]:
+    issues: list[QualityIssueRecord] = []
+    ordered = sorted(edit_plan.scenes, key=lambda scene: (scene.start, scene.scene_number))
+    if semantic_consistency_score(ordered) < 0.66:
+        issues.append(issue("weak-semantic-grounding", "high", None, "Scene targets, outcomes, or cross-scene state continuity are still semantically weak.", "Repair target labels, result labels, and adjacent-scene state handoff before publishing."))
+    for scene in ordered:
+        if scene_consistency_score(scene) < 0.58:
+            issues.append(issue("scene-semantic-conflict", "medium", scene.scene_number, "This scene still has conflicting target, transition, or destination evidence.", "Downgrade claims, repair the target label, or hold on the real result state longer."))
+    for left, right in zip(ordered, ordered[1:]):
+        if adjacent_scene_score(left, right) < 0.54:
+            issues.append(issue("adjacent-scene-jump", "medium", right.scene_number, "This scene does not connect cleanly to the previous scene's destination state.", "Repair the state handoff or split the product flow into cleaner adjacent beats."))
     return issues
 
 

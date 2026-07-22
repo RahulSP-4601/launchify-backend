@@ -38,9 +38,9 @@ def infer_scene_transition(
     immediate = frame_fingerprint(analysis, best_immediate_frame(analysis, anchor))
     settled = frame_fingerprint(analysis, best_settled_frame(analysis, anchor, scene_end))
     before_label = friendly_label(before, fallback_label(scene))
-    resolved_state = settled if settled is not None else immediate
+    target_label = resolved_target_label(scene, action)
+    resolved_state = validated_resolved_state(scene, before, settled if settled is not None else immediate, target_label)
     after_label = friendly_label(resolved_state, before_label)
-    target_label = action.target_label if action is not None and action.target_label else fallback_target(scene)
     changed_state = normalize_label(before_label) != normalize_label(after_label)
     waiting_state = response_kind(before, immediate, settled, changed_state)
     confidence = transition_confidence(before, action, immediate, settled, changed_state, waiting_state)
@@ -75,18 +75,23 @@ def semantic_voice_line(scene: EditPlanScene) -> str:
     target = scene.action_target_label or scene.specific_target_label or scene.on_screen_text or scene.title
     after = scene.final_destination_label or scene.after_state_label
     before = scene.before_state_label
+    after_changed = bool(after and normalize_label(after) != normalize_label(before))
+    if scene.transition_confidence < 0.46:
+        return neutral_voice_line(scene, target, after)
     if scene.action_class == "auth_action":
         if response_state_kind(scene) == "waiting":
             return f"Use {compact_label(target)} to move through sign-in and into the product."
-        if after:
+        if after_changed:
             return f"Use {compact_label(target)} to move from {article_label(before)} into {article_label(after)}."
         return f"Use {compact_label(target)} to sign in and continue."
     if scene.action_class == "card_selection":
-        if after:
+        if after_changed:
             return f"Choose {compact_label(target)} so the flow lands on {article_label(after)}."
         return f"Choose {compact_label(target)} to continue into the learning flow."
     if scene.scene_role == "result" and after:
         return f"Hold on {article_label(after)} so the next step is easy to read."
+    if scene.action_class == "button_click" and not after_changed:
+        return neutral_voice_line(scene, target, after)
     if after and before and normalize_label(before) != normalize_label(after):
         return f"Move from {article_label(before)} into {article_label(after)}."
     return ""
@@ -162,6 +167,22 @@ def fallback_target(scene: LaunchScriptScene | EditPlanScene) -> str:
     return first_non_empty(getattr(scene, "specific_target_label", ""), getattr(scene, "on_screen_text", ""), getattr(scene, "title", ""), "the next step")
 
 
+def resolved_target_label(
+    scene: LaunchScriptScene | EditPlanScene,
+    action: StateFingerprint | None,
+) -> str:
+    event_target = action.target_label if action is not None else ""
+    specific = first_non_empty(getattr(scene, "specific_target_label", ""), getattr(scene, "on_screen_text", ""))
+    if getattr(scene, "action_class", "") == "card_selection":
+        if specific:
+            return specific
+    if event_target and concise_target(event_target):
+        return event_target
+    if specific and concise_target(specific):
+        return specific
+    return concise_target(fallback_target(scene)) or fallback_target(scene)
+
+
 def response_kind(
     before: StateFingerprint | None,
     immediate: StateFingerprint | None,
@@ -231,13 +252,68 @@ def destination_label(
 ) -> str:
     state = settled if settled is not None else immediate
     if state is not None and state.friendly_label.strip():
+        if destination_conflicts(scene, state, target_label):
+            return ""
         return state.friendly_label.strip()
     return first_non_empty(scene.on_screen_text, scene.purpose, target_label)
+
+
+def validated_resolved_state(
+    scene: LaunchScriptScene | EditPlanScene,
+    before: StateFingerprint | None,
+    candidate: StateFingerprint | None,
+    target_label: str,
+) -> StateFingerprint | None:
+    if candidate is None or not destination_conflicts(scene, candidate, target_label):
+        return candidate
+    return before
+
+
+def destination_conflicts(
+    scene: LaunchScriptScene | EditPlanScene,
+    state: StateFingerprint,
+    target_label: str,
+) -> bool:
+    label = normalize_label(state.friendly_label)
+    scene_text = normalize_label(" ".join(
+        part for part in (
+            getattr(scene, "specific_target_label", ""),
+            getattr(scene, "on_screen_text", ""),
+            getattr(scene, "title", ""),
+            getattr(scene, "purpose", ""),
+            target_label,
+        )
+        if part
+    ))
+    if getattr(scene, "action_class", "") == "card_selection" and any(token in label for token in ("account", "login", "sign in")):
+        return True
+    if "level" in scene_text and any(token in label for token in ("login", "account", "sign in")):
+        return True
+    return False
 
 
 def compact_label(value: str) -> str:
     cleaned = " ".join(value.split()).strip().rstrip(".")
     return cleaned[:72] or "the next step"
+
+
+def concise_target(value: str) -> str:
+    cleaned = compact_label(value)
+    if len(cleaned) > 48 or len(cleaned.split()) > 7:
+        return ""
+    return cleaned
+
+
+def neutral_voice_line(scene: EditPlanScene, target: str, after: str) -> str:
+    if scene.scene_role == "result" and after:
+        return f"Pause on {article_label(after)} so the state reads clearly."
+    if scene.action_class == "card_selection":
+        return f"Focus on {compact_label(target)} and let the next state settle."
+    if scene.action_class == "auth_action":
+        return f"Use {compact_label(target)} and let the sign-in flow resolve on screen."
+    if after:
+        return f"Focus on {compact_label(target)} as the screen settles into {article_label(after)}."
+    return f"Focus on {compact_label(target)} as this step resolves."
 
 
 def article_label(value: str) -> str:

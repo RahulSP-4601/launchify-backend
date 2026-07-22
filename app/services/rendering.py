@@ -26,10 +26,12 @@ from app.services.render_payloads import build_render_payload, total_render_dura
 from app.services.render_preview_stage import (
     execute_preview_pipeline,
 )
-from app.services.render_proxy_preview import (
+from app.services.preview_proxy_persistence import (
     persist_proxy_preview,
     persist_proxy_preview_after_final,
     persist_proxy_preview_on_failure,
+)
+from app.services.render_proxy_preview import (
     prepare_proxy_preview,
 )
 from app.services.render_runtime_helpers import (

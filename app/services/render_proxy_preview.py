@@ -8,8 +8,10 @@ from typing import Callable, Literal
 
 from app.core.config import get_settings
 from app.models.projects import EditPlanScene, FocusBox, ProjectRecord, RenderedVideoRecord, VoiceoverMode
+from app.services.preview_clip_renderer import render_clip_segment_with_fallback
 from app.services.preview_manifest import PreviewManifest, PreviewManifestClip, build_preview_manifest
-from app.services.preview_render_guard import render_profiles, validate_rendered_clip, validate_rendered_preview
+from app.services.preview_render_report import ProxyPreviewRenderReport, RenderedClipSegment
+from app.services.preview_render_guard import render_profiles, validate_rendered_preview
 from app.services.preview_scene_composition import composition_filters
 from app.services.preview_text_overlays import caption_draw_filters
 from app.services.render_focus_effects import rebased_highlight_box, scene_crop_plan, spotlight_filters
@@ -28,22 +30,22 @@ def prepare_proxy_preview(
     voiceover_audio: Path | None = None,
     heartbeat: Heartbeat | None = None,
     quality: ExportQuality = "preview",
-) -> None:
+) -> ProxyPreviewRenderReport:
     voiceover_mode = resolved_voiceover_mode(project, voiceover_audio)
     manifest = build_preview_manifest(project, voiceover_mode, quality)
     log_preview_manifest(project, manifest, voiceover_mode, voiceover_audio)
     if not manifest.clips:
         render_passthrough_video(project, source_video, output_path, voiceover_audio, heartbeat, quality)
-        return
+        return ProxyPreviewRenderReport(manifest=manifest, selected_profile="passthrough", rendered_clips=[])
     last_error: RuntimeError | None = None
     for profile_name, candidate in render_profiles(manifest, quality):
         try:
             logger.info("Preview profile start for project %s: profile=%s, clips=%s.", project.id, profile_name, len(candidate.clips))
-            render_highlight_reel(project, source_video, output_path, candidate.clips, voiceover_audio, heartbeat, quality)
+            rendered_clips = render_highlight_reel(project, source_video, output_path, candidate.clips, voiceover_audio, heartbeat, quality)
             validation_error = validate_rendered_preview(candidate, output_path, voiceover_mode, voiceover_audio)
             if validation_error is None:
                 logger.info("Preview profile selected for project %s: profile=%s.", project.id, profile_name)
-                return
+                return ProxyPreviewRenderReport(manifest=candidate, selected_profile=profile_name, rendered_clips=rendered_clips)
             logger.warning("Preview validation failed for project %s: profile=%s, reason=%s.", project.id, profile_name, validation_error)
         except RuntimeError as exc:
             last_error = exc
@@ -58,11 +60,12 @@ def render_highlight_reel(
     voiceover_audio: Path | None,
     heartbeat: Heartbeat | None,
     quality: ExportQuality,
-) -> None:
+) -> list[RenderedClipSegment]:
     has_audio = source_has_audio(source_video)
     try:
-        render_sequential_reel(project, source_video, output_path, clips, has_audio, voiceover_audio, heartbeat, quality)
+        rendered_clips = render_sequential_reel(project, source_video, output_path, clips, has_audio, voiceover_audio, heartbeat, quality)
         logger.info("Preview render succeeded for project %s: rendered_clips=%s, voiceover_mode=%s.", project.id, len(clips), resolved_voiceover_mode(project, voiceover_audio))
+        return rendered_clips
     except FileNotFoundError as exc:
         raise RuntimeError("FFmpeg is required for proxy highlight rendering. Configure FFMPEG_BINARY in the backend env.") from exc
     except (subprocess.CalledProcessError, TimeoutError) as exc:
@@ -129,14 +132,16 @@ def render_sequential_reel(
     voiceover_audio: Path | None,
     heartbeat: Heartbeat | None,
     quality: ExportQuality,
-) -> None:
+) -> list[RenderedClipSegment]:
     deadline = time.monotonic() + get_settings().render_timeout_seconds
     voiceover_mode = resolved_voiceover_mode(project, voiceover_audio)
     render_audio = has_audio and voiceover_mode != "voiceover"
-    clip_paths = render_clip_segments(source_video, clips, render_audio, quality, output_path.parent, heartbeat, deadline)
+    rendered_clips = render_clip_segments(source_video, clips, render_audio, quality, output_path.parent, heartbeat, deadline)
+    clip_paths = [segment.path for segment in rendered_clips]
     joined_output = output_path.parent / "preview-joined.mp4"
     concat_clip_segments(clip_paths, joined_output, heartbeat, deadline)
     finalize_preview_audio(project, joined_output, output_path, has_audio, voiceover_audio, voiceover_mode, heartbeat, deadline)
+    return rendered_clips
 def build_passthrough_command(
     project: ProjectRecord,
     source_video: Path,
@@ -191,18 +196,24 @@ def render_clip_segments(
     working_dir: Path,
     heartbeat: Heartbeat | None,
     deadline: float,
-) -> list[Path]:
-    clip_paths: list[Path] = []
+) -> list[RenderedClipSegment]:
+    clip_paths: list[RenderedClipSegment] = []
     for index, clip in enumerate(clips):
-        clip_path = working_dir / f"clip-{index:02d}.mp4"
-        command = build_clip_command(source_video, clip, clip_path, render_audio, quality, working_dir)
-        run_process_with_heartbeat(command, timeout_seconds=remaining_timeout_seconds(deadline), heartbeat=heartbeat)
-        validation_error = validate_rendered_clip(clip, clip_path)
-        if validation_error is not None:
-            if validation_error == "empty_clip" and index == len(clips) - 1 and clip.stage == "settle":
-                logger.warning("Skipping empty trailing clip: scene=%s, stage=%s.", clip.scene.scene_number, clip.stage); continue
-            raise RuntimeError(f"clip_guard_failed:{index}:{validation_error}")
-        logger.info("Preview clip rendered: scene=%s, stage=%s, expected_duration=%.2f, output_duration=%.2f, motion=%s, spotlight=%s, freeze_frame=%s.", clip.scene.scene_number, clip.stage, clip.duration_seconds, output_duration_seconds(clip_path, fallback=clip.duration_seconds), clip.animated_crop, clip.spotlight, clip.freeze_frame)
+        clip_path = render_clip_segment_with_fallback(
+            source_video,
+            clip,
+            index,
+            render_audio,
+            quality,
+            working_dir,
+            heartbeat,
+            deadline,
+            len(clips),
+            build_clip_command,
+            remaining_timeout_seconds,
+        )
+        if clip_path is None:
+            continue
         clip_paths.append(clip_path)
     return clip_paths
 def build_clip_command(
@@ -446,42 +457,3 @@ def scheduled_voiceover_duration(project: ProjectRecord, voiceover_mode: Voiceov
     clip_end = max((clip.end for clip in voiceover.clips if clip.audio_storage_path), default=0.0)
     cue_end = max((cue.end for cue in voiceover.cues), default=0.0)
     return round(max(voiceover.duration_seconds, clip_end, cue_end), 2)
-def persist_proxy_preview(
-    user_id: str,
-    project: ProjectRecord,
-    preview_output: Path,
-    heartbeat: Heartbeat | None,
-    preview_ready: PreviewReady | None,
-    upload_preview: UploadPreview,
-) -> RenderedVideoRecord:
-    preview_video = upload_preview(user_id, project, preview_output, heartbeat)
-    if preview_ready is not None:
-        preview_ready(preview_video)
-    if heartbeat is not None:
-        heartbeat()
-    return preview_video
-def persist_proxy_preview_after_final(
-    user_id: str,
-    project: ProjectRecord,
-    preview_output: Path,
-    heartbeat: Heartbeat | None,
-    preview_ready: PreviewReady | None,
-    upload_preview: UploadPreview,
-) -> RenderedVideoRecord | None:
-    try:
-        return persist_proxy_preview(user_id, project, preview_output, heartbeat, preview_ready, upload_preview)
-    except Exception:
-        logger.exception("Proxy preview upload failed after final render succeeded for project %s.", project.id)
-        return None
-def persist_proxy_preview_on_failure(
-    user_id: str,
-    project: ProjectRecord,
-    preview_output: Path,
-    heartbeat: Heartbeat | None,
-    preview_ready: PreviewReady | None,
-    upload_preview: UploadPreview,
-) -> None:
-    try:
-        persist_proxy_preview(user_id, project, preview_output, heartbeat, preview_ready, upload_preview)
-    except Exception:
-        logger.exception("Proxy preview upload failed while preserving a render failure for project %s.", project.id)

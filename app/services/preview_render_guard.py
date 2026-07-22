@@ -18,11 +18,22 @@ def render_profiles(manifest: PreviewManifest, quality: str) -> list[tuple[Rende
     profiles: list[tuple[RenderProfile, PreviewManifest]] = [("balanced", manifest)]
     if quality != "preview":
         return profiles
+    profiles.append(("no_spotlight", degrade_manifest(manifest, disable_spotlight=True)))
     profiles.append(("no_motion", degrade_manifest(manifest, disable_motion=True)))
-    profiles.append(("no_spotlight", degrade_manifest(manifest, disable_motion=True, disable_spotlight=True)))
-    profiles.append(("simple_crop", degrade_manifest(manifest, disable_motion=True, disable_spotlight=True, simple_crop=True)))
+    profiles.append(("simple_crop", degrade_manifest(manifest, disable_motion=True, simple_crop=True)))
     profiles.append(("static_frame", degrade_manifest(manifest, disable_motion=True, disable_spotlight=True, simple_crop=True, freeze_frame=True)))
     return profiles
+
+
+def clip_render_variants(clip: PreviewManifestClip, quality: str) -> list[tuple[RenderProfile, PreviewManifestClip]]:
+    variants: list[tuple[RenderProfile, PreviewManifestClip]] = [("balanced", clip)]
+    if quality != "preview":
+        return variants
+    variants.append(("no_spotlight", degraded_clip(clip, False, True, False, False)))
+    variants.append(("no_motion", degraded_clip(clip, True, False, False, False)))
+    variants.append(("simple_crop", degraded_clip(clip, True, False, True, False)))
+    variants.append(("static_frame", degraded_clip(clip, True, True, True, True)))
+    return variants
 
 
 def validate_rendered_preview(

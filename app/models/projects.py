@@ -346,6 +346,22 @@ class EditPlanRecord(BaseModel):
     render_spec: RenderSpecRecord
 
 
+class RenderDiagnosticsRecord(BaseModel):
+    selected_profile: str = ""
+    motion_preserved_ratio: float = Field(ge=0.0, le=1.0, default=1.0)
+    highlight_preserved_ratio: float = Field(ge=0.0, le=1.0, default=1.0)
+    freeze_frame_ratio: float = Field(ge=0.0, le=1.0, default=0.0)
+    audio_truncation_seconds: float = Field(ge=0.0, default=0.0)
+    semantic_consistency_score: float = Field(ge=0.0, le=1.0, default=1.0)
+    voiceover_visual_sync_score: float = Field(ge=0.0, le=1.0, default=1.0)
+    fallback_severity: float = Field(ge=0.0, le=1.0, default=0.0)
+    rendered_preview_score: float = Field(ge=0.0, le=1.0, default=1.0)
+    total_clips: int = 0
+    degraded_clips: int = 0
+    validation_passed: bool = True
+    issues: list[str] = Field(default_factory=list)
+
+
 class RenderedVideoRecord(BaseModel):
     filename: str
     content_type: str
@@ -353,6 +369,7 @@ class RenderedVideoRecord(BaseModel):
     storage_path: str
     duration_seconds: float
     variant: Literal["preview", "final"]
+    diagnostics: RenderDiagnosticsRecord | None = None
 
 
 class ProjectRecord(BaseModel):

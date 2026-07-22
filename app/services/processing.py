@@ -11,10 +11,12 @@ from app.models.projects import (
     LaunchScriptRecord,
     ProcessingJobRecord,
     ProjectRecord,
+    RenderedVideoRecord,
     TranscriptSegment,
     VisualSceneAnalysisRecord,
 )
 from app.services.edit_planner import generate_edit_plan
+from app.services.benchmarking import build_benchmark_report
 from app.services.grounded_script_refinement import refine_launch_script_with_events, refine_launch_script_with_visuals
 from app.services.guide_synthesizer import synthesize_grounded_guide
 from app.services.inference_step_builder import build_inference_script
@@ -22,6 +24,7 @@ from app.services.inferred_recording_session import infer_recording_session
 from app.services.job_store import job_store
 from app.services.phase_four import apply_phase_four_defaults
 from app.services.playback_preview import publish_grounded_preview
+from app.services.preview_execution import build_preview_execution_project
 from app.services.preview_delivery import preview_delivery_diagnostics
 from app.services.project_store import StaleProjectAssetError, project_store
 from app.services.script_writer import combine_transcript, generate_launch_script
@@ -319,9 +322,31 @@ def save_planning_step(
 
 def save_render_step(job: ProcessingJobRecord, _asset_file: Path) -> None:
     project = require_project(job.user_id, job.project_id)
+    execution_project = build_preview_execution_project(project, "preview")
+    if execution_project.edit_plan is not None and execution_project.edit_plan != project.edit_plan:
+        project_store.save_refined_edit_plan(job.user_id, job.project_id, execution_project.edit_plan, asset_path=job.asset_path)
+    if (
+        execution_project.edit_plan is not None
+        and execution_project.voiceover is not None
+        and execution_project.voiceover != project.voiceover
+        and project.quality_report is not None
+        and execution_project.template_config is not None
+        and execution_project.manual_overrides is not None
+    ):
+        project_store.save_phase_four_state(
+            job.user_id,
+            job.project_id,
+            project.quality_report,
+            build_benchmark_report(execution_project, execution_project.edit_plan, project.quality_report),
+            execution_project.voiceover,
+            execution_project.template_config,
+            execution_project.manual_overrides,
+            asset_path=job.asset_path,
+        )
     logger.info("Publishing grounded preview render for project %s.", job.project_id)
-    preview_video = publish_grounded_preview(job.user_id, project, _asset_file, heartbeat=lambda: job_store.heartbeat(job.id))
+    preview_video = publish_grounded_preview(job.user_id, execution_project, _asset_file, heartbeat=lambda: job_store.heartbeat(job.id))
     project_store.save_render_outputs(job.user_id, job.project_id, preview_video, asset_path=job.asset_path)
+    persist_rendered_preview_truth(job, execution_project, preview_video)
     pipeline_log(
         job.project_id,
         "preview_stored",
@@ -332,6 +357,32 @@ def save_render_step(job: ProcessingJobRecord, _asset_file: Path) -> None:
     )
     job_store.mark_completed(job.id)
     logger.info("Walkthrough preview completed for project %s.", job.project_id)
+
+
+def persist_rendered_preview_truth(
+    job: ProcessingJobRecord,
+    execution_project: ProjectRecord,
+    preview_video: RenderedVideoRecord,
+) -> None:
+    if (
+        execution_project.edit_plan is None
+        or execution_project.voiceover is None
+        or execution_project.quality_report is None
+        or execution_project.template_config is None
+        or execution_project.manual_overrides is None
+    ):
+        return
+    rendered_project = execution_project.model_copy(update={"preview_video": preview_video})
+    project_store.save_phase_four_state(
+        job.user_id,
+        job.project_id,
+        execution_project.quality_report,
+        build_benchmark_report(rendered_project, execution_project.edit_plan, execution_project.quality_report),
+        execution_project.voiceover,
+        execution_project.template_config,
+        execution_project.manual_overrides,
+        asset_path=job.asset_path,
+    )
 
 
 def require_project(user_id: str, project_id: str) -> ProjectRecord:
