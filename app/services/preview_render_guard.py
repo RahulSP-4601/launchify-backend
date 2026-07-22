@@ -84,16 +84,19 @@ def narrated_scene_without_source_coverage(clip: PreviewManifestClip) -> bool:
 def scene_voiceover_outlives_visual(clips: list[PreviewManifestClip]) -> bool:
     coverage_by_scene: dict[int, float] = {}
     voiceover_by_scene: dict[int, float] = {}
+    scene_fit_by_scene: dict[int, bool] = {}
     for clip in clips:
         scene_number = clip.scene.scene_number
         coverage_by_scene[scene_number] = round(coverage_by_scene.get(scene_number, 0.0) + clip.duration_seconds, 2)
+        scene_fit_by_scene[scene_number] = scene_fit_by_scene.get(scene_number, False) or clip.has_voiceover_fit
         if clip.voiceover_segment is not None:
             voiceover_by_scene[scene_number] = max(
                 voiceover_by_scene.get(scene_number, 0.0),
                 clip.voiceover_segment.duration_seconds,
             )
     return any(
-        voiceover_duration > coverage_by_scene.get(scene_number, 0.0) + 0.45
+        not scene_fit_by_scene.get(scene_number, False)
+        and voiceover_duration > coverage_by_scene.get(scene_number, 0.0) + 0.45
         for scene_number, voiceover_duration in voiceover_by_scene.items()
     )
 
