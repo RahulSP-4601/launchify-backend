@@ -1,7 +1,7 @@
 {
   "title": "Getting Started with Pronouncly",
-  "summary": "This guide walks you through logging into Pronouncly, selecting the Japanese course, and preparing to start learning by choosing your proficiency level.",
-  "source": "Captured session from Pronouncly Phase 4 Probe",
+  "summary": "This guide walks you through logging into Pronouncly, selecting the Japanese course, and choosing your proficiency level to begin learning.",
+  "source": "Captured action clusters and transcript from Pronouncly Phase 4 Probe video.",
   "steps": [
     {
       "step_index": 1,
@@ -91,11 +91,11 @@
     }
   ],
   "generation_notes": [
-    "Followed the exact order of events as per timestamps.",
-    "Merged repetitive transcript content into concise steps.",
-    "Used only actions and UI elements present in the event log.",
-    "Kept narration clear and professional for internal QA audience.",
-    "On-screen text is concise and premium in tone.",
+    "Followed the chronological order of events without reordering.",
+    "Merged transcript and action clusters to create clear, concise steps.",
+    "Kept narration and on-screen text premium and concise.",
+    "Used only UI elements and actions present in the event log.",
+    "Ensured each step includes start and end timestamps as provided.",
     "Grounded step timing was expanded into continuous walkthrough ranges anchored to captured actions."
   ]
 }

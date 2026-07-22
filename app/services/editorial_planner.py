@@ -3,11 +3,21 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.models.projects import EditPlanHighlight, EditPlanRecord, EditPlanScene, EditPlanZoom, FocusBox, VisualSceneAnalysisRecord
+from app.services.editorial_zoom_support import (
+    default_screen_zoom,
+    editorial_zoom_hold_ratio,
+    editorial_zoom_scale,
+    editorial_zoom_smoothing,
+    editorial_zoom_window,
+    premium_hold_ratio,
+    premium_reason,
+    premium_smoothing,
+    premium_zoom_scale,
+    premium_zoom_window,
+)
 from app.services.focus_tracking import tracked_focus_box
 
 SCREEN_ONLY_LAYOUTS = {"screen-only", "dashboard-wide"}
-
-
 @dataclass(frozen=True)
 class EditorialBeatPlan:
     establish_end: float
@@ -24,8 +34,6 @@ def apply_editorial_direction(
     analyses_by_scene = {analysis.scene_number: analysis for analysis in visual_analyses or []}
     scenes = [direct_scene(scene, analyses_by_scene.get(scene.scene_number)) for scene in edit_plan.scenes]
     return edit_plan.model_copy(update={"scenes": scenes})
-
-
 def direct_scene(
     scene: EditPlanScene,
     visual_analysis: VisualSceneAnalysisRecord | None,
@@ -81,8 +89,6 @@ def infer_layout_mode(
     if scene.scene_role == "result":
         return "dashboard-wide"
     return "feature-center"
-
-
 def stable_result_anchor(
     scene: EditPlanScene,
     visual_analysis: VisualSceneAnalysisRecord | None,
@@ -183,23 +189,22 @@ def polished_spoken_line(scene: EditPlanScene, layout_mode: str) -> str:
 
 def calibrated_zooms(scene: EditPlanScene, layout_mode: str, beats: EditorialBeatPlan, focus_box: FocusBox | None) -> list[EditPlanZoom]:
     if layout_mode == "screen-only":
-        return subtle_screen_zoom(scene, beats, focus_box, scene.zooms[:1])
+        return subtle_screen_zoom(scene, beats, focus_box, scene.zooms)
     if not scene.zooms:
         return seeded_dynamic_zooms(scene, layout_mode, beats, focus_box)
     tuned: list[EditPlanZoom] = []
     action_peak_scale, settle_scale = zoom_profile(scene, layout_mode)
-    for index, zoom in enumerate(scene.zooms[:2]):
-        target_scale = action_peak_scale if index == 0 else settle_scale
-        start = max(scene.start, beats.focus_start if zoom.start <= beats.focus_start else zoom.start)
-        end = min(scene.end, max(zoom.end, beats.focus_end if index == 0 else beats.settle_end))
+    for index, zoom in enumerate(scene.zooms):
+        target_scale = editorial_zoom_scale(index, action_peak_scale, settle_scale)
+        start, end = editorial_zoom_window(scene, beats, zoom, index)
         tuned.append(
             zoom.model_copy(
                 update={
-                    "start": round(start, 2),
-                    "end": round(end, 2),
+                    "start": start,
+                    "end": end,
                     "scale": softened_editorial_scale(zoom.scale, target_scale),
-                    "smoothing": max(zoom.smoothing, 0.16 if scene.action_class == "card_selection" else 0.14),
-                    "hold_ratio": max(zoom.hold_ratio, 0.76 if scene.action_class == "card_selection" else 0.72),
+                    "smoothing": editorial_zoom_smoothing(scene, index, zoom.smoothing),
+                    "hold_ratio": editorial_zoom_hold_ratio(scene, index, zoom.hold_ratio),
                     "focus_box": focus_box or zoom.focus_box,
                 }
             )
@@ -217,34 +222,27 @@ def premium_action_zoom(
 ) -> list[EditPlanZoom]:
     if not tuned:
         return []
-    primary = tuned[0]
     focus_end = round(min(scene.end, max(beats.focus_end, beats.focus_start + 0.96)), 2)
     settle_end = round(min(scene.end, max(beats.settle_end, focus_end + 0.72)), 2)
     peak_scale = 1.13 if scene.action_class == "auth_action" else 1.1
     settle_scale = 1.09 if scene.action_class == "auth_action" else 1.06
-    return [
-        primary.model_copy(
-            update={
-                "start": round(beats.focus_start, 2),
-                "end": focus_end,
-                "scale": max(primary.scale, peak_scale),
-                "hold_ratio": max(primary.hold_ratio, 0.86),
-                "smoothing": max(primary.smoothing, 0.24),
-                "focus_box": focus_box or primary.focus_box,
-            }
-        ),
-        primary.model_copy(
-            update={
-                "start": focus_end,
-                "end": settle_end,
-                "scale": settle_scale,
-                "hold_ratio": 0.9,
-                "smoothing": 0.26,
-                "reason": "editorial settle hold",
-                "focus_box": focus_box or primary.focus_box,
-            }
-        ),
-    ]
+    premium: list[EditPlanZoom] = []
+    for index, zoom in enumerate(tuned):
+        start, end = premium_zoom_window(index, len(tuned), scene, beats, focus_end, settle_end, zoom)
+        premium.append(
+            zoom.model_copy(
+                update={
+                    "start": start,
+                    "end": end,
+                    "scale": premium_zoom_scale(index, zoom.scale, peak_scale, settle_scale),
+                    "hold_ratio": premium_hold_ratio(index, zoom.hold_ratio),
+                    "smoothing": premium_smoothing(index, zoom.smoothing),
+                    "reason": premium_reason(index, zoom.reason),
+                    "focus_box": focus_box or zoom.focus_box,
+                }
+            )
+        )
+    return premium
 
 
 def softened_editorial_scale(current_scale: float, target_scale: float) -> float:
@@ -253,29 +251,38 @@ def softened_editorial_scale(current_scale: float, target_scale: float) -> float
     return round(min(target_scale, max(1.0, current_scale + 0.02)), 2)
 
 
+
+
 def calibrated_highlights(scene: EditPlanScene, layout_mode: str, beats: EditorialBeatPlan, focus_box: FocusBox | None) -> list[EditPlanHighlight]:
     if layout_mode in SCREEN_ONLY_LAYOUTS:
-        return screen_only_highlights(scene, beats, focus_box)
+        return screen_only_highlights(scene, beats, focus_box, scene.highlights)
     if scene.scene_role == "result":
         return []
-    highlights = scene.highlights[:1]
+    highlights = scene.highlights
     if not highlights and focus_box is not None:
         return [seeded_highlight(scene, beats, focus_box)]
     return [retimed_highlight(highlight, scene, beats, focus_box) for highlight in highlights]
 
 
-def screen_only_highlights(scene: EditPlanScene, beats: EditorialBeatPlan, focus_box: FocusBox | None) -> list[EditPlanHighlight]:
+def screen_only_highlights(
+    scene: EditPlanScene,
+    beats: EditorialBeatPlan,
+    focus_box: FocusBox | None,
+    existing: list[EditPlanHighlight],
+) -> list[EditPlanHighlight]:
     if focus_box is None or not is_screen_guided_action(scene):
         return []
-    return [
-        build_highlight(
-            scene,
-            round(beats.focus_start, 2),
-            round(min(beats.settle_end, beats.focus_start + highlight_duration_seconds(scene)), 2),
-            0.82,
-            focus_box,
-        )
-    ]
+    if not existing:
+        return [
+            build_highlight(
+                scene,
+                round(beats.focus_start, 2),
+                round(min(beats.settle_end, beats.focus_start + highlight_duration_seconds(scene)), 2),
+                0.82,
+                focus_box,
+            )
+        ]
+    return [retimed_highlight(highlight, scene, beats, focus_box) for highlight in existing]
 
 
 def seeded_highlight(scene: EditPlanScene, beats: EditorialBeatPlan, focus_box: FocusBox) -> EditPlanHighlight:
@@ -423,31 +430,23 @@ def subtle_screen_zoom(
 ) -> list[EditPlanZoom]:
     if focus_box is None or not is_screen_guided_action(scene):
         return []
-    base = existing[0] if existing else EditPlanZoom(
-        start=scene.start,
-        end=scene.end,
-        scale=1.0,
-        focus_region="center",
-        reason="editorial setup focus",
-        confidence=0.78,
-        focus_box=focus_box,
-        x_offset=0.0,
-        y_offset=0.0,
-        hold_ratio=0.82,
-        smoothing=0.18,
-    )
-    return [
-        base.model_copy(
-            update={
-                "start": round(beats.focus_start, 2),
-                "end": round(min(scene.end, max(beats.focus_end, beats.focus_start + 0.86)), 2),
-                "scale": screen_action_scale(scene),
-                "focus_box": focus_box,
-                "hold_ratio": max(base.hold_ratio, 0.86),
-                "smoothing": max(base.smoothing, 0.22),
-            }
+    zooms = existing or [default_screen_zoom(scene, focus_box)]
+    refined: list[EditPlanZoom] = []
+    for index, zoom in enumerate(zooms):
+        start, end = editorial_zoom_window(scene, beats, zoom, index)
+        refined.append(
+            zoom.model_copy(
+                update={
+                    "start": start,
+                    "end": end,
+                    "scale": softened_editorial_scale(zoom.scale, editorial_zoom_scale(index, screen_action_scale(scene), max(1.03, screen_action_scale(scene) - 0.04))),
+                    "focus_box": focus_box,
+                    "hold_ratio": max(zoom.hold_ratio, 0.86 if index == 0 else 0.9),
+                    "smoothing": max(zoom.smoothing, 0.22 if index == 0 else 0.24),
+                }
+            )
         )
-    ]
+    return refined
 
 
 def screen_action_scale(scene: EditPlanScene) -> float:

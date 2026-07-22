@@ -30,8 +30,8 @@ def grounded_scene(
     grounded = scene.model_copy(
         update={
             "action_timestamp": action_time,
-            "zooms": synced_zooms(scene, action_time),
-            "highlights": synced_highlights(scene, action_time),
+            "zooms": synced_zooms(scene, None, action_time, scene.result_anchor_timestamp),
+            "highlights": synced_highlights(scene, None, action_time, scene.result_anchor_timestamp),
             "decision_summary": grounded_decision_summary(scene.decision_summary, event),
         }
     )

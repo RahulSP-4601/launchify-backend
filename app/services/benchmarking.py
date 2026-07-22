@@ -9,6 +9,13 @@ from app.models.projects import (
 )
 from app.services.editorial_flow import scene_contexts
 from app.services.preview_delivery import editorial_continuity_score, editorial_pacing_score
+from app.services.reference_style_metrics import (
+    cursor_commitment_score,
+    highlight_continuity_score,
+    reference_style_score,
+    result_readability_score,
+    zoom_choreography_score,
+)
 from app.services.walkthrough_guardrails import guide_is_under_grounded, recording_duration_seconds
 
 
@@ -25,6 +32,10 @@ def build_benchmark_report(
         metric("timing_sync", timing_sync_score(edit_plan), "Share of focus scenes with detected action timing."),
         metric("pacing_balance", editorial_pacing_score(edit_plan), "Whether scene durations stay readable without collapsing meaningful product moments."),
         metric("narrative_continuity", continuity_score(edit_plan), "Whether adjacent scenes preserve a clean action-to-result walkthrough arc."),
+        metric("reference_style", reference_style_score(edit_plan), "How closely the edit plan matches premium reference-style action choreography and readability."),
+        metric("cursor_commitment", cursor_commitment_metric(edit_plan), "Whether cursor-led scenes visibly approach before they commit to the action."),
+        metric("highlight_finesse", highlight_finesse_metric(edit_plan), "Whether highlights feel persistent and elegant instead of abrupt or decorative."),
+        metric("result_readability", result_readability_metric(edit_plan), "Whether important post-action states remain on screen long enough to read cleanly."),
         metric("grounding_health", grounding_health(project), "Whether the walkthrough structure is sufficiently grounded for the source duration."),
         metric("review_debt", review_debt_score(project), "How much unresolved manual review debt is still present."),
         metric("quality_gate", quality_gate_score(quality_report), "Quality-report readiness after review and refinement."),
@@ -93,6 +104,27 @@ def continuity_score(edit_plan: EditPlanRecord) -> float:
             score += 0.08
         scores.append(min(score, 1.0))
     return sum(scores) / max(len(scores), 1)
+
+
+def cursor_commitment_metric(edit_plan: EditPlanRecord) -> float:
+    action_scenes = [scene for scene in edit_plan.scenes if scene.scene_role == "action"]
+    if not action_scenes:
+        return 1.0
+    return sum(cursor_commitment_score(scene) for scene in action_scenes) / len(action_scenes)
+
+
+def highlight_finesse_metric(edit_plan: EditPlanRecord) -> float:
+    focus_scenes = [scene for scene in edit_plan.scenes if scene.camera_mode == "focus"]
+    if not focus_scenes:
+        return 1.0
+    return sum(highlight_continuity_score(scene) * 0.58 + zoom_choreography_score(scene) * 0.42 for scene in focus_scenes) / len(focus_scenes)
+
+
+def result_readability_metric(edit_plan: EditPlanRecord) -> float:
+    candidate_scenes = [scene for scene in edit_plan.scenes if scene.scene_role != "explanation"]
+    if not candidate_scenes:
+        return 1.0
+    return sum(result_readability_score(scene) for scene in candidate_scenes) / len(candidate_scenes)
 
 
 def review_debt_score(project: ProjectRecord) -> float:

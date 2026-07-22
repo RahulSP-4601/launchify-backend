@@ -52,17 +52,17 @@ def beat_aligned_zooms(scene: EditPlanScene) -> list[EditPlanZoom]:
     focus_start = scene.focus_start_timestamp or scene.start
     focus_end = scene.focus_end_timestamp or scene.end
     settle_end = scene.settle_end_timestamp or scene.end
+    windows = zoom_windows(scene, focus_start, focus_end, settle_end)
     refined: list[EditPlanZoom] = []
-    for index, zoom in enumerate(scene.zooms[:2]):
-        start = max(scene.start, focus_start if index == 0 else focus_end)
-        end = min(scene.end, max(focus_end if index == 0 else settle_end, start + 0.46))
+    for index, zoom in enumerate(scene.zooms):
+        start, end = windows[min(index, len(windows) - 1)]
         refined.append(
             zoom.model_copy(
                 update={
-                    "start": round(start, 2),
-                    "end": round(end, 2),
-                    "hold_ratio": max(zoom.hold_ratio, 0.74 if index == 0 else 0.82),
-                    "smoothing": max(zoom.smoothing, 0.16),
+                    "start": start,
+                    "end": end,
+                    "hold_ratio": zoom_hold_ratio(index, zoom.hold_ratio),
+                    "smoothing": zoom_smoothing(index, zoom.smoothing),
                 }
             )
         )
@@ -75,7 +75,7 @@ def beat_aligned_highlights(scene: EditPlanScene) -> list[EditPlanHighlight]:
     focus_start = scene.focus_start_timestamp or scene.start
     focus_end = scene.focus_end_timestamp or scene.end
     refined: list[EditPlanHighlight] = []
-    for highlight in scene.highlights[:1]:
+    for highlight in scene.highlights:
         start = max(scene.start, min(highlight.start, focus_start))
         end = min(scene.end, max(highlight.end, focus_end))
         refined.append(
@@ -224,6 +224,54 @@ def softened_neighbor_zooms(zooms: list[EditPlanZoom]) -> list[EditPlanZoom]:
             )
         )
     return softened
+
+
+def zoom_windows(
+    scene: EditPlanScene,
+    focus_start: float,
+    focus_end: float,
+    settle_end: float,
+) -> list[tuple[float, float]]:
+    if len(scene.zooms) <= 1:
+        return [safe_zoom_window(scene, focus_start, settle_end)]
+    if len(scene.zooms) == 2:
+        return [
+            safe_zoom_window(scene, focus_start, focus_end),
+            safe_zoom_window(scene, focus_end, settle_end),
+        ]
+    anchors = [
+        round(scene.start, 2),
+        round(max(scene.start, min(focus_start, focus_end - 0.24)), 2),
+        round(focus_end, 2),
+        round(settle_end, 2),
+        round(scene.end, 2),
+    ]
+    windows = [
+        (anchors[0], anchors[1]),
+        (anchors[1], anchors[2]),
+        (anchors[2], anchors[3]),
+        (anchors[3], anchors[4]),
+    ]
+    return [safe_zoom_window(scene, start, end) for start, end in windows]
+
+
+def safe_zoom_window(scene: EditPlanScene, start: float, end: float) -> tuple[float, float]:
+    bounded_start = max(scene.start, start)
+    bounded_end = min(scene.end, max(end, bounded_start + 0.46))
+    return round(bounded_start, 2), round(bounded_end, 2)
+
+
+def zoom_hold_ratio(index: int, current: float) -> float:
+    if index == 0:
+        return max(current, 0.74)
+    if index == 1:
+        return max(current, 0.82)
+    return max(current, 0.88)
+
+
+def zoom_smoothing(index: int, current: float) -> float:
+    baseline = 0.16 if index <= 1 else 0.2
+    return max(current, baseline)
 
 
 def softened_neighbor_highlights(highlights: list[EditPlanHighlight]) -> list[EditPlanHighlight]:

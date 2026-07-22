@@ -1,6 +1,14 @@
 {
-  "score": 100,
-  "summary": "The edit plan cleared the Phase 4 quality checks and is ready for export.",
-  "issues": [],
+  "score": 90,
+  "summary": "The output is strong, but a few refinements would improve polish.",
+  "issues": [
+    {
+      "code": "weak-cursor-commitment",
+      "severity": "medium",
+      "scene_number": 4,
+      "message": "Cursor-led intent is not clearly established before the action fires.",
+      "suggestion": "Recover more cursor-led approach timing before the committed interaction."
+    }
+  ],
   "ready_for_export": true
 }

@@ -10,7 +10,7 @@ from app.services.timing import timed_stage
 
 
 def preview_render_quality(settings: Settings) -> Literal["preview", "final"]:
-    if settings.preview_render_mode == "styled" and settings.fast_pipeline_enabled:
+    if settings.fast_pipeline_enabled:
         return "final"
     return "preview"
 

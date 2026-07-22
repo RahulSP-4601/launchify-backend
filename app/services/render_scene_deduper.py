@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from app.models.projects import EditPlanScene
+from app.services.editorial_transition_signals import preserve_scene_separation
 
 
 def prune_redundant_render_scenes(scenes: list[EditPlanScene]) -> list[EditPlanScene]:
@@ -15,6 +16,8 @@ def prune_redundant_render_scenes(scenes: list[EditPlanScene]) -> list[EditPlanS
 
 def redundant_followup(left: EditPlanScene, right: EditPlanScene) -> bool:
     if right.start - left.end > 5.4:
+        return False
+    if preserve_scene_separation(left, right):
         return False
     if not same_render_family(left, right):
         return False

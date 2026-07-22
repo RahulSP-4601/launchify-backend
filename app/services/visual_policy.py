@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from app.models.projects import FocusBox, LaunchScriptScene, SceneRole, TranscriptSegment, VisualSceneAnalysisRecord
+from app.services.editorial_targeting import ActionEnvelope, EditorialTargetDecision, build_action_envelope, resolve_editorial_target
 
 TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
 ACTION_KEYWORDS = (
@@ -88,6 +89,8 @@ class PolicyEvidence:
     anchor_box: FocusBox | None
     target_label: str
     visual_summary: str
+    completeness_score: float
+    target_score: float
 
 
 def build_scene_policy(
@@ -97,8 +100,10 @@ def build_scene_policy(
     *,
     scene_role: SceneRole = "action",
     action_class: str = "generic_action",
+    editorial_target: EditorialTargetDecision | None = None,
+    action_envelope: ActionEnvelope | None = None,
 ) -> ScenePolicy:
-    evidence = gather_evidence(scene, transcript, visual_analysis)
+    evidence = gather_evidence(scene, transcript, visual_analysis, editorial_target, action_envelope)
     scene_confidence, zoom_confidence, highlight_confidence = confidence_scores(evidence)
     should_zoom = decide_zoom(evidence, zoom_confidence, scene_role, action_class)
     should_highlight = decide_highlight(evidence, should_zoom, highlight_confidence, scene_role)
@@ -140,6 +145,8 @@ def confidence_scores(evidence: PolicyEvidence) -> tuple[float, float, float]:
         (evidence.duration_score, 0.12),
         (evidence.label_score, 0.08),
         (evidence.ocr_match_score, 0.04),
+        (evidence.completeness_score, 0.08),
+        (evidence.target_score, 0.1),
     )
     zoom_confidence = weighted_average(
         (evidence.visual_confidence, 0.24),
@@ -148,6 +155,7 @@ def confidence_scores(evidence: PolicyEvidence) -> tuple[float, float, float]:
         (evidence.cursor_path_confidence, 0.16),
         (evidence.frame_diff_score, 0.12),
         (evidence.motion_score, 0.12),
+        (evidence.target_score, 0.08),
     )
     highlight_confidence = weighted_average(
         (evidence.visual_confidence, 0.22),
@@ -157,6 +165,7 @@ def confidence_scores(evidence: PolicyEvidence) -> tuple[float, float, float]:
         (evidence.label_score, 0.16),
         (evidence.cursor_path_confidence, 0.06),
         (evidence.specificity_score, 0.06),
+        (evidence.target_score, 0.12),
     )
     return scene_confidence, zoom_confidence, highlight_confidence
 
@@ -165,9 +174,15 @@ def gather_evidence(
     scene: LaunchScriptScene,
     transcript: list[TranscriptSegment],
     visual_analysis: VisualSceneAnalysisRecord | None,
+    editorial_target: EditorialTargetDecision | None = None,
+    action_envelope: ActionEnvelope | None = None,
 ) -> PolicyEvidence:
     scene_text = joined_text(scene.purpose, scene.spoken_line, scene.on_screen_text, scene.source_excerpt)
     transcript_text = " ".join(segment.text for segment in transcript)
+    target = editorial_target or resolve_editorial_target(scene, transcript, visual_analysis)
+    envelope = action_envelope or build_action_envelope(scene, transcript, visual_analysis, target)
+    focus_box = target.focus_box if target is not None else compact_box(visual_analysis.primary_focus_box if visual_analysis else None)
+    anchor_box = focus_box or compact_box(visual_analysis.anchor_box if visual_analysis else None)
     focus_region, focus_confidence = infer_focus_region(scene, visual_analysis)
     return PolicyEvidence(
         action_score=keyword_density(scene_text, ACTION_KEYWORDS),
@@ -184,12 +199,14 @@ def gather_evidence(
         cursor_path_confidence=visual_analysis.cursor_path_confidence if visual_analysis else 0.0,
         ocr_match_score=ocr_match_score(scene_text, visual_analysis),
         ocr_confidence=visual_analysis.ocr_confidence if visual_analysis else 0.0,
-        focus_box=visual_analysis.primary_focus_box if visual_analysis else None,
-        cursor_box=visual_analysis.cursor_box if visual_analysis else None,
-        click_target_box=visual_analysis.click_target_box if visual_analysis else None,
-        anchor_box=visual_analysis.anchor_box if visual_analysis else None,
-        target_label=best_label(visual_analysis),
+        focus_box=focus_box,
+        cursor_box=compact_box(visual_analysis.cursor_box) if visual_analysis else None,
+        click_target_box=focus_box or (compact_box(visual_analysis.click_target_box) if visual_analysis else None),
+        anchor_box=anchor_box,
+        target_label=(target.label if target is not None else best_label(visual_analysis)),
         visual_summary=scene_visual_summary(visual_analysis),
+        completeness_score=envelope.completeness_score,
+        target_score=target.score if target is not None else 0.0,
     )
 
 
@@ -354,7 +371,7 @@ def build_decision_summary(
     return (
         f"{motion} because transcript alignment is {scene_confidence:.2f}, "
         f"visual confidence is {evidence.visual_confidence:.2f}, cursor path confidence is {evidence.cursor_path_confidence:.2f}, "
-        f"zoom confidence is {zoom_confidence:.2f}, {marker}, and the strongest focus region is {evidence.focus_region}."
+        f"zoom confidence is {zoom_confidence:.2f}, completeness is {evidence.completeness_score:.2f}, {marker}, and the strongest focus region is {evidence.focus_region}."
     )
 
 
@@ -403,6 +420,23 @@ def compact_target(evidence: PolicyEvidence) -> bool:
     if evidence.anchor_box is None:
         return False
     return box_area(evidence.anchor_box) <= 0.08
+
+
+def compact_box(box: FocusBox | None) -> FocusBox | None:
+    if box is None:
+        return None
+    if box_area(box) <= 0.18:
+        return box
+    width = min(max(box.width * 0.42, 0.1), 0.26)
+    height = min(max(box.height * 0.34, 0.08), 0.22)
+    center_x = box.x + box.width / 2
+    center_y = box.y + box.height / 2
+    return FocusBox(
+        x=round(min(max(center_x - width / 2, 0.0), 1.0 - width), 4),
+        y=round(min(max(center_y - height / 2, 0.0), 1.0 - height), 4),
+        width=round(width, 4),
+        height=round(height, 4),
+    )
 
 
 def box_area(box: FocusBox) -> float:

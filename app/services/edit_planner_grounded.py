@@ -16,6 +16,7 @@ from app.models.projects import (
 )
 from app.services.action_classifier import classify_action, event_action_class
 from app.services.caption_designer import build_caption_track
+from app.services.editorial_targeting import ActionEnvelope, build_action_envelope, resolve_editorial_target
 from app.services.event_grounding import focus_box_for_event, normalize_event_timestamp, primary_event_for_window, region_for_box
 from app.services.grounded_motion_support import apply_grounded_focus, focus_box_area, grounded_event_focus_box
 from app.services.inferred_recording_support import normalize_label
@@ -91,10 +92,20 @@ def grounded_motion_assets(
     end: float,
     visual_analysis: VisualSceneAnalysisRecord | None,
     primary_event: SessionEventRecord | None,
-) -> tuple[ScenePolicy, list[EditPlanCaption], list[EditPlanZoom], list[EditPlanHighlight]]:
+) -> tuple[ScenePolicy, list[EditPlanCaption], list[EditPlanZoom], list[EditPlanHighlight], ActionEnvelope]:
     action_class = grounded_action_class(step, primary_event)
     scene_role = scene_role_from_action_class(action_class)
-    policy = build_scene_policy(synthetic_scene, transcript_slice, visual_analysis, scene_role=scene_role, action_class=action_class)
+    target = resolve_editorial_target(synthetic_scene, transcript_slice, visual_analysis)
+    envelope = build_action_envelope(synthetic_scene, transcript_slice, visual_analysis, target, start_time=start, end_time=end)
+    policy = build_scene_policy(
+        synthetic_scene,
+        transcript_slice,
+        visual_analysis,
+        scene_role=scene_role,
+        action_class=action_class,
+        editorial_target=target,
+        action_envelope=envelope,
+    )
     policy = grounded_policy(policy, project, step, primary_event, scene_role)
     captions = build_caption_track(
         transcript_slice or [TranscriptSegment(start=start, end=end, text=step.narration)],
@@ -103,7 +114,7 @@ def grounded_motion_assets(
         project.template_config,
     )
     zooms, highlights = build_motion_track(synthetic_scene, start, end, policy, project.template_config)
-    return policy, captions, *apply_grounded_focus(project, step, primary_event, zooms, highlights)
+    return policy, captions, *apply_grounded_focus(project, step, primary_event, zooms, highlights), envelope
 
 
 def grounded_policy(

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Mapping
 
 from app.models.projects import EditPlanHighlight, EditPlanScene, EditPlanZoom, ProjectRecord
+from app.services.editorial_transition_signals import requires_stateful_split
 from app.services.preview_scene_timing import retime_scene_clips
 from app.services.scene_intent_resolver import split_clauses
 from app.services.voiceover_pacing import fit_voice_line
@@ -98,6 +99,8 @@ def requires_scene_split(scene: EditPlanScene, voiceover: object | None, clips: 
     total_duration = clip_seconds(clips)
     if total_duration < MIN_SPLITTABLE_DURATION_SECONDS:
         return False
+    if requires_stateful_split(scene):
+        return True
     text = " ".join(
         part.strip()
         for part in (

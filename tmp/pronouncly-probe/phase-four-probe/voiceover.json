@@ -3,7 +3,7 @@
   "model": "aura-2-thalia-en",
   "mode": "original",
   "status": "disabled",
-  "script": "We are launching Pronouncly. To get started, go to the top right and click Google Login. From there, new users can create an account, while returning users can log in with an existing one. If you already have an account, continue with Google to enter the workspace. After sign-in, the dashboard shows five courses. Japanese is ready to start while the other paths are still marked coming soon, so choose Japanese to enter the live learning flow. Choose the Japanese level so the lesson path starts at the right level.",
+  "script": "We are launching Pronouncly. To get started, go to the top right and click Google Login. From there, new users can create an account, while returning users can log in with an existing one. Log in with the existing account. After sign-in, the dashboard shows five courses. Japanese is ready to start while the other paths are still marked coming soon, so choose Japanese to enter the live learning flow. Choose the Japanese level so the lesson path starts at the right level.",
   "cues": [
     {
       "scene_number": 1,
@@ -15,21 +15,21 @@
     {
       "scene_number": 2,
       "start": 10.8,
-      "end": 16.6,
-      "text": "If you already have an account, continue with Google to enter the workspace.",
-      "duration_seconds": 5.8
+      "end": 15.0,
+      "text": "Log in with the existing account.",
+      "duration_seconds": 4.2
     },
     {
       "scene_number": 3,
-      "start": 16.6,
-      "end": 28.0,
+      "start": 15.0,
+      "end": 26.4,
       "text": "After sign-in, the dashboard shows five courses. Japanese is ready to start while the other paths are still marked coming soon, so choose Japanese to enter the live learning flow.",
       "duration_seconds": 11.4
     },
     {
       "scene_number": 4,
-      "start": 28.0,
-      "end": 35.1,
+      "start": 26.4,
+      "end": 33.5,
       "text": "Choose the Japanese level so the lesson path starts at the right level.",
       "duration_seconds": 7.1
     }
@@ -46,9 +46,9 @@
     {
       "scene_number": 2,
       "start": 26.2,
-      "end": 32.0,
-      "text": "If you already have an account, continue with Google to enter the workspace.",
-      "duration_seconds": 5.8,
+      "end": 30.4,
+      "text": "Log in with the existing account.",
+      "duration_seconds": 4.2,
       "audio_storage_path": ""
     },
     {
@@ -69,5 +69,5 @@
     }
   ],
   "audio_storage_path": "",
-  "duration_seconds": 35.1
+  "duration_seconds": 33.5
 }

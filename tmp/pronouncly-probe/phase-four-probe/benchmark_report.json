@@ -1,5 +1,5 @@
 {
-  "overall_score": 97,
+  "overall_score": 94,
   "verdict": "Clueso-class candidate",
   "metrics": [
     {
@@ -31,6 +31,26 @@
       "name": "narrative_continuity",
       "score": 0.89,
       "detail": "Whether adjacent scenes preserve a clean action-to-result walkthrough arc."
+    },
+    {
+      "name": "reference_style",
+      "score": 0.87,
+      "detail": "How closely the edit plan matches premium reference-style action choreography and readability."
+    },
+    {
+      "name": "cursor_commitment",
+      "score": 0.78,
+      "detail": "Whether cursor-led scenes visibly approach before they commit to the action."
+    },
+    {
+      "name": "highlight_finesse",
+      "score": 0.81,
+      "detail": "Whether highlights feel persistent and elegant instead of abrupt or decorative."
+    },
+    {
+      "name": "result_readability",
+      "score": 1.0,
+      "detail": "Whether important post-action states remain on screen long enough to read cleanly."
     },
     {
       "name": "grounding_health",

@@ -163,7 +163,7 @@ def build_passthrough_command(
         "-preset",
         "veryfast",
         "-crf",
-        "20" if quality == "final" else "24",
+        quality_crf(quality),
         "-pix_fmt",
         "yuv420p",
         "-movflags",
@@ -178,7 +178,7 @@ def build_passthrough_command(
             "-map",
             "[aout]",
         ])
-        command.extend(["-c:a", "aac", "-b:a", "128k", "-ar", "48000"])
+        command.extend(["-c:a", "aac", "-b:a", audio_bitrate(quality), "-ac", "2", "-ar", "48000"])
     else:
         command.append("-an")
     command.append(str(output_path))
@@ -233,9 +233,9 @@ def build_clip_command(
         ";".join(filters),
         "-map", "[v0]", "-frames:v", str(frame_limit),
     ]
-    command.extend(["-threads", "1", "-t", str(clip_duration), "-c:v", "libx264", "-preset", "veryfast", "-crf", "20" if quality == "final" else "24", "-pix_fmt", "yuv420p", "-movflags", "+faststart"])
+    command.extend(["-threads", "1", "-t", str(clip_duration), "-c:v", "libx264", "-preset", "veryfast", "-crf", quality_crf(quality), "-pix_fmt", "yuv420p", "-movflags", "+faststart"])
     if render_audio:
-        command.extend(["-map", "[a0]", "-c:a", "aac", "-b:a", "128k", "-ar", "48000"])
+        command.extend(["-map", "[a0]", "-c:a", "aac", "-b:a", audio_bitrate(quality), "-ac", "2", "-ar", "48000"])
     else:
         command.append("-an")
     command.append(str(clip_path))
@@ -278,7 +278,7 @@ def finalize_preview_audio(
         joined_output.replace(output_path)
         return
     duration_seconds = output_duration_seconds(joined_output, fallback=require_duration(project))
-    command = [settings.ffmpeg_binary, "-y", "-i", str(joined_output), "-i", str(voiceover_audio), "-filter_complex", passthrough_audio_filter(has_audio, voiceover_mode, duration_seconds), "-map", "0:v:0", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", "-b:a", "128k", "-ar", "48000", "-movflags", "+faststart", str(output_path)]
+    command = [settings.ffmpeg_binary, "-y", "-i", str(joined_output), "-i", str(voiceover_audio), "-filter_complex", passthrough_audio_filter(has_audio, voiceover_mode, duration_seconds), "-map", "0:v:0", "-map", "[aout]", "-c:v", "copy", "-c:a", "aac", "-b:a", audio_bitrate("final"), "-ac", "2", "-ar", "48000", "-movflags", "+faststart", str(output_path)]
     run_process_with_heartbeat(command, timeout_seconds=remaining_timeout_seconds(deadline), heartbeat=heartbeat)
 def segment_filters(
     index: int,
@@ -400,18 +400,36 @@ def resolved_voiceover_mode(project: ProjectRecord, voiceover_audio: Path | None
 def passthrough_audio_filter(has_audio: bool, voiceover_mode: VoiceoverMode, duration_seconds: float) -> str:
     safe_duration = max(round(duration_seconds, 2), 0.1)
     if voiceover_mode == "voiceover":
-        return f"[1:a]atrim=start=0:end={safe_duration},asetpts=PTS-STARTPTS[aout]"
+        return polished_audio_chain("1:a", safe_duration, "aout")
     if voiceover_mode == "mixed" and has_audio:
         return (
-            f"[0:a]atrim=start=0:end={safe_duration},asetpts=PTS-STARTPTS[aorig];"
-            f"[1:a]atrim=start=0:end={safe_duration},asetpts=PTS-STARTPTS[avo];"
-            "[aorig][avo]amix=inputs=2:duration=longest:dropout_transition=0[aout]"
+            f"{polished_audio_chain('0:a', safe_duration, 'aorig')};"
+            f"{polished_audio_chain('1:a', safe_duration, 'avo')};"
+            "[aorig][avo]amix=inputs=2:duration=longest:dropout_transition=0,volume=1.6,loudnorm=I=-16:LRA=11:TP=-1.5[aout]"
         )
     if voiceover_mode == "mixed":
-        return f"[1:a]atrim=start=0:end={safe_duration},asetpts=PTS-STARTPTS[aout]"
+        return polished_audio_chain("1:a", safe_duration, "aout")
     if has_audio:
-        return f"[0:a]atrim=start=0:end={safe_duration},asetpts=PTS-STARTPTS[aout]"
+        return polished_audio_chain("0:a", safe_duration, "aout")
     return "anullsrc=channel_layout=stereo:sample_rate=48000[aout]"
+
+
+def polished_audio_chain(input_label: str, duration_seconds: float, output_label: str) -> str:
+    return (
+        f"[{input_label}]atrim=start=0:end={duration_seconds},asetpts=PTS-STARTPTS,"
+        "aformat=channel_layouts=stereo,"
+        "highpass=f=70,lowpass=f=14000,"
+        "volume=1.8,loudnorm=I=-16:LRA=11:TP=-1.5"
+        f"[{output_label}]"
+    )
+
+
+def quality_crf(quality: ExportQuality) -> str:
+    return "18" if quality == "final" else "20"
+
+
+def audio_bitrate(quality: ExportQuality) -> str:
+    return "192k" if quality == "final" else "160k"
 def source_duration_seconds(project: ProjectRecord, source_video: Path) -> float:
     fallback = 0.0
     if project.edit_plan is not None:

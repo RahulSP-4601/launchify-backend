@@ -153,7 +153,7 @@ def degraded_clip(
     scene = clip.scene.model_copy(
         update={
             "zooms": [] if disable_motion else clip.scene.zooms,
-            "highlights": [] if disable_spotlight else clip.scene.highlights[:1],
+            "highlights": [] if disable_spotlight else clip.scene.highlights[:4],
             "captions": clip.scene.captions[:1],
             "transition_style": "fade" if simple_crop else clip.scene.transition_style,
             "camera_mode": "static" if simple_crop else clip.scene.camera_mode,
@@ -163,7 +163,7 @@ def degraded_clip(
         clip,
         scene=scene,
         camera_keyframes=[] if disable_motion else clip.camera_keyframes,
-        highlight_events=[] if disable_spotlight else clip.highlight_events[:1],
+        highlight_events=[] if disable_spotlight else clip.highlight_events[:4],
         caption_events=clip.caption_events[:1],
         transition_in=PreviewTransition(style="fade", duration_seconds=min(clip.transition_in.duration_seconds, 0.18)) if simple_crop else clip.transition_in,
         transition_out=PreviewTransition(style="fade", duration_seconds=min(clip.transition_out.duration_seconds, 0.18)) if simple_crop else clip.transition_out,

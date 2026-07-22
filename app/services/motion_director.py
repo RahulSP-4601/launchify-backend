@@ -82,22 +82,22 @@ def multi_step_action_zoom(start: float, end: float, duration: float, policy: Sc
 
 
 def two_step_zoom(start: float, end: float, duration: float, policy: ScenePolicy, plan: MotionPlan) -> list[EditPlanZoom]:
-    first_start = round(start + duration * 0.08, 2)
-    second_start = round(start + duration * 0.46, 2)
+    first_start = round(start + duration * 0.06, 2)
+    second_start = round(start + duration * 0.42, 2)
     return [
-        zoom_record(first_start, second_start, policy, plan, 0.98, "ease-out", 0.93, 0.54),
-        zoom_record(second_start, min(end, second_start + duration * 0.36), policy, plan, 1.0, "ease-in-out", 0.91, 0.76),
+        zoom_record(first_start, second_start, policy, plan, 0.98, "ease-out", 0.94, 0.48),
+        zoom_record(second_start, min(end, second_start + duration * 0.4), policy, plan, 1.01, "ease-in-out", 0.92, 0.82),
     ]
 
 
 def three_step_zoom(start: float, end: float, duration: float, policy: ScenePolicy, plan: MotionPlan) -> list[EditPlanZoom]:
-    first = round(start + duration * 0.08, 2)
-    second = round(start + duration * 0.34, 2)
-    third = round(start + duration * 0.62, 2)
+    first = round(start + duration * 0.06, 2)
+    second = round(start + duration * 0.3, 2)
+    third = round(start + duration * 0.58, 2)
     return [
-        zoom_record(first, second, policy, plan, 0.98, "ease-out", 0.94, 0.46),
-        zoom_record(second, third, policy, plan, 1.0, "ease-in-out", 0.92, 0.66),
-        zoom_record(third, min(end, third + duration * 0.22), policy, plan, 1.02, "ease-in", 0.9, 0.78),
+        zoom_record(first, second, policy, plan, 0.98, "ease-out", 0.95, 0.42),
+        zoom_record(second, third, policy, plan, 1.0, "ease-in-out", 0.93, 0.62),
+        zoom_record(third, min(end, third + duration * 0.26), policy, plan, 1.02, "ease-in", 0.91, 0.82),
     ]
 
 
@@ -167,10 +167,14 @@ def highlight_window(start: float, end: float, policy: ScenePolicy) -> tuple[flo
         scene_role=policy.scene_role,
         action_class=policy.action_class,
     )
-    tightened_start = max(start, highlight_start - 0.06)
-    tightened_end = min(end, max(tightened_start + 0.52, highlight_end + 0.06))
+    tightened_start = max(start, highlight_start - 0.1)
+    tightened_end = min(end, max(tightened_start + 0.78, highlight_end + 0.22))
+    if policy.action_class in {"auth_action", "card_selection"}:
+        tightened_end = min(end, max(tightened_end, tightened_start + 1.16))
+    if policy.action_class in {"navigation", "tab_switch"}:
+        tightened_end = min(end, max(tightened_end, tightened_start + 0.96))
     if policy.scene_role != "action":
-        tightened_end = min(tightened_end, tightened_start + 0.68)
+        tightened_end = min(tightened_end, tightened_start + 0.82)
     return round(tightened_start, 2), round(tightened_end, 2)
 
 
@@ -222,9 +226,6 @@ def should_hold_static(policy: ScenePolicy, start: float, end: float) -> bool:
 
 
 def should_prefer_static_scene(policy: ScenePolicy) -> bool:
-    label = policy.target_label.lower()
-    if "choose an account" in label or "account chooser" in label or "account picker" in label:
-        return True
     return False
 
 
@@ -232,24 +233,24 @@ def should_skip_highlight(policy: ScenePolicy, focus_box: FocusBox | None) -> bo
     if focus_box is None:
         return policy.scene_role != "action"
     area = focus_box.width * focus_box.height
-    if area > 0.16:
+    if area > 0.2:
         return True
-    return policy.scene_role == "result" and area > 0.08
+    return policy.scene_role == "result" and area > 0.1
 
 
 def should_use_multi_step_zoom(policy: ScenePolicy, duration: float, plan: MotionPlan) -> bool:
     if policy.scene_role != "action":
         return False
-    if duration < 3.2:
+    if duration < 2.45:
         return False
     if plan.strength == "none":
         return False
     area = focus_area(policy)
-    if area > 0.2:
+    if area > 0.24:
         return False
     if policy.zoom_confidence < 0.7:
         return False
-    return policy.action_class in {"auth_action", "button_click", "card_selection", "navigation", "tab_switch"}
+    return policy.action_class in {"auth_action", "button_click", "card_selection", "navigation", "tab_switch", "focus"}
 
 
 def focus_area(policy: ScenePolicy) -> float:

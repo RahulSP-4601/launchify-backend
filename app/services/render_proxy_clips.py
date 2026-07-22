@@ -117,18 +117,14 @@ def walkthrough_clips(project: ProjectRecord) -> list[RenderClip]:
     previous_end = source_start
     for chapter in chapters:
         chapter_start, chapter_end = chapter_bounds(chapter, previous_end, source_start, source_end)
-        for index, scene in enumerate(chapter):
-            next_scene = chapter[index + 1] if index + 1 < len(chapter) else None
-            clip_start, clip_end = chapter_scene_bounds(scene, next_scene, chapter_start, chapter_end, previous_end, source_end)
-            if clip_end - clip_start < MIN_WALKTHROUGH_CLIP_SECONDS:
-                clip_end = min(source_end, max(clip_end, clip_start + MIN_WALKTHROUGH_CLIP_SECONDS))
-            if clip_end - clip_start < MIN_CLIP_DURATION_SECONDS:
-                continue
-            clips.append(RenderClip(scene=scene, start=round(clip_start, 2), end=round(clip_end, 2)))
-            previous_end = clip_end
+        chapter_clips = chapter_scene_clips(chapter, chapter_start, chapter_end, previous_end, source_end)
+        if not chapter_clips:
+            continue
+        clips.extend(chapter_clips)
+        previous_end = chapter_clips[-1].end
     if not clips:
         return contextual_highlight_clips(project)
-    return rebalance_walkthrough_coverage(clips, source_start, source_end)
+    return clips
 
 
 def grouped_chapters(scenes: list[EditPlanScene]) -> list[list[EditPlanScene]]:
@@ -170,21 +166,70 @@ def chapter_bounds(
     return start, max(end, start + MIN_WALKTHROUGH_CLIP_SECONDS)
 
 
-def chapter_scene_bounds(
-    scene: EditPlanScene,
-    next_scene: EditPlanScene | None,
+def chapter_scene_clips(
+    chapter: list[EditPlanScene],
     chapter_start: float,
     chapter_end: float,
     previous_end: float,
     source_end: float,
-) -> tuple[float, float]:
-    clip_start = chapter_start if scene.start <= chapter_start + 0.02 else max(previous_end, scene.start - scene_lead(scene))
-    if next_scene is None:
-        clip_end = chapter_end
-    else:
-        handoff_end = min(next_scene.start, scene.end + carried_scene_gap(scene, next_scene))
-        clip_end = min(source_end, max(scene.end, handoff_end))
-    return clip_start, max(clip_end, clip_start + MIN_WALKTHROUGH_CLIP_SECONDS)
+) -> list[RenderClip]:
+    if not chapter:
+        return []
+    chapter_start = max(chapter_start, previous_end)
+    available = max(min(chapter_end, source_end) - chapter_start, 0.0)
+    if available < MIN_CLIP_DURATION_SECONDS:
+        return []
+    durations = allocated_chapter_durations(chapter, available)
+    clips: list[RenderClip] = []
+    cursor = chapter_start
+    for index, scene in enumerate(chapter):
+        end = cursor + durations[index]
+        if index == len(chapter) - 1:
+            end = chapter_start + available
+        end = min(end, source_end)
+        if end - cursor < MIN_WALKTHROUGH_CLIP_SECONDS:
+            end = min(source_end, max(end, cursor + MIN_WALKTHROUGH_CLIP_SECONDS))
+        if end - cursor < MIN_CLIP_DURATION_SECONDS:
+            continue
+        clips.append(RenderClip(scene=scene, start=round(cursor, 2), end=round(end, 2)))
+        cursor = end
+    return clips
+
+
+def allocated_chapter_durations(
+    chapter: list[EditPlanScene],
+    available: float,
+) -> list[float]:
+    minimums = [MIN_WALKTHROUGH_CLIP_SECONDS] * len(chapter)
+    desired = [max(scene_target_seconds(scene), MIN_WALKTHROUGH_CLIP_SECONDS) for scene in chapter]
+    minimum_total = sum(minimums)
+    if available <= minimum_total:
+        base = available / max(len(chapter), 1)
+        return [base] * len(chapter)
+    remaining = available - minimum_total
+    desired_headroom = max(sum(desired) - minimum_total, 0.0)
+    if desired_headroom <= 0.0:
+        weights = [scene_weight(scene) for scene in chapter]
+        weight_total = sum(weights) or float(len(chapter))
+        return [minimum + (remaining * (weight / weight_total)) for minimum, weight in zip(minimums, weights)]
+    return [
+        minimum + (remaining * ((target - minimum) / desired_headroom))
+        for minimum, target in zip(minimums, desired)
+    ]
+
+
+def scene_target_seconds(scene: EditPlanScene) -> float:
+    target = scene.render_duration_seconds or (scene.end - scene.start)
+    floor = TARGET_RESULT_SCENE_SECONDS if scene.scene_role == "result" else TARGET_WALKTHROUGH_SCENE_SECONDS
+    return max(target, floor, MIN_WALKTHROUGH_CLIP_SECONDS)
+
+
+def scene_weight(scene: EditPlanScene) -> float:
+    if scene.scene_role == "result":
+        return 1.3
+    if scene.action_class in {"auth_action", "card_selection"}:
+        return 1.15
+    return 1.0
 
 
 def chapter_lead(scene: EditPlanScene) -> float:

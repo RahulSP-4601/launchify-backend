@@ -1,6 +1,6 @@
 {
   "hook": "Getting Started with Pronouncly",
-  "summary": "This guide walks you through logging into Pronouncly, selecting the Japanese course, and preparing to start learning by choosing your proficiency level.",
+  "summary": "This guide walks you through logging into Pronouncly, selecting the Japanese course, and choosing your proficiency level to begin learning.",
   "title_options": [
     "Getting Started with Pronouncly",
     "Getting Started with Pronouncly in minutes",
@@ -46,11 +46,11 @@
   ],
   "cta": "Turn rough recordings into polished launch videos.",
   "notes": [
-    "Followed the exact order of events as per timestamps.",
-    "Merged repetitive transcript content into concise steps.",
-    "Used only actions and UI elements present in the event log.",
-    "Kept narration clear and professional for internal QA audience.",
-    "On-screen text is concise and premium in tone.",
+    "Followed the chronological order of events without reordering.",
+    "Merged transcript and action clusters to create clear, concise steps.",
+    "Kept narration and on-screen text premium and concise.",
+    "Used only UI elements and actions present in the event log.",
+    "Ensured each step includes start and end timestamps as provided.",
     "Grounded step timing was expanded into continuous walkthrough ranges anchored to captured actions."
   ]
 }

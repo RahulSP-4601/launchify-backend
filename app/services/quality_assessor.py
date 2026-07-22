@@ -1,6 +1,14 @@
 from __future__ import annotations
 
 from app.models.projects import EditPlanRecord, EditPlanScene, IssueSeverity, ProjectRecord, QualityIssueRecord, QualityReportRecord
+from app.services.reference_style_metrics import (
+    cursor_commitment_score,
+    highlight_continuity_score,
+    reference_style_score,
+    result_readability_score,
+    scene_reference_score,
+    zoom_choreography_score,
+)
 from app.services.walkthrough_guardrails import guide_is_under_grounded, recording_duration_seconds, session_is_under_grounded
 
 
@@ -12,6 +20,7 @@ def build_quality_report(project: ProjectRecord, edit_plan: EditPlanRecord) -> Q
         *timing_issues(edit_plan),
         *editorial_issues(edit_plan),
         *visual_intelligence_issues(edit_plan),
+        *reference_style_issues(edit_plan),
         *transcript_issues(project, edit_plan),
         *grounding_issues(project),
         *manual_review_issues(project),
@@ -129,8 +138,49 @@ def timing_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRecord]:
     return issues
 
 
+def reference_style_issues(edit_plan: EditPlanRecord) -> list[QualityIssueRecord]:
+    issues: list[QualityIssueRecord] = []
+    overall = reference_style_score(edit_plan)
+    if overall < 0.72:
+        issues.append(
+            issue(
+                "weak-reference-alignment",
+                "high",
+                None,
+                "The edit plan still falls short of premium reference-style motion and readability behavior.",
+                "Recover cleaner approach-action-result pacing before exporting the preview.",
+            )
+        )
+    for scene in edit_plan.scenes:
+        issues.extend(scene_reference_issues(scene))
+    return issues
+
+
 def scene_duration(scene: EditPlanScene) -> float:
     return max(scene.render_duration_seconds or (scene.end - scene.start), 0.0)
+
+
+def scene_reference_issues(scene: EditPlanScene) -> list[QualityIssueRecord]:
+    issues: list[QualityIssueRecord] = []
+    if scene.scene_role == "action" and scene_reference_score(scene) < 0.62:
+        issues.append(
+            issue(
+                "weak-scene-choreography",
+                "medium",
+                scene.scene_number,
+                "Scene motion still feels assembled instead of clearly authored around the action.",
+                "Preserve a clearer establish, commit, and result rhythm for this beat.",
+            )
+        )
+    if scene.camera_mode == "focus" and zoom_choreography_score(scene) < 0.6:
+        issues.append(issue("thin-zoom-choreography", "medium", scene.scene_number, "Zoom choreography is too shallow for a focus-led scene.", "Use a stronger multi-beat move that leads into the action and settles on the result."))
+    if scene.scene_role == "action" and highlight_continuity_score(scene) < 0.58:
+        issues.append(issue("thin-highlight-continuity", "medium", scene.scene_number, "Highlight behavior does not bridge cleanly into the action and result.", "Start the highlight slightly before commitment and let it settle through the response state."))
+    if scene.scene_role == "action" and cursor_commitment_score(scene) < 0.56:
+        issues.append(issue("weak-cursor-commitment", "medium", scene.scene_number, "Cursor-led intent is not clearly established before the action fires.", "Recover more cursor-led approach timing before the committed interaction."))
+    if result_readability_score(scene) < 0.6:
+        issues.append(issue("thin-result-hold", "medium", scene.scene_number, "Important state does not hold long enough to read cleanly.", "Preserve more readable result time after the action lands."))
+    return issues
 
 
 def transcript_issues(project: ProjectRecord, edit_plan: EditPlanRecord) -> list[QualityIssueRecord]:

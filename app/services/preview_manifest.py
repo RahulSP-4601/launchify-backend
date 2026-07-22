@@ -249,7 +249,7 @@ def filtered_highlights(
 ) -> list[EditPlanHighlight]:
     filtered = [highlight for highlight in highlights if overlaps(highlight.start, highlight.end, clip_start, clip_end)]
     if quality == "preview":
-        return filtered[:2]
+        return filtered[:4]
     return filtered
 
 
@@ -261,7 +261,7 @@ def filtered_zooms(
 ) -> list[EditPlanZoom]:
     filtered = [zoom for zoom in zooms if overlaps(zoom.start, zoom.end, clip_start, clip_end)]
     if quality == "preview":
-        return filtered[:2]
+        return filtered[:4]
     return filtered
 
 
@@ -462,7 +462,7 @@ def camera_keyframes(
         for zoom in zooms
         if overlaps(zoom.start, zoom.end, clip_start, clip_end)
     ]
-    return keyframes[:2]
+    return keyframes[:4]
 
 
 def preview_priority(clip: RenderClip) -> int:
