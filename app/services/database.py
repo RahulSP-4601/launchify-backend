@@ -97,6 +97,7 @@ def ensure_schema() -> None:
     with connection_scope() as connection:
         with connection.cursor() as cursor:
             ensure_projects_schema(cursor)
+            ensure_project_editor_schema(cursor)
             ensure_jobs_schema(cursor)
 
 
@@ -161,6 +162,26 @@ def backfill_legacy_final_video(cursor: Any) -> None:
                 where final_video is not null;
             end if;
         end $$;
+        """,
+    )
+
+
+def ensure_project_editor_schema(cursor: Any) -> None:
+    cursor.execute(
+        """
+        create table if not exists project_editor_states (
+            project_id text primary key references projects(id) on delete cascade,
+            user_id text not null,
+            editor_state jsonb not null,
+            created_at timestamptz not null,
+            updated_at timestamptz not null
+        )
+        """,
+    )
+    cursor.execute(
+        """
+        create index if not exists idx_project_editor_states_user_updated
+        on project_editor_states (user_id, updated_at desc)
         """,
     )
 

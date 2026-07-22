@@ -20,6 +20,14 @@ from app.models.projects import (
     UpdatePhaseFourRequest,
     UsageSummary,
 )
+from app.models.project_editor import (
+    ProjectEditorRegenerateSceneRequest,
+    ProjectEditorState,
+    ProjectEditorStateResponse,
+)
+from app.services.project_editor_store import project_editor_store
+from app.services.project_editor_defaults import build_project_editor_state, restore_ai_scene
+from app.services.project_editor_validation import validate_project_editor_state
 from app.services.auth import get_authenticated_user_id
 from app.services.phase_four import apply_phase_four_update
 from app.services.project_store import project_store
@@ -70,12 +78,54 @@ async def get_project(project_id: str, request: Request) -> ProjectDetail:
     return to_project_detail(user_id, project_id)
 
 
+@router.get("/projects/{project_id}/editor", response_model=ProjectEditorStateResponse | None, tags=["projects"])
+async def get_project_editor_state(project_id: str, request: Request) -> ProjectEditorStateResponse | None:
+    user_id = get_authenticated_user_id(request)
+    must_get_project(user_id, project_id)
+    return project_editor_store.get_editor_state(user_id, project_id)
+
+
 @router.put("/projects/{project_id}", response_model=ProjectDetail, tags=["projects"])
 async def update_project(project_id: str, payload: UpdateProjectRequest, request: Request) -> ProjectDetail:
     user_id = get_authenticated_user_id(request)
     must_get_project(user_id, project_id)
     project_store.rename_project(user_id, project_id, payload.project_name)
     return to_project_detail(user_id, project_id)
+
+
+@router.put("/projects/{project_id}/editor", response_model=ProjectEditorStateResponse, tags=["projects"])
+async def update_project_editor_state(
+    project_id: str,
+    payload: ProjectEditorState,
+    request: Request,
+) -> ProjectEditorStateResponse:
+    user_id = get_authenticated_user_id(request)
+    project = must_get_project(user_id, project_id)
+    try:
+        validate_project_editor_state(project, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return project_editor_store.save_editor_state(user_id, project_id, payload)
+
+
+@router.post("/projects/{project_id}/editor/regenerate-scene", response_model=ProjectEditorStateResponse, tags=["projects"])
+async def regenerate_project_editor_scene(
+    project_id: str,
+    payload: ProjectEditorRegenerateSceneRequest,
+    request: Request,
+) -> ProjectEditorStateResponse:
+    user_id = get_authenticated_user_id(request)
+    project = must_get_project(user_id, project_id)
+    baseline_state = build_project_editor_state(project)
+    current_record = project_editor_store.get_editor_state(user_id, project_id)
+    current_state = payload.editor_state or (current_record.editor_state if current_record else baseline_state)
+    try:
+        validate_project_editor_state(project, current_state)
+        next_state = restore_ai_scene(current_state, baseline_state, payload.scene_id)
+        validate_project_editor_state(project, next_state)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return project_editor_store.save_editor_state(user_id, project_id, next_state)
 
 
 @router.put("/projects/{project_id}/phase4", response_model=ProjectDetail, tags=["projects"])
@@ -148,6 +198,7 @@ async def create_recording_session(
     finally:
         temp_path.unlink(missing_ok=True)
     project_store.attach_session_asset_and_queue_job(user_id, project.id, asset, session_payload.recording_session)
+    project_editor_store.clear_editor_state(user_id, project.id)
     return to_project_detail(user_id, project.id)
 
 
@@ -242,6 +293,7 @@ async def upload_project_video(
     finally:
         temp_path.unlink(missing_ok=True)
     project_store.attach_asset_and_queue_job(user_id, project.id, asset)
+    project_editor_store.clear_editor_state(user_id, project.id)
     return to_project_detail(user_id, project.id)
 
 
