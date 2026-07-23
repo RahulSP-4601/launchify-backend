@@ -47,6 +47,7 @@ from app.services.render_runtime_helpers import (
     upload_variant,
 )
 from app.services.render_review import refine_from_preview
+from app.services.project_editor_store import project_editor_store
 from app.services.storage import download_asset_to_file
 from app.services.timing import timed_stage
 
@@ -131,8 +132,8 @@ def render_from_temp_dir(
                 finalize_preview_video,
                 require_edit_plan,
                 beat,
-                prepare_preview_output,
-                rerender_refined_preview,
+                lambda *args: prepare_preview_output(user_id, *args),
+                lambda *args: rerender_refined_preview(user_id, *args),
                 reviewed_project,
                 upload_variant,
             )
@@ -176,8 +177,8 @@ def execute_render_pipeline(
         stage_update,
         preview_ready,
         beat,
-        prepare_preview_output,
-        rerender_refined_preview,
+        lambda *args: prepare_preview_output(user_id, *args),
+        lambda *args: rerender_refined_preview(user_id, *args),
         reviewed_project,
         upload_variant,
     )
@@ -316,6 +317,7 @@ def finalize_preview_video(
         return preview_video
     return persist_proxy_preview_after_final(user_id, project, preview_output, heartbeat, preview_ready, upload_proxy_preview_variant)
 def rerender_refined_preview(
+    user_id: str,
     project: ProjectRecord,
     render_source: Path,
     voiceover_audio: Path | None,
@@ -330,7 +332,7 @@ def rerender_refined_preview(
     with timed_stage("preview_render_refined", settings.preview_render_warn_seconds):
         run_with_retry(
             "refined preview render",
-            lambda: render_preview_output(project, render_source, voiceover_audio, temp_dir, preview_output, preview_quality, heartbeat),
+            lambda: render_preview_output(user_id, project, render_source, voiceover_audio, temp_dir, preview_output, preview_quality, heartbeat),
         )
     beat(heartbeat)
 def render_final_variant(
@@ -363,11 +365,12 @@ def render_and_upload_variant(
     stage_update: RenderStageUpdate | None = None,
 ) -> RenderedVideoRecord:
     output_path = temp_dir / f"{quality}.mp4"
-    render_payload_path = write_render_payload(project, temp_dir, quality, voiceover_audio)
+    render_payload_path = write_render_payload(user_id, project, temp_dir, quality, voiceover_audio)
     invoke_render_worker(render_payload_path, source_video, output_path, quality, heartbeat=heartbeat)
     notify_render_stage(stage_update, f"{quality}_upload", project.id)
     return upload_variant(user_id, project, output_path, quality, heartbeat=heartbeat)
 def render_preview_output(
+    user_id: str,
     project: ProjectRecord,
     source_video: Path,
     voiceover_audio: Path | None,
@@ -376,9 +379,10 @@ def render_preview_output(
     quality: Literal["preview", "final"],
     heartbeat: Callable[[], None] | None = None,
 ) -> None:
-    render_payload_path = write_render_payload(project, temp_dir, quality, voiceover_audio)
+    render_payload_path = write_render_payload(user_id, project, temp_dir, quality, voiceover_audio)
     invoke_render_worker(render_payload_path, source_video, output_path, quality, heartbeat=heartbeat)
 def prepare_preview_output(
+    user_id: str,
     project: ProjectRecord,
     source_video: Path,
     voiceover_audio: Path | None,
@@ -390,7 +394,7 @@ def prepare_preview_output(
     if get_settings().preview_render_mode == "proxy":
         prepare_proxy_preview(project, source_video, output_path, voiceover_audio, heartbeat)
         return
-    render_preview_output(project, source_video, voiceover_audio, temp_dir, output_path, quality, heartbeat)
+    render_preview_output(user_id, project, source_video, voiceover_audio, temp_dir, output_path, quality, heartbeat)
 def upload_proxy_preview_variant(
     user_id: str,
     project: ProjectRecord,
@@ -415,13 +419,20 @@ def upload_proxy_final_variant(
     beat(heartbeat)
     return final_video
 def write_render_payload(
+    user_id: str,
     project: ProjectRecord,
     temp_dir: Path,
     quality: Literal["preview", "final"],
     voiceover_audio: Path | None,
 ) -> Path:
     payload_path = temp_dir / f"{quality}-payload.json"
-    payload = build_render_payload(project, quality, str(voiceover_audio) if voiceover_audio is not None else "")
+    current_editor_state = project_editor_store.get_editor_state(user_id, project.id)
+    payload = build_render_payload(
+        project,
+        quality,
+        current_editor_state.editor_state if current_editor_state else None,
+        str(voiceover_audio) if voiceover_audio is not None else "",
+    )
     payload_path.write_text(json.dumps(payload), encoding="utf-8")
     return payload_path
 def invoke_render_worker(

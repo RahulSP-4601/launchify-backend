@@ -1,6 +1,6 @@
 import { interpolate } from "remotion";
 
-import { FocusBox, RenderHighlight, RenderPayload, RenderScene, RenderZoom } from "./types";
+import { FocusBox, RenderHighlight, RenderPayload, RenderScene, RenderZoom, TimelineScene } from "./types";
 
 export const titleStyles = {
   eyebrow: {
@@ -30,14 +30,25 @@ export function totalFrames(payload: RenderPayload) {
   const fps = payload.dimensions.fps;
   const totalSeconds =
     payload.introDurationSeconds +
-    payload.editPlan.total_duration_seconds +
+    timelineDurationSeconds(payload) +
     payload.outroDurationSeconds;
   return Math.max(1, Math.ceil(totalSeconds * fps));
 }
 
-export function sceneDurationFrames(scene: RenderScene, fps: number) {
-  const duration = scene.render_duration_seconds ?? (scene.end - scene.start);
+export function sceneDurationFrames(scene: RenderScene | TimelineScene, fps: number) {
+  const duration = scene.render_duration_seconds ?? timelineSceneDuration(scene);
   return Math.max(1, Math.round(duration * fps));
+}
+
+export function timelineDurationSeconds(payload: RenderPayload) {
+  return payload.timeline?.total_duration_seconds ?? payload.editPlan.total_duration_seconds;
+}
+
+export function timelineSceneDuration(scene: RenderScene | TimelineScene) {
+  if ("editor_end" in scene) {
+    return scene.editor_end - scene.editor_start;
+  }
+  return scene.end - scene.start;
 }
 
 export function activeCaption(scene: RenderScene, localSeconds: number) {

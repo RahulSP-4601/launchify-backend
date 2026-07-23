@@ -22,7 +22,11 @@ from app.models.projects import (
     UsageSummary,
 )
 from app.models.project_editor import (
+    ProjectEditorConflictError,
+    ProjectEditorRevisionRecord,
+    ProjectEditorRevisionSummary,
     ProjectEditorRegenerateSceneRequest,
+    ProjectEditorSaveRequest,
     ProjectEditorState,
     ProjectEditorStateResponse,
 )
@@ -97,16 +101,44 @@ async def update_project(project_id: str, payload: UpdateProjectRequest, request
 @router.put("/projects/{project_id}/editor", response_model=ProjectEditorStateResponse, tags=["projects"])
 async def update_project_editor_state(
     project_id: str,
-    payload: ProjectEditorState,
+    payload: ProjectEditorSaveRequest,
     request: Request,
 ) -> ProjectEditorStateResponse:
     user_id = get_authenticated_user_id(request)
     project = must_get_project(user_id, project_id)
     try:
-        validate_project_editor_state(project, payload)
+        validate_project_editor_state(project, payload.editor_state)
+        return project_editor_store.save_editor_state(
+            user_id,
+            project_id,
+            payload.editor_state,
+            payload.base_revision_id,
+        )
+    except ProjectEditorConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return project_editor_store.save_editor_state(user_id, project_id, payload)
+
+
+@router.get("/projects/{project_id}/editor/revisions", response_model=list[ProjectEditorRevisionSummary], tags=["projects"])
+async def list_project_editor_revisions(project_id: str, request: Request) -> list[ProjectEditorRevisionSummary]:
+    user_id = get_authenticated_user_id(request)
+    must_get_project(user_id, project_id)
+    return project_editor_store.list_editor_revisions(user_id, project_id)
+
+
+@router.post("/projects/{project_id}/editor/revisions/{revision_id}/restore", response_model=ProjectEditorRevisionRecord, tags=["projects"])
+async def restore_project_editor_revision(
+    project_id: str,
+    revision_id: int,
+    request: Request,
+) -> ProjectEditorRevisionRecord:
+    user_id = get_authenticated_user_id(request)
+    must_get_project(user_id, project_id)
+    try:
+        return project_editor_store.restore_editor_revision(user_id, project_id, revision_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.post("/projects/{project_id}/editor/regenerate-scene", response_model=ProjectEditorStateResponse, tags=["projects"])
@@ -124,9 +156,16 @@ async def regenerate_project_editor_scene(
         validate_project_editor_state(project, current_state)
         next_state = restore_ai_scene(current_state, baseline_state, payload.scene_id)
         validate_project_editor_state(project, next_state)
+        return project_editor_store.save_editor_state(
+            user_id,
+            project_id,
+            next_state,
+            payload.base_revision_id,
+        )
+    except ProjectEditorConflictError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-    return project_editor_store.save_editor_state(user_id, project_id, next_state)
 
 
 @router.put("/projects/{project_id}/phase4", response_model=ProjectDetail, tags=["projects"])

@@ -184,6 +184,25 @@ def ensure_project_editor_schema(cursor: Any) -> None:
         on project_editor_states (user_id, updated_at desc)
         """,
     )
+    cursor.execute(
+        """
+        create table if not exists project_editor_revisions (
+            id bigserial primary key,
+            project_id text not null references projects(id) on delete cascade,
+            user_id text not null,
+            parent_revision_id bigint references project_editor_revisions(id) on delete set null,
+            editor_state jsonb not null,
+            created_at timestamptz not null
+        )
+        """,
+    )
+    cursor.execute("alter table project_editor_revisions add column if not exists parent_revision_id bigint")
+    cursor.execute(
+        """
+        create index if not exists idx_project_editor_revisions_project_created
+        on project_editor_revisions (project_id, created_at desc)
+        """,
+    )
 
 
 def ensure_jobs_schema(cursor: Any) -> None:

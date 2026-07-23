@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.models.project_editor import ProjectEditorState
+from app.models.project_editor import EditorClipRecord, ProjectEditorSequence, ProjectEditorState
 from app.models.projects import ProjectRecord
 
 TIMING_EPSILON = 0.05
@@ -11,19 +11,20 @@ MIN_CAPTION_SECONDS = 0.2
 def validate_project_editor_state(project: ProjectRecord, state: ProjectEditorState) -> None:
     scene_ids = validate_scenes(project, state)
     validate_selected_scene(scene_ids, state.selected_scene_id)
-    validate_captions(project_duration_limit(project), state, scene_ids)
+    validate_captions(state, scene_ids)
+    validate_source_coverage(project_duration_limit(project), state)
+    validate_sequence(state)
 
 
 def validate_scenes(project: ProjectRecord, state: ProjectEditorState) -> set[str]:
     if not state.scenes:
         raise ValueError("At least one scene is required in the editor.")
-    duration_limit = project_duration_limit(project)
     scene_ids: set[str] = set()
     previous_end = 0.0
     for scene in sorted(state.scenes, key=lambda item: item.start):
         if scene.id in scene_ids:
             raise ValueError("Each editor scene must have a unique id.")
-        validate_scene_timing(scene.start, scene.end, duration_limit, previous_end)
+        validate_scene_timing(scene.start, scene.end, previous_end)
         scene_ids.add(scene.id)
         previous_end = scene.end
     return scene_ids
@@ -34,13 +35,14 @@ def validate_selected_scene(scene_ids: set[str], selected_scene_id: str) -> None
         raise ValueError("The selected editor scene no longer exists.")
 
 
-def validate_captions(duration_limit: float, state: ProjectEditorState, scene_ids: set[str]) -> None:
+def validate_captions(state: ProjectEditorState, scene_ids: set[str]) -> None:
     scenes_by_id = {scene.id: scene for scene in state.scenes}
+    timeline_duration = state.scenes[-1].end
     for caption in state.captions:
         if caption.end - caption.start < MIN_CAPTION_SECONDS:
             raise ValueError("Each caption must be at least 0.2 seconds long.")
-        if caption.start < 0 or caption.end > duration_limit + TIMING_EPSILON:
-            raise ValueError("Caption timings must stay within the source media duration.")
+        if caption.start < 0 or caption.end > timeline_duration + TIMING_EPSILON:
+            raise ValueError("Caption timings must stay within the editor timeline duration.")
         if caption.scene_id is None:
             continue
         if caption.scene_id not in scene_ids:
@@ -50,13 +52,115 @@ def validate_captions(duration_limit: float, state: ProjectEditorState, scene_id
             raise ValueError("Caption timings must stay inside their scene boundaries.")
 
 
-def validate_scene_timing(start: float, end: float, duration_limit: float, previous_end: float) -> None:
+def validate_scene_timing(start: float, end: float, previous_end: float) -> None:
     if end - start < MIN_SCENE_SECONDS:
         raise ValueError("Each scene must be at least 0.5 seconds long.")
-    if start < 0 or end > duration_limit + TIMING_EPSILON:
-        raise ValueError("Scene timings must stay within the source media duration.")
+    if start < 0:
+        raise ValueError("Scene timings must stay on the positive timeline.")
     if start < previous_end - TIMING_EPSILON:
         raise ValueError("Scenes cannot overlap on the editor timeline.")
+    if start > previous_end + TIMING_EPSILON:
+        raise ValueError("Editor scenes must stay contiguous on the timeline.")
+
+
+def validate_source_coverage(duration_limit: float, state: ProjectEditorState) -> None:
+    source_seconds = sum(max(scene.end - scene.start, 0.0) for scene in state.scenes if scene.source != "inserted")
+    if source_seconds > duration_limit + TIMING_EPSILON:
+        raise ValueError("Edited source clips exceed the available source media duration.")
+
+
+def validate_sequence(state: ProjectEditorState) -> None:
+    if state.sequence is None:
+        return
+    validate_track_ids(state.sequence)
+    validate_selected_track(state.sequence, state.selected_track_id)
+    validate_clip_timings(state.sequence)
+    validate_sequence_alignment(state)
+
+
+def validate_track_ids(sequence: ProjectEditorSequence) -> None:
+    track_ids: set[str] = set()
+    for track in sequence.tracks:
+        if track.id in track_ids:
+            raise ValueError("Each editor track must have a unique id.")
+        track_ids.add(track.id)
+
+
+def validate_selected_track(sequence: ProjectEditorSequence, selected_track_id: str) -> None:
+    if not selected_track_id:
+        return
+    if not any(track.id == selected_track_id for track in sequence.tracks):
+        raise ValueError("The selected editor track no longer exists.")
+
+
+def validate_clip_timings(sequence: ProjectEditorSequence) -> None:
+    for track in sequence.tracks:
+        previous_end = 0.0
+        for clip in sorted(track.clips, key=lambda item: item.timeline_start):
+            minimum_duration = min_duration_for_clip(clip)
+            if clip.timeline_end - clip.timeline_start < minimum_duration:
+                raise ValueError(f"Each {clip.kind.replace('_', ' ')} clip must be at least {minimum_duration:.1f} seconds long.")
+            if clip.timeline_start < previous_end - TIMING_EPSILON:
+                raise ValueError("Clips cannot overlap within the same track.")
+            validate_clip_source_bounds(clip)
+            previous_end = clip.timeline_end
+
+
+def validate_clip_source_bounds(clip: EditorClipRecord) -> None:
+    if clip.kind in {"inserted_card", "caption", "voiceover"}:
+        if clip.source_start is not None or clip.source_end is not None:
+            raise ValueError("Non-source clips cannot point to source media bounds.")
+        return
+    if clip.source_start is None or clip.source_end is None:
+        raise ValueError("Source-backed clips must declare source bounds.")
+    if clip.source_end < clip.source_start:
+        raise ValueError("Clip source bounds are invalid.")
+
+
+def validate_sequence_alignment(state: ProjectEditorState) -> None:
+    if state.sequence is None:
+        return
+    scene_clips = clip_map(state.sequence, "video")
+    for scene in state.scenes:
+        clip = scene_clips.get(scene.id)
+        if clip is None:
+            raise ValueError("Each editor scene must have a matching video clip.")
+        if abs(clip.timeline_start - scene.start) > TIMING_EPSILON or abs(clip.timeline_end - scene.end) > TIMING_EPSILON:
+            raise ValueError("Scene timings must match the sequence video track.")
+    caption_clips = clip_map(state.sequence, "caption")
+    for caption in state.captions:
+        clip = caption_clips.get(caption.id)
+        if clip is None:
+            raise ValueError("Each caption must have a matching caption clip.")
+        if abs(clip.timeline_start - caption.start) > TIMING_EPSILON or abs(clip.timeline_end - caption.end) > TIMING_EPSILON:
+            raise ValueError("Caption timings must match the sequence caption track.")
+    validate_audio_clips(state.sequence)
+
+
+def clip_map(sequence: ProjectEditorSequence, kind: str) -> dict[str, EditorClipRecord]:
+    result: dict[str, EditorClipRecord] = {}
+    for track in sequence.tracks:
+        if track.kind != kind:
+            continue
+        for clip in track.clips:
+            scene_key = clip.scene_id if kind == "video" else clip.id.replace("caption-clip-", "", 1)
+            result[scene_key or clip.id] = clip
+    return result
+
+
+def validate_audio_clips(sequence: ProjectEditorSequence) -> None:
+    for track in sequence.tracks:
+        if track.kind != "audio":
+            continue
+        for clip in track.clips:
+            if clip.kind != "voiceover":
+                raise ValueError("Audio tracks can only contain voiceover clips.")
+            if clip.scene_id is None:
+                raise ValueError("Voiceover clips must reference a scene.")
+
+
+def min_duration_for_clip(clip: EditorClipRecord) -> float:
+    return MIN_CAPTION_SECONDS if clip.kind == "caption" else MIN_SCENE_SECONDS
 
 
 def project_duration_limit(project: ProjectRecord) -> float:

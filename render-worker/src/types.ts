@@ -51,7 +51,59 @@ export type RenderPayload = {
       total_duration_seconds: number;
     };
   };
+  timeline?: {
+    total_duration_seconds: number;
+    scenes: TimelineScene[];
+    tracks: TimelineTrack[];
+  };
   sourceVideoPath?: string;
+};
+
+export type TimelineTrack = {
+  id: string;
+  kind: "video" | "audio" | "caption" | "overlay";
+  name: string;
+  locked: boolean;
+  muted: boolean;
+  clips: TimelineClip[];
+};
+
+export type TimelineClip = {
+  id: string;
+  track_id: string;
+  kind: "source_video" | "inserted_card" | "caption" | "voiceover";
+  title: string;
+  scene_id: string | null;
+  timeline_start: number;
+  timeline_end: number;
+  source_start: number | null;
+  source_end: number | null;
+  text: string;
+  locked: boolean;
+  muted: boolean;
+};
+
+export type TimelineScene = {
+  scene_number: number;
+  title: string;
+  purpose: string;
+  editor_start: number;
+  editor_end: number;
+  source_start: number;
+  source_end: number;
+  render_duration_seconds: number | null;
+  camera_mode: "static" | "focus";
+  scene_role: "action" | "result" | "explanation";
+  spoken_line: string;
+  on_screen_text: string;
+  source_excerpt: string;
+  source: "edit_plan" | "launch_script" | "transcript" | "fallback" | "inserted";
+  is_inserted: boolean;
+  transition_style: "cut" | "fade" | "slide-up" | "focus-push";
+  transition_duration_seconds: number;
+  captions: RenderCaption[];
+  zooms: RenderZoom[];
+  highlights: RenderHighlight[];
 };
 
 export type RenderScene = {

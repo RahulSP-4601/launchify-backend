@@ -12,13 +12,15 @@ import {
   activeFocusBox,
   motionOpacity,
   sceneDurationFrames,
+  spotlightStyle,
+  timelineSceneDuration,
   transitionStyle,
   totalFrames,
   zoomTransform,
 } from "./render-helpers";
 import { FocusMatte } from "./scene-overlays";
 import { IntroCard, OutroCard } from "./scene-text";
-import { RenderPayload, RenderScene } from "./types";
+import { RenderPayload, RenderScene, TimelineClip, TimelineScene } from "./types";
 
 export const LaunchifyRender: React.FC<RenderPayload> = (payload) => {
   const totalDuration = totalFrames(payload);
@@ -50,12 +52,13 @@ const SceneTrack: React.FC<{ fastPreview: boolean; introFrames: number; payload:
   payload,
 }) => {
   let sceneOffset = introFrames;
+  const scenes = payload.timeline?.scenes ?? legacyTimeline(payload.editPlan.scenes);
   return (
     <>
-      {payload.editPlan.scenes.map((scene) => {
+      {scenes.map((scene) => {
         const durationInFrames = sceneDurationFrames(scene, payload.dimensions.fps);
         const sequence = (
-          <Sequence key={scene.scene_number} from={sceneOffset} durationInFrames={durationInFrames}>
+          <Sequence key={`${scene.scene_number}-${scene.title}`} from={sceneOffset} durationInFrames={durationInFrames}>
             <SceneComposition fastPreview={fastPreview} payload={payload} scene={scene} />
           </Sequence>
         );
@@ -66,31 +69,30 @@ const SceneTrack: React.FC<{ fastPreview: boolean; introFrames: number; payload:
   );
 };
 
-const SceneComposition: React.FC<{ fastPreview: boolean; payload: RenderPayload; scene: RenderScene }> = ({
+const SceneComposition: React.FC<{ fastPreview: boolean; payload: RenderPayload; scene: TimelineScene }> = ({
   fastPreview,
   payload,
   scene,
 }) => {
   const frame = useCurrentFrame();
   const viewport = viewportMetrics(payload.dimensions);
-  const sourceDuration = Math.max(scene.end - scene.start, 0);
+  const sourceDuration = Math.max(scene.source_end - scene.source_start, 0);
   const sourceSeconds = Math.min(frame / payload.dimensions.fps, sourceDuration);
-  const localSeconds = scene.start + sourceSeconds;
+  const localSeconds = Math.min(frame / payload.dimensions.fps, timelineSceneDuration(scene));
   const focusBox = activeFocusBox(scene, localSeconds);
   const zoom = zoomTransform(scene.zooms, localSeconds);
   const transition = transitionStyle(scene, frame, payload.dimensions.fps);
+  const overlayClips = activeOverlayClips(payload, scene, localSeconds);
+  const highlight = spotlightStyle(scene.highlights, localSeconds);
 
   return (
     <AbsoluteFill style={sceneCanvasStyle(transition.opacity, transition.translateY)}>
       <SceneGlow fastPreview={fastPreview} />
       <ViewportFrame fastPreview={fastPreview}>
-        <VideoLayer
-          payload={payload}
-          scene={scene}
-          viewport={viewport}
-          zoom={zoom}
-          transitionScale={transition.focusScale}
-        />
+        {scene.is_inserted
+          ? <InsertedSceneLayer scene={scene} />
+          : <VideoLayer payload={payload} scene={scene} viewport={viewport} zoom={zoom} transitionScale={transition.focusScale} />}
+        {overlayClips.map((clip) => <OverlayClipLayer key={clip.id} clip={clip} highlightVisible={Boolean(highlight)} />)}
         <FocusMatte fastPreview={fastPreview} focusBox={focusBox} sceneRole={scene.scene_role} viewport={viewport} />
         <GradientMask fastPreview={fastPreview} />
         <BrowserChrome payload={payload} viewport={viewport} />
@@ -107,7 +109,7 @@ const ViewportFrame: React.FC<{ children: React.ReactNode; fastPreview: boolean 
 
 const VideoLayer: React.FC<{
   payload: RenderPayload;
-  scene: RenderScene;
+  scene: TimelineScene;
   viewport: {
     chromeOffset: number;
   };
@@ -118,8 +120,8 @@ const VideoLayer: React.FC<{
     <AbsoluteFill style={videoSurfaceStyle(viewport.chromeOffset)}>
       <OffthreadVideo
         src={payload.sourceVideoPath ?? ""}
-        startFrom={Math.round(scene.start * payload.dimensions.fps)}
-        endAt={Math.round(scene.end * payload.dimensions.fps)}
+        startFrom={Math.round(scene.source_start * payload.dimensions.fps)}
+        endAt={Math.round(scene.source_end * payload.dimensions.fps)}
         volume={sourceVideoVolume(payload)}
         style={{
           height: "100%",
@@ -132,6 +134,69 @@ const VideoLayer: React.FC<{
     </AbsoluteFill>
   );
 };
+
+const InsertedSceneLayer: React.FC<{ scene: TimelineScene }> = ({ scene }) => (
+  <AbsoluteFill
+    style={{
+      alignItems: "center",
+      background: "radial-gradient(circle at top, rgba(114, 78, 224, 0.2), transparent 36%), linear-gradient(180deg, #091018, #09090d)",
+      display: "flex",
+      justifyContent: "center",
+      padding: 48,
+    }}
+  >
+    <div
+      style={{
+        background: "linear-gradient(180deg, rgba(31,31,39,0.96), rgba(15,15,20,0.98))",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: 28,
+        boxShadow: "0 28px 56px rgba(0,0,0,0.34)",
+        color: "#f5f5ff",
+        maxWidth: 760,
+        padding: "40px 44px",
+        width: "100%",
+      }}
+    >
+      <div style={{ color: "#9e95ff", fontFamily: "\"Avenir Next\", \"Segoe UI\", sans-serif", fontSize: 16, letterSpacing: "0.28em", textTransform: "uppercase" }}>Inserted Screen</div>
+      <div style={{ fontFamily: "\"Avenir Next\", \"Segoe UI\", sans-serif", fontSize: 52, fontWeight: 700, lineHeight: 1.02, marginTop: 18 }}>{scene.title}</div>
+      <div style={{ color: "#c7c7d8", fontFamily: "\"Avenir Next\", \"Segoe UI\", sans-serif", fontSize: 24, lineHeight: 1.5, marginTop: 24 }}>{scene.on_screen_text || scene.spoken_line}</div>
+    </div>
+  </AbsoluteFill>
+);
+
+const OverlayClipLayer: React.FC<{ clip: TimelineClip; highlightVisible: boolean }> = ({ clip, highlightVisible }) => (
+  <div
+    style={{
+      alignItems: "flex-end",
+      display: "flex",
+      height: "100%",
+      justifyContent: "flex-start",
+      left: 0,
+      padding: "0 56px 44px",
+      position: "absolute",
+      top: 0,
+      width: "100%",
+      zIndex: highlightVisible ? 2 : 3,
+    }}
+  >
+    <div
+      style={{
+        backdropFilter: "blur(18px)",
+        background: "linear-gradient(180deg, rgba(18,21,28,0.92), rgba(10,11,16,0.96))",
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: 22,
+        boxShadow: "0 20px 56px rgba(0,0,0,0.32)",
+        color: "#f8fafc",
+        maxWidth: 520,
+        padding: "24px 28px",
+      }}
+    >
+      <div style={{ color: "#c084fc", fontFamily: "\"Avenir Next\", \"Segoe UI\", sans-serif", fontSize: 14, letterSpacing: "0.24em", textTransform: "uppercase" }}>Overlay Callout</div>
+      <div style={{ fontFamily: "\"Avenir Next\", \"Segoe UI\", sans-serif", fontSize: 34, fontWeight: 700, lineHeight: 1.05, marginTop: 12 }}>{clip.title}</div>
+      <div style={{ color: "#d4d4dc", fontFamily: "\"Avenir Next\", \"Segoe UI\", sans-serif", fontSize: 20, lineHeight: 1.45, marginTop: 14 }}>{clip.text || clip.title}</div>
+    </div>
+  </div>
+);
 
 const BrowserChrome: React.FC<{
   payload: RenderPayload;
@@ -153,7 +218,7 @@ const AudioTrack: React.FC<{ introFrames: number; payload: RenderPayload }> = ({
   if (payload.voiceover.mode === "original" || payload.voiceover.status !== "ready") {
     return null;
   }
-  const clipTracks = payload.voiceover.clips.filter((clip) => Boolean(clip.audio_storage_path));
+  const clipTracks = timelineAudioClips(payload) ?? payload.voiceover.clips.filter((clip) => Boolean(clip.audio_storage_path));
   if (clipTracks.length > 0) {
     return (
       <>
@@ -194,6 +259,72 @@ const SceneGlow: React.FC<{ fastPreview: boolean }> = ({ fastPreview }) => (
 
 function isFastPreview(payload: RenderPayload) {
   return payload.quality === "preview";
+}
+
+function timelineAudioClips(payload: RenderPayload) {
+  const audioTrackClips = (payload.timeline?.tracks ?? [])
+    .filter((track) => track.kind === "audio" && !track.muted)
+    .flatMap((track) => track.clips)
+    .filter((clip) => clip.kind === "voiceover" && !clip.muted);
+  if (!audioTrackClips.length) {
+    return null;
+  }
+  return audioTrackClips
+    .map((clip) => {
+      const sceneNumber = sceneNumberForClip(clip.scene_id);
+      const voiceover = payload.voiceover.clips.find((item) => item.scene_number === sceneNumber && Boolean(item.audio_storage_path));
+      if (!voiceover) {
+        return null;
+      }
+      return {
+        ...voiceover,
+        end: clip.timeline_end,
+        start: clip.timeline_start,
+      };
+    })
+    .filter(Boolean);
+}
+
+function legacyTimeline(scenes: RenderScene[]): TimelineScene[] {
+  return scenes.map((scene) => ({
+    camera_mode: scene.camera_mode,
+    captions: scene.captions.map((caption) => ({ ...caption, end: caption.end - scene.start, start: caption.start - scene.start })),
+    editor_end: scene.end,
+    editor_start: scene.start,
+    highlights: scene.highlights.map((highlight) => ({ ...highlight, end: highlight.end - scene.start, start: highlight.start - scene.start })),
+    is_inserted: false,
+    on_screen_text: scene.on_screen_text,
+    purpose: scene.purpose,
+    render_duration_seconds: scene.render_duration_seconds,
+    scene_number: scene.scene_number,
+    scene_role: scene.scene_role,
+    source: "edit_plan",
+    source_end: scene.end,
+    source_excerpt: scene.source_excerpt,
+    source_start: scene.start,
+    spoken_line: scene.spoken_line,
+    title: scene.title,
+    transition_duration_seconds: scene.transition_duration_seconds,
+    transition_style: scene.transition_style,
+    zooms: scene.zooms.map((zoom) => ({ ...zoom, end: zoom.end - scene.start, start: zoom.start - scene.start })),
+  }));
+}
+
+function activeOverlayClips(payload: RenderPayload, scene: TimelineScene, localSeconds: number) {
+  const editorTime = scene.editor_start + localSeconds;
+  return (payload.timeline?.tracks ?? [])
+    .filter((track) => track.kind === "overlay" && !track.muted)
+    .flatMap((track) => track.clips)
+    .filter((clip) => !clip.muted && clip.kind === "inserted_card" && clip.timeline_start <= editorTime && clip.timeline_end >= editorTime);
+}
+
+function sceneNumberForClip(sceneId: string | null) {
+  if (!sceneId || !sceneId.startsWith("scene-")) {
+    return null;
+  }
+  const rawValue = sceneId.slice("scene-".length).split("-", 1)[0];
+  const number = Number.parseInt(rawValue, 10);
+  return Number.isNaN(number) ? null : number;
 }
 
 function shellStyle(): React.CSSProperties {
