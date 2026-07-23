@@ -1,11 +1,8 @@
-import os
-from pathlib import Path
-from tempfile import NamedTemporaryFile
-
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse
 from starlette.background import BackgroundTask
 
+from app.api.upload_helpers import detect_editor_media_kind, require_upload_name, write_upload_to_temp_file
 from app.core.config import get_settings
 from app.models.projects import (
     CreateRecordingSessionRequest,
@@ -22,6 +19,9 @@ from app.models.projects import (
     UsageSummary,
 )
 from app.models.project_editor import (
+    ProjectEditorMediaAssetImportRequest,
+    ProjectEditorMediaAssetListResponse,
+    ProjectEditorMediaAssetUploadResponse,
     ProjectEditorConflictError,
     ProjectEditorRevisionRecord,
     ProjectEditorRevisionSummary,
@@ -30,6 +30,7 @@ from app.models.project_editor import (
     ProjectEditorState,
     ProjectEditorStateResponse,
 )
+from app.services.project_editor_asset_store import project_editor_asset_store
 from app.services.project_editor_store import project_editor_store
 from app.services.project_editor_defaults import build_project_editor_state, restore_ai_scene
 from app.services.project_editor_validation import validate_project_editor_state
@@ -37,13 +38,11 @@ from app.services.auth import get_authenticated_user_id
 from app.services.phase_four import apply_phase_four_update
 from app.services.project_store import project_store
 from app.services.project_summary_store import project_summary_store
-from app.services.storage import cached_asset_file, create_signed_asset_url, download_asset_to_file, upload_video_file
+from app.services.storage import cached_asset_file, create_signed_asset_url, download_asset_to_file, upload_editor_media_file, upload_video_file
 from app.services.usage_service import total_rendered_seconds
 from app.services.voiceover import downloadable_voiceover_audio
 
 router = APIRouter()
-MAX_UPLOAD_BYTES = 50 * 1024 * 1024
-MAX_UPLOAD_MB = 50
 
 
 @router.get("/health", tags=["system"])
@@ -166,6 +165,72 @@ async def regenerate_project_editor_scene(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+@router.get("/projects/{project_id}/editor/assets", response_model=ProjectEditorMediaAssetListResponse, tags=["projects"])
+async def list_project_editor_assets(
+    project_id: str,
+    request: Request,
+    scope: str = Query(default="project"),
+) -> ProjectEditorMediaAssetListResponse:
+    user_id = get_authenticated_user_id(request)
+    project = must_get_project(user_id, project_id)
+    if scope == "saved":
+        assets = project_editor_asset_store.list_workspace_assets(user_id, project_id)
+    else:
+        assets = project_editor_asset_store.list_project_assets(user_id, project)
+    return ProjectEditorMediaAssetListResponse(assets=assets)
+
+
+@router.post("/projects/{project_id}/editor/assets/upload", response_model=ProjectEditorMediaAssetUploadResponse, tags=["projects"])
+async def upload_project_editor_asset(
+    project_id: str,
+    request: Request,
+    file: UploadFile = File(),
+    filename: str | None = Form(default=None),
+    duration_seconds: float | None = Form(default=None),
+) -> ProjectEditorMediaAssetUploadResponse:
+    user_id = get_authenticated_user_id(request)
+    must_get_project(user_id, project_id)
+    upload_name = require_upload_name(filename, file.filename)
+    media_kind = detect_editor_media_kind(file.content_type, upload_name)
+    temp_path = await write_upload_to_temp_file(file)
+    try:
+        asset = upload_editor_media_file(
+            user_id,
+            project_id,
+            media_kind,
+            upload_name,
+            file.content_type or "application/octet-stream",
+            temp_path,
+        )
+    finally:
+        temp_path.unlink(missing_ok=True)
+    record = project_editor_asset_store.create_uploaded_asset(user_id, project_id, asset, media_kind, duration_seconds)
+    return ProjectEditorMediaAssetUploadResponse(asset=record)
+
+
+@router.post("/projects/{project_id}/editor/assets/import", response_model=ProjectEditorMediaAssetUploadResponse, tags=["projects"])
+async def import_project_editor_asset(
+    project_id: str,
+    payload: ProjectEditorMediaAssetImportRequest,
+    request: Request,
+) -> ProjectEditorMediaAssetUploadResponse:
+    user_id = get_authenticated_user_id(request)
+    must_get_project(user_id, project_id)
+    source_project = must_get_project(user_id, payload.source_project_id)
+    try:
+        asset = project_editor_asset_store.import_project_asset(
+            user_id,
+            project_id,
+            source_project,
+            payload.asset_id,
+            payload.variant,
+            payload.duration_seconds,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return ProjectEditorMediaAssetUploadResponse(asset=asset)
 
 
 @router.put("/projects/{project_id}/phase4", response_model=ProjectDetail, tags=["projects"])
@@ -417,27 +482,3 @@ def usage_summary_for_user(user_id: str) -> UsageSummary:
         remaining_seconds=remaining_seconds,
         blocked=remaining_seconds <= 0,
     )
-
-
-async def write_upload_to_temp_file(upload: UploadFile) -> Path:
-    with NamedTemporaryFile(delete=False) as temp_file:
-        total_bytes = 0
-        while True:
-            chunk = await upload.read(1024 * 1024)
-            if not chunk:
-                break
-            total_bytes += len(chunk)
-            if total_bytes > MAX_UPLOAD_BYTES:
-                await upload.close()
-                temp_file.close()
-                os.unlink(temp_file.name)
-                raise HTTPException(
-                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    detail=f"Uploaded file must be {MAX_UPLOAD_MB} MB or smaller.",
-                )
-            temp_file.write(chunk)
-    await upload.close()
-    if total_bytes == 0:
-        os.unlink(temp_file.name)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty.")
-    return Path(temp_file.name)

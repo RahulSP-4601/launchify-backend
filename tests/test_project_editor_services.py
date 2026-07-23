@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from unittest import TestCase
+from unittest.mock import patch
 
 from app.models.project_editor import (
     ProjectEditorConflictError,
     EditorCaptionRecord,
     EditorClipRecord,
+    EditorCommentRecord,
     EditorSceneRecord,
     EditorTrackRecord,
+    ProjectEditorToolState,
     ProjectEditorSequence,
     ProjectEditorState,
 )
@@ -28,6 +31,12 @@ class ProjectEditorServicesTests(TestCase):
         state = sample_editor_state()
         state.selected_track_id = "track-missing"
         with self.assertRaisesRegex(ValueError, "selected editor track no longer exists"):
+            validate_project_editor_state(sample_project(), state)
+
+    def test_validate_project_editor_state_rejects_unknown_selected_clip(self) -> None:
+        state = sample_editor_state()
+        state.selected_clip_id = "clip-missing"
+        with self.assertRaisesRegex(ValueError, "selected editor clip no longer exists"):
             validate_project_editor_state(sample_project(), state)
 
     def test_validate_project_editor_state_rejects_orphan_caption_after_ripple_case(self) -> None:
@@ -75,6 +84,72 @@ class ProjectEditorServicesTests(TestCase):
         self.assertEqual(len(overlay_tracks), 1)
         self.assertEqual(overlay_tracks[0]["clips"][0]["title"], "Overlay Callout")
 
+    def test_build_render_timeline_uses_secondary_video_track_segments(self) -> None:
+        state = sample_editor_state()
+        state.sequence.tracks.append(
+            EditorTrackRecord(
+                clips=[
+                    EditorClipRecord(
+                        asset_path="editor/video/imported.mp4",
+                        content_type="video/mp4",
+                        id="clip-secondary-1",
+                        kind="media_video",
+                        title="Imported clip",
+                        scene_id="scene-secondary-1",
+                        timeline_start=1.0,
+                        timeline_end=2.0,
+                        source_start=None,
+                        source_end=None,
+                        text="Imported clip",
+                        track_id="track-video-2",
+                    ),
+                ],
+                id="track-video-2",
+                kind="video",
+                name="Video 2",
+            ),
+        )
+        with patch("app.services.project_editor_render_timeline.create_signed_asset_url", side_effect=lambda path: f"signed://{path}"):
+            timeline = build_render_timeline(sample_project(), state)
+        imported_scene = next(
+            scene for scene in timeline["scenes"]
+            if scene["clip_kind"] == "media_video"
+        )
+        self.assertEqual(imported_scene["editor_start"], 1.0)
+        self.assertEqual(imported_scene["editor_end"], 2.0)
+        self.assertEqual(imported_scene["source"], "imported")
+
+    def test_build_render_timeline_keeps_captions_during_secondary_video_overlay(self) -> None:
+        state = sample_editor_state()
+        state.sequence.tracks.append(
+            EditorTrackRecord(
+                clips=[
+                    EditorClipRecord(
+                        asset_path="editor/video/imported.mp4",
+                        content_type="video/mp4",
+                        id="clip-secondary-1",
+                        kind="media_video",
+                        title="Imported clip",
+                        scene_id="scene-secondary-1",
+                        timeline_start=1.0,
+                        timeline_end=2.0,
+                        source_start=None,
+                        source_end=None,
+                        text="Imported clip",
+                        track_id="track-video-2",
+                    ),
+                ],
+                id="track-video-2",
+                kind="video",
+                name="Video 2",
+            ),
+        )
+        with patch("app.services.project_editor_render_timeline.create_signed_asset_url", side_effect=lambda path: f"signed://{path}"):
+            timeline = build_render_timeline(sample_project(), state)
+        imported_scene = next(scene for scene in timeline["scenes"] if scene["clip_kind"] == "media_video")
+        self.assertTrue(imported_scene["captions"])
+        self.assertEqual(imported_scene["captions"][0]["text"], "Hello")
+
     def test_validate_project_editor_state_accepts_voiceover_audio_track(self) -> None:
         state = sample_editor_state()
         state.sequence.tracks.append(
@@ -100,6 +175,38 @@ class ProjectEditorServicesTests(TestCase):
         )
         validate_project_editor_state(sample_project(), state)
 
+    def test_validate_project_editor_state_accepts_uploaded_audio_track(self) -> None:
+        state = sample_editor_state()
+        state.sequence.tracks.append(
+            EditorTrackRecord(
+                clips=[
+                    EditorClipRecord(
+                        asset_path="editor/audio/song.mp3",
+                        content_type="audio/mpeg",
+                        id="audio-bed-1",
+                        kind="media_audio",
+                        title="Song",
+                        scene_id=None,
+                        timeline_start=0.0,
+                        timeline_end=3.0,
+                        source_start=None,
+                        source_end=None,
+                        text="Song",
+                        track_id="track-audio-2",
+                    ),
+                ],
+                id="track-audio-2",
+                kind="audio",
+                name="Music",
+            ),
+        )
+        validate_project_editor_state(sample_project(), state)
+
+    def test_validate_project_editor_state_accepts_imported_video_duration(self) -> None:
+        state = sample_editor_state()
+        state.scenes[1].source = "imported"
+        validate_project_editor_state(sample_project(), state)
+
     def test_validate_project_editor_state_rejects_non_voiceover_audio_clip(self) -> None:
         state = sample_editor_state()
         state.sequence.tracks.append(
@@ -123,7 +230,47 @@ class ProjectEditorServicesTests(TestCase):
                 name="Voiceover",
             ),
         )
-        with self.assertRaisesRegex(ValueError, "Audio tracks can only contain voiceover clips."):
+        with self.assertRaisesRegex(ValueError, "Audio tracks cannot contain caption clips."):
+            validate_project_editor_state(sample_project(), state)
+
+    def test_validate_project_editor_state_accepts_comments_and_tool_state(self) -> None:
+        state = sample_editor_state()
+        state.comments = [
+            EditorCommentRecord(
+                id="comment-1",
+                scene_id="scene-1",
+                body="Check alignment",
+                time=1.2,
+                created_at="2026-07-23T00:00:00Z",
+            )
+        ]
+        state.tool_state = ProjectEditorToolState(active_effect="zoom", media_tab="project")
+        validate_project_editor_state(sample_project(), state)
+
+    def test_validate_project_editor_state_rejects_overlay_without_content(self) -> None:
+        state = sample_editor_state()
+        state.sequence.tracks.append(
+            EditorTrackRecord(
+                clips=[
+                    EditorClipRecord(
+                        id="overlay-empty-1",
+                        kind="text_overlay",
+                        scene_id="scene-1",
+                        timeline_start=0.2,
+                        timeline_end=1.0,
+                        source_start=None,
+                        source_end=None,
+                        text="",
+                        title="",
+                        track_id="track-overlay-1",
+                    )
+                ],
+                id="track-overlay-1",
+                kind="overlay",
+                name="Overlay",
+            )
+        )
+        with self.assertRaisesRegex(ValueError, "Overlay clips must include title or text content."):
             validate_project_editor_state(sample_project(), state)
 
     def test_ensure_revision_base_allows_matching_revision_head(self) -> None:
@@ -183,5 +330,8 @@ def sample_editor_state() -> ProjectEditorState:
             ],
             version=4,
         ),
+        selected_clip_id="clip-scene-1",
         show_captions=True,
+        comments=[],
+        tool_state=ProjectEditorToolState(),
     )

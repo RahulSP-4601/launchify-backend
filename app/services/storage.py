@@ -207,6 +207,33 @@ def upload_audio_file(
     )
 
 
+def upload_editor_media_file(
+    user_id: str,
+    project_id: str,
+    media_kind: Literal["audio", "video"],
+    filename: str,
+    content_type: str,
+    source_path: Path,
+) -> AssetRecord:
+    settings = get_settings()
+    bucket = settings.supabase_storage_bucket
+    safe_name = sanitize_storage_filename(filename)
+    storage_path = f"users/{user_id}/projects/{project_id}/editor-assets/{media_kind}/{safe_name}"
+    resolved_type = content_type or guess_content_type(filename)
+    send_storage_upload(
+        endpoint=f"{settings.supabase_url}/storage/v1/object/{bucket}/{storage_path}",
+        content_type=resolved_type,
+        content_length=source_path.stat().st_size,
+        source_path=source_path,
+    )
+    return AssetRecord(
+        filename=filename,
+        content_type=resolved_type,
+        size_bytes=source_path.stat().st_size,
+        storage_path=storage_path,
+    )
+
+
 def send_storage_upload(
     endpoint: str,
     content_type: str,

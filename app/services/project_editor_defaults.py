@@ -5,6 +5,7 @@ from app.models.project_editor import (
     EditorClipRecord,
     EditorSceneRecord,
     EditorTrackRecord,
+    ProjectEditorToolState,
     ProjectEditorState,
     ProjectEditorSequence,
 )
@@ -17,12 +18,15 @@ def build_project_editor_state(project: ProjectRecord) -> ProjectEditorState:
     return ProjectEditorState(
         aspect_ratio="16:9",
         captions=captions,
+        comments=[],
         edit_mode="overwrite",
+        selected_clip_id=None,
         selected_scene_id=scenes[0].id if scenes else "",
         selected_track_id="track-video-1",
         sequence=build_editor_sequence(project.id, scenes, captions, build_audio_clips(project, "track-audio-1")),
         scenes=scenes,
         show_captions=True,
+        tool_state=ProjectEditorToolState(),
     )
 
 
@@ -301,11 +305,16 @@ def build_video_clip(
     source_start = None if inserted else round(source_cursor, 2)
     source_end = None if inserted else round(source_cursor + duration, 2)
     clip = EditorClipRecord(
+        asset_path=None,
+        content_type=None,
+        effect_preset=None,
         id=f"clip-{scene.id}",
         kind="inserted_card" if inserted else "source_video",
         scene_id=scene.id,
+        source_project_id=None,
         source_end=source_end,
         source_start=source_start,
+        style_preset=None,
         text=scene.on_screen_text,
         timeline_end=scene.end,
         timeline_start=scene.start,
@@ -321,11 +330,16 @@ def build_caption_clips(
 ) -> list[EditorClipRecord]:
     return [
         EditorClipRecord(
+            asset_path=None,
+            content_type=None,
+            effect_preset=None,
             id=f"caption-clip-{caption.id}",
             kind="caption",
             scene_id=caption.scene_id,
+            source_project_id=None,
             source_end=None,
             source_start=None,
+            style_preset="body",
             text=caption.text,
             timeline_end=caption.end,
             timeline_start=caption.start,
@@ -345,11 +359,16 @@ def build_audio_clips(
         return []
     return [
         EditorClipRecord(
+            asset_path=clip.audio_storage_path,
+            content_type="audio/mpeg",
+            effect_preset=None,
             id=f"voiceover-clip-{clip.scene_number}-{index + 1}",
             kind="voiceover",
             scene_id=f"scene-{clip.scene_number}",
+            source_project_id=project.id,
             source_end=None,
             source_start=None,
+            style_preset=None,
             text=clip.text,
             timeline_end=clip.end,
             timeline_start=clip.start,

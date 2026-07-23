@@ -11,7 +11,9 @@ MIN_CAPTION_SECONDS = 0.2
 def validate_project_editor_state(project: ProjectRecord, state: ProjectEditorState) -> None:
     scene_ids = validate_scenes(project, state)
     validate_selected_scene(scene_ids, state.selected_scene_id)
+    validate_selected_clip(state.sequence, state.selected_clip_id)
     validate_captions(state, scene_ids)
+    validate_comments(state, scene_ids)
     validate_source_coverage(project_duration_limit(project), state)
     validate_sequence(state)
 
@@ -35,6 +37,13 @@ def validate_selected_scene(scene_ids: set[str], selected_scene_id: str) -> None
         raise ValueError("The selected editor scene no longer exists.")
 
 
+def validate_selected_clip(sequence: ProjectEditorSequence | None, selected_clip_id: str | None) -> None:
+    if not selected_clip_id or sequence is None:
+        return
+    if not any(clip.id == selected_clip_id for track in sequence.tracks for clip in track.clips):
+        raise ValueError("The selected editor clip no longer exists.")
+
+
 def validate_captions(state: ProjectEditorState, scene_ids: set[str]) -> None:
     scenes_by_id = {scene.id: scene for scene in state.scenes}
     timeline_duration = state.scenes[-1].end
@@ -52,6 +61,15 @@ def validate_captions(state: ProjectEditorState, scene_ids: set[str]) -> None:
             raise ValueError("Caption timings must stay inside their scene boundaries.")
 
 
+def validate_comments(state: ProjectEditorState, scene_ids: set[str]) -> None:
+    timeline_duration = state.sequence.duration_seconds if state.sequence else state.scenes[-1].end
+    for comment in state.comments:
+        if comment.scene_id is not None and comment.scene_id not in scene_ids:
+            raise ValueError("Each comment must point to a valid scene.")
+        if comment.time < 0 or comment.time > timeline_duration + TIMING_EPSILON:
+            raise ValueError("Comment timestamps must stay within the editor timeline duration.")
+
+
 def validate_scene_timing(start: float, end: float, previous_end: float) -> None:
     if end - start < MIN_SCENE_SECONDS:
         raise ValueError("Each scene must be at least 0.5 seconds long.")
@@ -64,7 +82,11 @@ def validate_scene_timing(start: float, end: float, previous_end: float) -> None
 
 
 def validate_source_coverage(duration_limit: float, state: ProjectEditorState) -> None:
-    source_seconds = sum(max(scene.end - scene.start, 0.0) for scene in state.scenes if scene.source != "inserted")
+    source_seconds = sum(
+        max(scene.end - scene.start, 0.0)
+        for scene in state.scenes
+        if scene.source not in {"inserted", "imported"}
+    )
     if source_seconds > duration_limit + TIMING_EPSILON:
         raise ValueError("Edited source clips exceed the available source media duration.")
 
@@ -97,24 +119,46 @@ def validate_clip_timings(sequence: ProjectEditorSequence) -> None:
     for track in sequence.tracks:
         previous_end = 0.0
         for clip in sorted(track.clips, key=lambda item: item.timeline_start):
+            validate_track_clip_kind(track.kind, clip.kind)
             minimum_duration = min_duration_for_clip(clip)
             if clip.timeline_end - clip.timeline_start < minimum_duration:
                 raise ValueError(f"Each {clip.kind.replace('_', ' ')} clip must be at least {minimum_duration:.1f} seconds long.")
             if clip.timeline_start < previous_end - TIMING_EPSILON:
                 raise ValueError("Clips cannot overlap within the same track.")
             validate_clip_source_bounds(clip)
+            validate_clip_asset_metadata(clip)
             previous_end = clip.timeline_end
 
 
 def validate_clip_source_bounds(clip: EditorClipRecord) -> None:
-    if clip.kind in {"inserted_card", "caption", "voiceover"}:
+    if clip.kind in {"inserted_card", "caption", "voiceover", "media_audio", "text_overlay", "shape_overlay", "effect_overlay"}:
         if clip.source_start is not None or clip.source_end is not None:
             raise ValueError("Non-source clips cannot point to source media bounds.")
+        return
+    if clip.kind == "media_video" and clip.source_start is None and clip.source_end is None:
         return
     if clip.source_start is None or clip.source_end is None:
         raise ValueError("Source-backed clips must declare source bounds.")
     if clip.source_end < clip.source_start:
         raise ValueError("Clip source bounds are invalid.")
+
+
+def validate_track_clip_kind(track_kind: str, clip_kind: str) -> None:
+    allowed = {
+        "video": {"source_video", "inserted_card", "media_video"},
+        "audio": {"voiceover", "media_audio"},
+        "caption": {"caption"},
+        "overlay": {"inserted_card", "text_overlay", "shape_overlay", "effect_overlay"},
+    }
+    if clip_kind not in allowed.get(track_kind, set()):
+        raise ValueError(f"{track_kind.title()} tracks cannot contain {clip_kind.replace('_', ' ')} clips.")
+
+
+def validate_clip_asset_metadata(clip: EditorClipRecord) -> None:
+    if clip.kind in {"media_audio", "media_video"} and not clip.asset_path:
+        raise ValueError("Uploaded or imported media clips must include an asset path.")
+    if clip.kind in {"text_overlay", "shape_overlay", "effect_overlay"} and not (clip.text or clip.title):
+        raise ValueError("Overlay clips must include title or text content.")
 
 
 def validate_sequence_alignment(state: ProjectEditorState) -> None:
@@ -153,9 +197,9 @@ def validate_audio_clips(sequence: ProjectEditorSequence) -> None:
         if track.kind != "audio":
             continue
         for clip in track.clips:
-            if clip.kind != "voiceover":
-                raise ValueError("Audio tracks can only contain voiceover clips.")
-            if clip.scene_id is None:
+            if clip.kind not in {"voiceover", "media_audio"}:
+                raise ValueError("Audio tracks can only contain voiceover or uploaded audio clips.")
+            if clip.kind == "voiceover" and clip.scene_id is None:
                 raise ValueError("Voiceover clips must reference a scene.")
 
 

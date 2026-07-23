@@ -167,6 +167,12 @@ def backfill_legacy_final_video(cursor: Any) -> None:
 
 
 def ensure_project_editor_schema(cursor: Any) -> None:
+    ensure_editor_states_schema(cursor)
+    ensure_editor_revisions_schema(cursor)
+    ensure_editor_media_assets_schema(cursor)
+
+
+def ensure_editor_states_schema(cursor: Any) -> None:
     cursor.execute(
         """
         create table if not exists project_editor_states (
@@ -184,6 +190,9 @@ def ensure_project_editor_schema(cursor: Any) -> None:
         on project_editor_states (user_id, updated_at desc)
         """,
     )
+
+
+def ensure_editor_revisions_schema(cursor: Any) -> None:
     cursor.execute(
         """
         create table if not exists project_editor_revisions (
@@ -201,6 +210,40 @@ def ensure_project_editor_schema(cursor: Any) -> None:
         """
         create index if not exists idx_project_editor_revisions_project_created
         on project_editor_revisions (project_id, created_at desc)
+        """,
+    )
+
+
+def ensure_editor_media_assets_schema(cursor: Any) -> None:
+    cursor.execute(
+        """
+        create table if not exists project_editor_media_assets (
+            id text primary key,
+            project_id text not null references projects(id) on delete cascade,
+            user_id text not null,
+            kind text not null,
+            source text not null,
+            title text not null,
+            storage_path text not null,
+            content_type text not null,
+            size_bytes bigint not null default 0,
+            duration_seconds double precision,
+            source_project_id text references projects(id) on delete set null,
+            created_at timestamptz not null,
+            updated_at timestamptz not null
+        )
+        """,
+    )
+    cursor.execute(
+        """
+        create index if not exists idx_project_editor_media_assets_project_updated
+        on project_editor_media_assets (project_id, updated_at desc)
+        """,
+    )
+    cursor.execute(
+        """
+        create index if not exists idx_project_editor_media_assets_user_source
+        on project_editor_media_assets (user_id, source, updated_at desc)
         """,
     )
 

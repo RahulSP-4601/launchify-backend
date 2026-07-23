@@ -116,12 +116,13 @@ const VideoLayer: React.FC<{
   zoom: { origin: string; scale: number; translateX: number; translateY: number };
   transitionScale: number;
 }> = ({ payload, scene, viewport, zoom, transitionScale }) => {
+  const videoSource = scene.asset_path ?? payload.sourceVideoPath ?? "";
+  const mediaWindow = videoWindow(scene, payload.dimensions.fps);
   return (
     <AbsoluteFill style={videoSurfaceStyle(viewport.chromeOffset)}>
       <OffthreadVideo
-        src={payload.sourceVideoPath ?? ""}
-        startFrom={Math.round(scene.source_start * payload.dimensions.fps)}
-        endAt={Math.round(scene.source_end * payload.dimensions.fps)}
+        {...mediaWindow}
+        src={videoSource}
         volume={sourceVideoVolume(payload)}
         style={{
           height: "100%",
@@ -215,14 +216,29 @@ const BrowserChrome: React.FC<{
 );
 
 const AudioTrack: React.FC<{ introFrames: number; payload: RenderPayload }> = ({ introFrames, payload }) => {
-  if (payload.voiceover.mode === "original" || payload.voiceover.status !== "ready") {
-    return null;
-  }
-  const clipTracks = timelineAudioClips(payload) ?? payload.voiceover.clips.filter((clip) => Boolean(clip.audio_storage_path));
-  if (clipTracks.length > 0) {
+  const clipTracks = timelineAudioClips(payload);
+  if (clipTracks?.length) {
     return (
       <>
         {clipTracks.map((clip) => (
+          <Sequence
+            key={`${clip.scene_number}-${clip.start}-${clip.audio_storage_path}`}
+            from={introFrames + Math.round(clip.start * payload.dimensions.fps)}
+          >
+            <Audio loop={clip.loop ?? false} src={clip.audio_storage_path} volume={clipVolumeEnvelope(clip, payload.dimensions.fps, voiceoverVolume(payload))} />
+          </Sequence>
+        ))}
+      </>
+    );
+  }
+  if (payload.voiceover.mode === "original" || payload.voiceover.status !== "ready") {
+    return null;
+  }
+  const voiceoverClips = payload.voiceover.clips.filter((clip) => Boolean(clip.audio_storage_path));
+  if (voiceoverClips.length > 0) {
+    return (
+      <>
+        {voiceoverClips.map((clip) => (
           <Sequence
             key={`${clip.scene_number}-${clip.start}-${clip.audio_storage_path}`}
             from={introFrames + Math.round(clip.start * payload.dimensions.fps)}
@@ -242,6 +258,28 @@ const AudioTrack: React.FC<{ introFrames: number; payload: RenderPayload }> = ({
     </Sequence>
   );
 };
+
+function clipVolumeEnvelope(
+  clip: {
+    duration_seconds?: number;
+    fade_in_seconds?: number;
+    fade_out_seconds?: number;
+    volume_percent?: number;
+  },
+  fps: number,
+  fallbackVolume: number,
+) {
+  const baseVolume = Math.max((clip.volume_percent ?? 100) / 100, 0) * fallbackVolume;
+  const clipDurationFrames = Math.max(1, Math.round((clip.duration_seconds ?? 0) * fps));
+  const fadeInFrames = Math.max(0, Math.round((clip.fade_in_seconds ?? 0) * fps));
+  const fadeOutFrames = Math.max(0, Math.round((clip.fade_out_seconds ?? 0) * fps));
+  return (frame: number) => {
+    const fadeIn = fadeInFrames > 0 ? Math.min(frame / fadeInFrames, 1) : 1;
+    const remainingFrames = clipDurationFrames - frame;
+    const fadeOut = fadeOutFrames > 0 ? Math.min(Math.max(remainingFrames, 0) / fadeOutFrames, 1) : 1;
+    return baseVolume * Math.min(fadeIn, fadeOut);
+  };
+}
 
 const GradientMask: React.FC<{ fastPreview: boolean }> = ({ fastPreview }) => (
   <AbsoluteFill style={gradientMaskStyle(fastPreview)} />
@@ -265,24 +303,47 @@ function timelineAudioClips(payload: RenderPayload) {
   const audioTrackClips = (payload.timeline?.tracks ?? [])
     .filter((track) => track.kind === "audio" && !track.muted)
     .flatMap((track) => track.clips)
-    .filter((clip) => clip.kind === "voiceover" && !clip.muted);
+    .filter((clip) => (clip.kind === "voiceover" || clip.kind === "media_audio") && !clip.muted);
   if (!audioTrackClips.length) {
     return null;
   }
   return audioTrackClips
-    .map((clip) => {
-      const sceneNumber = sceneNumberForClip(clip.scene_id);
-      const voiceover = payload.voiceover.clips.find((item) => item.scene_number === sceneNumber && Boolean(item.audio_storage_path));
-      if (!voiceover) {
-        return null;
-      }
-      return {
-        ...voiceover,
-        end: clip.timeline_end,
-        start: clip.timeline_start,
-      };
-    })
+    .map((clip) => timelineAudioClip(payload, clip))
     .filter(Boolean);
+}
+
+function timelineAudioClip(payload: RenderPayload, clip: TimelineClip) {
+  if (clip.kind === "media_audio" && clip.asset_path) {
+    return {
+      audio_storage_path: clip.asset_path,
+      duration_seconds: clip.timeline_end - clip.timeline_start,
+      end: clip.timeline_end,
+      fade_in_seconds: clip.fade_in_seconds ?? 0,
+      fade_out_seconds: clip.fade_out_seconds ?? 0,
+      loop: clip.loop ?? false,
+      scene_number: sceneNumberForClip(clip.scene_id) ?? 0,
+      start: clip.timeline_start,
+      text: clip.text,
+      volume_percent: clip.volume_percent ?? 100,
+    };
+  }
+  if (clip.kind !== "voiceover") {
+    return null;
+  }
+  const sceneNumber = sceneNumberForClip(clip.scene_id);
+  const voiceover = payload.voiceover.clips.find((item) => item.scene_number === sceneNumber && Boolean(item.audio_storage_path));
+  if (!voiceover) {
+    return null;
+  }
+  return {
+    ...voiceover,
+    end: clip.timeline_end,
+    fade_in_seconds: clip.fade_in_seconds ?? 0,
+    fade_out_seconds: clip.fade_out_seconds ?? 0,
+    loop: clip.loop ?? false,
+    start: clip.timeline_start,
+    volume_percent: clip.volume_percent ?? 100,
+  };
 }
 
 function legacyTimeline(scenes: RenderScene[]): TimelineScene[] {
@@ -315,7 +376,22 @@ function activeOverlayClips(payload: RenderPayload, scene: TimelineScene, localS
   return (payload.timeline?.tracks ?? [])
     .filter((track) => track.kind === "overlay" && !track.muted)
     .flatMap((track) => track.clips)
-    .filter((clip) => !clip.muted && clip.kind === "inserted_card" && clip.timeline_start <= editorTime && clip.timeline_end >= editorTime);
+    .filter((clip) => {
+      if (clip.muted || (clip.kind !== "inserted_card" && clip.kind !== "effect_overlay")) {
+        return false;
+      }
+      return clip.timeline_start <= editorTime && clip.timeline_end >= editorTime;
+    });
+}
+
+function videoWindow(scene: TimelineScene, fps: number) {
+  if (scene.clip_kind === "media_video" && scene.asset_path) {
+    return {};
+  }
+  return {
+    endAt: Math.round(scene.source_end * fps),
+    startFrom: Math.round(scene.source_start * fps),
+  };
 }
 
 function sceneNumberForClip(sceneId: string | null) {

@@ -71,21 +71,33 @@ export type TimelineTrack = {
 export type TimelineClip = {
   id: string;
   track_id: string;
-  kind: "source_video" | "inserted_card" | "caption" | "voiceover";
+  kind: "source_video" | "inserted_card" | "caption" | "voiceover" | "media_audio" | "media_video" | "effect_overlay";
   title: string;
   scene_id: string | null;
   timeline_start: number;
   timeline_end: number;
   source_start: number | null;
   source_end: number | null;
+  asset_path?: string | null;
+  content_type?: string | null;
+  source_project_id?: string | null;
+  style_preset?: string | null;
+  effect_preset?: string | null;
   text: string;
   locked: boolean;
   muted: boolean;
+  volume_percent?: number | null;
+  fade_in_seconds?: number | null;
+  fade_out_seconds?: number | null;
+  loop?: boolean | null;
 };
 
 export type TimelineScene = {
   scene_number: number;
   title: string;
+  clip_kind?: TimelineClip["kind"];
+  asset_path?: string | null;
+  content_type?: string | null;
   purpose: string;
   editor_start: number;
   editor_end: number;
