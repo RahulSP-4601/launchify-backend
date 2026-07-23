@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.models.projects import (
     CreateRecordingSessionRequest,
     CreateProjectRequest,
+    MediaAssetUrlResponse,
     ProjectDetail,
     ProjectRecord,
     ProjectSummary,
@@ -32,7 +33,7 @@ from app.services.auth import get_authenticated_user_id
 from app.services.phase_four import apply_phase_four_update
 from app.services.project_store import project_store
 from app.services.project_summary_store import project_summary_store
-from app.services.storage import cached_asset_file, download_asset_to_file, upload_video_file
+from app.services.storage import cached_asset_file, create_signed_asset_url, download_asset_to_file, upload_video_file
 from app.services.usage_service import total_rendered_seconds
 from app.services.voiceover import downloadable_voiceover_audio
 
@@ -227,6 +228,14 @@ async def get_render_output(project_id: str, variant: str, request: Request) -> 
     )
 
 
+@router.get("/projects/{project_id}/renders/{variant}/url", response_model=MediaAssetUrlResponse, tags=["projects"])
+async def get_render_output_url(project_id: str, variant: str, request: Request) -> MediaAssetUrlResponse:
+    user_id = get_authenticated_user_id(request)
+    project = must_get_project(user_id, project_id)
+    rendered_video = require_render_output(project, variant)
+    return MediaAssetUrlResponse(url=create_signed_asset_url(rendered_video.storage_path))
+
+
 @router.get("/projects/{project_id}/assets/source", tags=["projects"])
 async def get_source_asset(project_id: str, request: Request) -> FileResponse:
     user_id = get_authenticated_user_id(request)
@@ -240,6 +249,15 @@ async def get_source_asset(project_id: str, request: Request) -> FileResponse:
         filename=project.asset.filename,
         headers={"Content-Disposition": f'inline; filename="{project.asset.filename}"'},
     )
+
+
+@router.get("/projects/{project_id}/assets/source/url", response_model=MediaAssetUrlResponse, tags=["projects"])
+async def get_source_asset_url(project_id: str, request: Request) -> MediaAssetUrlResponse:
+    user_id = get_authenticated_user_id(request)
+    project = must_get_project(user_id, project_id)
+    if project.asset is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source asset not found.")
+    return MediaAssetUrlResponse(url=create_signed_asset_url(project.asset.storage_path))
 
 
 @router.get("/projects/{project_id}/assets/voiceover", tags=["projects"])
@@ -260,6 +278,15 @@ async def get_voiceover_asset(project_id: str, request: Request) -> FileResponse
         background=None if uses_cached_voiceover else BackgroundTask(output_path.unlink, missing_ok=True),
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
+
+
+@router.get("/projects/{project_id}/assets/voiceover/url", response_model=MediaAssetUrlResponse, tags=["projects"])
+async def get_voiceover_asset_url(project_id: str, request: Request) -> MediaAssetUrlResponse:
+    user_id = get_authenticated_user_id(request)
+    project = must_get_project(user_id, project_id)
+    if project.voiceover is None or not project.voiceover.audio_storage_path:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Voiceover asset not found.")
+    return MediaAssetUrlResponse(url=create_signed_asset_url(project.voiceover.audio_storage_path))
 
 
 @router.post("/projects/{project_id}/upload", response_model=ProjectDetail, tags=["projects"])

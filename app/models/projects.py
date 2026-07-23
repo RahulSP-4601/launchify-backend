@@ -444,6 +444,10 @@ class TranscriptResponse(BaseModel):
     transcript: list[TranscriptSegment]
 
 
+class MediaAssetUrlResponse(BaseModel):
+    url: str
+
+
 class UsageSummary(BaseModel):
     limit_seconds: float
     used_seconds: float

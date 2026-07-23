@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import http.client
+import json
 import logging
 import mimetypes
 import re
@@ -116,6 +117,13 @@ def cached_asset_file(storage_path: str, heartbeat: UploadHeartbeat | None = Non
     finally:
         downloaded.unlink(missing_ok=True)
     return cache_path
+
+
+def create_signed_asset_url(storage_path: str, expires_in_seconds: int = 21_600) -> str:
+    settings = get_settings()
+    endpoint = signed_asset_url_endpoint(settings.supabase_url, settings.supabase_storage_bucket, storage_path)
+    signed_path = signed_storage_path(endpoint, expires_in_seconds)
+    return absolute_storage_url(settings.supabase_url, signed_path)
 
 
 def upload_video_file(
@@ -256,11 +264,52 @@ def sanitize_storage_filename(filename: str) -> str:
     return parse.quote(safe_name, safe=".-_")
 
 
+def signed_asset_url_endpoint(base_url: str, bucket: str, storage_path: str) -> str:
+    return f"{base_url}/storage/v1/object/sign/{bucket}/{storage_path}"
+
+
+def signed_storage_path(endpoint: str, expires_in_seconds: int) -> str:
+    sign_request = request.Request(
+        endpoint,
+        data=json.dumps({"expiresIn": expires_in_seconds}).encode("utf-8"),
+        headers=storage_json_headers(),
+        method="POST",
+    )
+    try:
+        with request.urlopen(sign_request, timeout=30) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="ignore")
+        raise RuntimeError(f"Supabase Storage sign URL failed: {detail}") from exc
+    signed_path = payload.get("signedURL") or payload.get("signedUrl") or payload.get("signed_url")
+    if not isinstance(signed_path, str) or not signed_path:
+        raise RuntimeError("Supabase Storage sign URL response was missing signedURL.")
+    return signed_path
+
+
+def absolute_storage_url(base_url: str, signed_path: str) -> str:
+    if signed_path.startswith("http://") or signed_path.startswith("https://"):
+        return signed_path
+    storage_base = f"{base_url.rstrip('/')}/storage/v1"
+    if signed_path.startswith("/storage/v1/"):
+        return f"{base_url.rstrip('/')}{signed_path}"
+    if signed_path.startswith("/"):
+        return f"{storage_base}{signed_path}"
+    return f"{storage_base}/{signed_path.lstrip('/')}"
+
+
 def cached_asset_filename(storage_path: str) -> str:
     parsed_path = parse.unquote(storage_path)
     suffix = Path(parsed_path).suffix[:10]
     digest = hashlib.sha1(parsed_path.encode("utf-8")).hexdigest()
     return f"{digest}{suffix}".lower()
+
+
+def storage_json_headers() -> dict[str, str]:
+    headers = upload_headers("application/json", 0)
+    headers.pop("Content-Length", None)
+    headers.pop("x-upsert", None)
+    return headers
 
 
 def cached_asset_is_fresh(cache_path: Path, ttl_seconds: int) -> bool:
