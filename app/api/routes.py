@@ -32,7 +32,7 @@ from app.services.auth import get_authenticated_user_id
 from app.services.phase_four import apply_phase_four_update
 from app.services.project_store import project_store
 from app.services.project_summary_store import project_summary_store
-from app.services.storage import download_asset_to_file, upload_video_file
+from app.services.storage import cached_asset_file, download_asset_to_file, upload_video_file
 from app.services.usage_service import total_rendered_seconds
 from app.services.voiceover import downloadable_voiceover_audio
 
@@ -218,12 +218,11 @@ async def get_render_output(project_id: str, variant: str, request: Request) -> 
     user_id = get_authenticated_user_id(request)
     project = must_get_project(user_id, project_id)
     rendered_video = require_render_output(project, variant)
-    output_path = download_asset_to_file(rendered_video.storage_path)
+    output_path = cached_asset_file(rendered_video.storage_path)
     return FileResponse(
         path=output_path,
         media_type=rendered_video.content_type,
         filename=rendered_video.filename,
-        background=BackgroundTask(output_path.unlink, missing_ok=True),
         headers={"Content-Disposition": f'inline; filename="{rendered_video.filename}"'},
     )
 
@@ -234,12 +233,11 @@ async def get_source_asset(project_id: str, request: Request) -> FileResponse:
     project = must_get_project(user_id, project_id)
     if project.asset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Source asset not found.")
-    output_path = download_asset_to_file(project.asset.storage_path)
+    output_path = cached_asset_file(project.asset.storage_path)
     return FileResponse(
         path=output_path,
         media_type=project.asset.content_type,
         filename=project.asset.filename,
-        background=BackgroundTask(output_path.unlink, missing_ok=True),
         headers={"Content-Disposition": f'inline; filename="{project.asset.filename}"'},
     )
 
@@ -250,7 +248,8 @@ async def get_voiceover_asset(project_id: str, request: Request) -> FileResponse
     project = must_get_project(user_id, project_id)
     if project.voiceover is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Voiceover asset not found.")
-    output_path = downloadable_voiceover_audio(project.voiceover)
+    uses_cached_voiceover = bool(project.voiceover.audio_storage_path)
+    output_path = cached_asset_file(project.voiceover.audio_storage_path) if uses_cached_voiceover else downloadable_voiceover_audio(project.voiceover)
     if output_path is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Voiceover asset not found.")
     filename = f"{project.project_name.lower().replace(' ', '-')}-voiceover.mp3"
@@ -258,7 +257,7 @@ async def get_voiceover_asset(project_id: str, request: Request) -> FileResponse
         path=output_path,
         media_type="audio/mpeg",
         filename=filename,
-        background=BackgroundTask(output_path.unlink, missing_ok=True),
+        background=None if uses_cached_voiceover else BackgroundTask(output_path.unlink, missing_ok=True),
         headers={"Content-Disposition": f'inline; filename="{filename}"'},
     )
 

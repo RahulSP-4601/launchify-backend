@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     database_connect_timeout_seconds: int = 10
     database_pool_size: int = 8
     supabase_storage_bucket: str = "launchify-assets"
+    asset_cache_dir: str = "/tmp/launchify-asset-cache"
+    asset_cache_ttl_seconds: int = 3600
     deepgram_api_key: str = ""
     deepgram_tts_model: str = "aura-2-thalia-en"
 

@@ -102,6 +102,22 @@ def download_asset_to_file(storage_path: str, heartbeat: UploadHeartbeat | None 
     return Path(temp_file.name)
 
 
+def cached_asset_file(storage_path: str, heartbeat: UploadHeartbeat | None = None) -> Path:
+    settings = get_settings()
+    cache_dir = Path(settings.asset_cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cleanup_stale_cached_assets(cache_dir, settings.asset_cache_ttl_seconds)
+    cache_path = cache_dir / cached_asset_filename(storage_path)
+    if cached_asset_is_fresh(cache_path, settings.asset_cache_ttl_seconds):
+        return cache_path
+    downloaded = download_asset_to_file(storage_path, heartbeat=heartbeat)
+    try:
+        downloaded.replace(cache_path)
+    finally:
+        downloaded.unlink(missing_ok=True)
+    return cache_path
+
+
 def upload_video_file(
     user_id: str,
     project_id: str,
@@ -238,6 +254,33 @@ def sanitize_storage_filename(filename: str) -> str:
     filename_digest = hashlib.sha1(cleaned.encode("utf-8")).hexdigest()[:8]
     safe_name = f"{safe_stem}-{filename_digest}{safe_suffix}".lower()
     return parse.quote(safe_name, safe=".-_")
+
+
+def cached_asset_filename(storage_path: str) -> str:
+    parsed_path = parse.unquote(storage_path)
+    suffix = Path(parsed_path).suffix[:10]
+    digest = hashlib.sha1(parsed_path.encode("utf-8")).hexdigest()
+    return f"{digest}{suffix}".lower()
+
+
+def cached_asset_is_fresh(cache_path: Path, ttl_seconds: int) -> bool:
+    if not cache_path.exists():
+        return False
+    if ttl_seconds <= 0:
+        return True
+    return (time.time() - cache_path.stat().st_mtime) <= ttl_seconds
+
+
+def cleanup_stale_cached_assets(cache_dir: Path, ttl_seconds: int) -> None:
+    if ttl_seconds <= 0:
+        return
+    cutoff = time.time() - ttl_seconds
+    for candidate in cache_dir.iterdir():
+        try:
+            if candidate.is_file() and candidate.stat().st_mtime < cutoff:
+                candidate.unlink(missing_ok=True)
+        except FileNotFoundError:
+            continue
 
 
 def stream_request_body(
